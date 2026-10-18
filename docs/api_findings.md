@@ -12,7 +12,8 @@
 | `pageSize` can be set as large as needed | It is silently capped at 1000, with no error (§6) | Retrieval pages at 1000 and reconciles the retrieved count against `totalCount` |
 | A `pageToken` is tied to its query | The token is not bound to the query; reusing it with other params returns wrong results with HTTP 200 (§6) | Page requests resend frozen params; only `pageToken` changes |
 | The API publishes a rate limit or `Retry-After` | It publishes neither. After about 10 rapid requests it returns HTML 429 with no `Retry-After`; 1 request / 1.2 s is sustainable (§11) | Retrieval paces requests itself and retries 429 with exponential backoff |
-| `/stats/field/values` can count values within a query | It rejects `query.*` and `filter.*` params with 400 and only covers the whole database (§10) | Subset aggregation is done client-side over fetched records |
+| `/stats/field/values` can count values within a query | It rejects `query.*` and `filter.*` params with 400 and only covers the whole database (§10) | Subset aggregation is done client-side over fetched records, or, past the record cap, with one `countTotal` request per bucket filter (§17) |
+| Past the record cap, a distribution can only be estimated from the records fetched | Bucket filters that partition the cohort give exact per-bucket counts; on pembrolizumab they equal the full fetch in every bucket of four dimensions (§17). The first 10,000 breast cancer trials by registration date understate Phase 2 by 4.1 points and overstate Not Applicable by 6.2 | API-countable dimensions use the count_per_bucket route instead of truncating; meta states the route |
 
 ## Open ambiguities
 
@@ -151,6 +152,16 @@ Quirks:
   bucket such as "Phase 1/2".
 - `AREA[Phase]Phase 2` (human-readable value) is accepted and gives the same 1779.
   Use the enum form anyway.
+- **Which phase combinations exist** (whole registry, 2026-10-18, `AREA[Phase]A AND
+  AREA[Phase]B` for all 15 pairs): only PHASE1+PHASE2 (17,142) and PHASE2+PHASE3 (7,623);
+  the other 13 pairs match 0. 17,142 + 7,623 = 24,765, the two-phase count above. So the
+  mutually exclusive phase buckets are the 6 single phases, these 2 pairs, and missing.
+- **An exact phase set is "listed phases present AND NOT any other phase":**
+  `AREA[Phase]PHASE2 AND NOT AREA[Phase](EARLY_PHASE1 OR PHASE1 OR PHASE3 OR PHASE4 OR NA)`
+  with `query.intr=pembrolizumab` gives 1262, the PHASE2-only count above. Wrapped in
+  parentheses it AND-joins with other clauses in either order (1250 with
+  `AREA[StartDate]RANGE[2015-01-01,MAX]` before or after). Used by the count_per_bucket
+  route (§17).
 
 ## 5. Dates
 
@@ -205,8 +216,10 @@ Quirks:
   matches included.
 - Every `/studies` query is sent with `sort=StudyFirstPostDate:desc`, so a capped fetch is
   "the most recently registered trials" (decisions.md). This only matters for dimensions
-  that cannot use the exact count route being added next; for API-countable dimensions,
-  truncation will no longer occur.
+  that cannot use the count_per_bucket route (§17); API-countable dimensions are no longer
+  truncated.
+- `pageSize=0` is not a count-only request: it is ignored and returns the default 10
+  studies with totalCount.
 
 ## 7. `fields` projection
 
@@ -293,7 +306,7 @@ Quirks:
 - **It does not accept query or filter params.** Both `query.intr=…` and `filter.advanced=…` give
   `400 Invalid prefix in parameter name`. It cannot count values within a filtered subset, so
   subset aggregation has to be done client-side over fetched records, or by issuing one
-  `countTotal` query per bucket.
+  `countTotal` query per bucket (the count_per_bucket route, §17).
 - `/stats/field/sizes?fields=Phase` gives list-size distributions: 1 phase 438,573 studies, 2 phases 24,765.
   It returns 404 for non-list leaves such as `LocationCountry`.
 
@@ -330,6 +343,10 @@ wall time over two runs (about 12.2 s retrieval). With `sort=StudyFirstPostDate:
 per bucket); sorting added no measurable time. The two orders select different subsets
 (e.g. Phase 2: 2,094 vs 1,699; Not Applicable: 2,952 vs 3,557), which is why the order
 is named in `meta.assumptions` with the title suffix and `data_quality="partial"`.
+
+Since the count_per_bucket route (§17), breast cancer by phase is no longer truncated:
+10 `/studies` requests, 12.0 s wall time, exact counts for all 16,913 matches, a 20.4 KB
+response (`examples/i_breast_cancer_by_phase.*`).
 
 ## 13. Other syntax notes
 
@@ -443,3 +460,58 @@ text-only matches of `broad` mode (336 for pembrolizumab, §2).
 - **Known cost:** the added trials include class-level placeholders that list the drug as one
   allowed option in otherNames ("PD(L)-1 inhibitor" → Pembrolizumab), and any MeSH
   mis-mapping onto the drug's term (§8). Both are stated in `meta.search_semantics`.
+
+## 17. Exact counts past the record cap: one countTotal request per bucket (verified 2026-10-18)
+
+For a dimension whose buckets can be written as `filter.advanced` clauses that partition
+the cohort, `countTotal=true` on each clause (AND-joined with the cohort's filters) gives
+each bucket's exact count, however many trials match. `pageSize` is set to the citation
+sample size (10), so each request also returns that many studies to cite.
+
+Clause syntax checked on `query.cond=breast cancer` (16,913):
+
+| Clause | totalCount | Note |
+|---|---|---|
+| `filter.overallStatus=RECRUITING` / `AREA[OverallStatus]RECRUITING` | 2451 / 2451 | Same for COMPLETED (7752) and UNKNOWN (2511); the AREA form AND-joins with a cohort's own status filter |
+| `AREA[OverallStatus]MISSING` | 0 | |
+| `AREA[LeadSponsorClass]INDUSTRY` / `OTHER` / `UNKNOWN` / `MISSING` | 3445 / 12370 / 5 / 0 | The field named in the OpenAPI `LeadSponsorClass` piece |
+| `sort=StartDate:asc` / `:desc`, `pageSize=1` | 1971-04 / 2028-01-01 | Earliest and latest start dates bound the year buckets; missing dates sort last both ways |
+
+Phase uses the exact-set clauses of §4, start year the inclusive `RANGE` of §5, and each
+dimension's Unknown bucket its `MISSING` clause, so the remainder (totalCount minus the
+summed buckets) must be 0. A nonzero remainder would mean trials in no bucket (e.g. a new
+phase pair) or in several, and the cohort is fetched instead.
+
+**Reconciliation against the fetch route** (`tests/test_live_count_route.py`, pembrolizumab
+in `intervention_name` mode, 2,642 trials, below the cap so the fetch is complete;
+dataTimestamp 2026-10-16T09:00:05): the forced count route equals the fetch route **in
+every bucket** for phase, start year (20 buckets, 2008-2027 plus Unknown), overall status
+and lead sponsor class, with remainder 0. Phase, both routes:
+
+| Early Phase 1 | Phase 1 | Phase 1/Phase 2 | Phase 2 | Phase 2/Phase 3 | Phase 3 | Phase 4 | Not Applicable | Unknown |
+|---|---|---|---|---|---|---|---|---|
+| 40 | 541 | 433 | 1163 | 41 | 314 | 16 | 27 | 67 |
+
+**Truncation bias** (`query.cond=breast cancer` by phase, 16,913 matches, same
+dataTimestamp 2026-10-16T09:00:05 for both runs). The fetch route keeps the 10,000 most
+recently registered trials (`StudyFirstPostDate:desc`; rerun today it reproduces the
+previous run's numbers exactly). The count route is exact: 10 `/studies` requests (page 1
+of the fetch, which gives totalCount, then 9 buckets), 12.0 s wall time vs 13.1 s for the
+truncated fetch, remainder 0.
+
+| Bucket | Fetch route (first 10,000) | Share | Count route (all 16,913) | Share | Bias | Missed by truncation (share of the 6,913) |
+|---|---|---|---|---|---|---|
+| Early Phase 1 | 144 | 1.4% | 232 | 1.4% | +0.1 pp | 88 (1.3%) |
+| Phase 1 | 846 | 8.5% | 1,639 | 9.7% | -1.2 pp | 793 (11.5%) |
+| Phase 1/Phase 2 | 503 | 5.0% | 876 | 5.2% | -0.1 pp | 373 (5.4%) |
+| Phase 2 | 1,699 | 17.0% | 3,567 | 21.1% | -4.1 pp | 1,868 (27.0%) |
+| Phase 2/Phase 3 | 77 | 0.8% | 148 | 0.9% | -0.1 pp | 71 (1.0%) |
+| Phase 3 | 604 | 6.0% | 1,411 | 8.3% | -2.3 pp | 807 (11.7%) |
+| Phase 4 | 180 | 1.8% | 345 | 2.0% | -0.2 pp | 165 (2.4%) |
+| Not Applicable | 3,557 | 35.6% | 4,967 | 29.4% | +6.2 pp | 1,410 (20.4%) |
+| Unknown | 2,390 | 23.9% | 3,728 | 22.0% | +1.9 pp | 1,338 (19.4%) |
+
+The 6,913 older trials the cap dropped are much more often drug trials in Phase 2 and 3
+(38.7% vs 23.0% among the retrieved), and less often Not Applicable or without a phase.
+A truncated chart shows the mix of recent registrations, not the cohort. This is the bias the title suffix and `data_quality="partial"`
+warn about on dimensions that still have to be fetched.
