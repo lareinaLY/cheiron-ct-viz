@@ -15,10 +15,12 @@ from datetime import date
 from enum import StrEnum
 from typing import Literal
 
+from ctviz.aggregate.mesh_filter import MeshNodeFilter
+from ctviz.data import MESH_TREES_RELEASE, load_mesh_trees
 from ctviz.normalize.study import phase_bucket
 from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
-from ctviz.schemas.response import ExclusionReason, NodeType
+from ctviz.schemas.response import NodeType
 from ctviz.schemas.trial import (
     UNKNOWN_BUCKET_KEY,
     UNRECOGNIZED_BUCKET_KEY,
@@ -43,35 +45,27 @@ MESH_NOT_LINKED_NOTE = (
 
 NODE_TYPE_NOTE = (
     "Node type 'drug' marks an intervention MeSH term: the API does not link MeSH terms to "
-    "intervention types (DRUG, RADIATION, PROCEDURE, ...), so non-drug therapies such as "
-    "radiotherapy keep type 'drug' rather than a guessed type."
+    "intervention types (DRUG, RADIATION, PROCEDURE, ...), so drug nodes are chosen by MeSH "
+    "tree branch instead of by intervention type."
+)
+DRUG_NODE_NOTE = (
+    "Drug nodes are intervention MeSH terms filed under Chemicals and Drugs: supplementary "
+    "concepts (ids starting with C) and descriptors with a MeSH tree number in branch D "
+    f"({MESH_TREES_RELEASE} trees); non-drug interventions such as radiotherapy (E02), "
+    "procedures and diagnostics are not drug nodes."
 )
 
 
-@dataclass(frozen=True)
-class ExcludedMesh:
-    """A MeSH term that is never drawn as a network node, matched by its stable id."""
-
-    term: str
-    reason: ExclusionReason
-
-
-# Exact MeSH ids observed on live pembrolizumab networks (2026-10-18). Comparators carry no
-# active treatment; mis-mappings are derived terms that are not interventions at all
-# ("Taxes" from "taxane", "Automobiles" from "CAR"). Diagnostics and procedures are kept:
-# a hand-curated list of them would not generalize beyond the queries it was built from.
-NETWORK_EXCLUDED_MESH: dict[str, ExcludedMesh] = {
-    "D059039": ExcludedMesh("Standard of Care", ExclusionReason.COMPARATOR),
-    "D019370": ExcludedMesh("Observation", ExclusionReason.COMPARATOR),
-    "D057832": ExcludedMesh("Watchful Waiting", ExclusionReason.COMPARATOR),
-    # Placebo arms are mapped to Saline Solution (8 of 18 trials list a "Placebo" intervention).
-    "D000077330": ExcludedMesh("Saline Solution", ExclusionReason.COMPARATOR),
-    "D013660": ExcludedMesh("Taxes", ExclusionReason.MESH_MISMAPPING),
-    "D012847": ExcludedMesh("Single Person", ExclusionReason.MESH_MISMAPPING),
-    "D001336": ExcludedMesh("Automobiles", ExclusionReason.MESH_MISMAPPING),
-    "D003226": ExcludedMesh("Congresses as Topic", ExclusionReason.MESH_MISMAPPING),
-    "D012996": ExcludedMesh("Solutions", ExclusionReason.MESH_MISMAPPING),
+# Branch-D descriptors that carry no active treatment. Everything else outside branch D is
+# dropped by the tree rule, so this list only needs comparators the rule would keep: placebo
+# arms are mapped to Saline Solution (D26.776; 8 of 18 trials in the pembrolizumab network
+# list a "Placebo" intervention), and Placebos itself is D26.660.
+NETWORK_COMPARATOR_MESH: dict[str, str] = {
+    "D000077330": "Saline Solution",
+    "D010919": "Placebos",
 }
+
+DRUG_NODE_FILTER = MeshNodeFilter(trees=load_mesh_trees(), comparators=NETWORK_COMPARATOR_MESH)
 
 # Lower bound of each enrollment bin, in order. The last bin is open-ended.
 ENROLLMENT_BIN_LOWER_BOUNDS = (0, 1, 50, 100, 500, 1000)
@@ -678,7 +672,7 @@ class RelationSpec:
 
     When both sides are the same dimension, edges are the unordered pairs of distinct
     values within a trial; otherwise every left value links to every right value.
-    `excluded` maps a node type to the value keys that never become nodes of that type.
+    `node_filters` maps a node type to the rule that decides which values become nodes.
     """
 
     label: str
@@ -688,7 +682,7 @@ class RelationSpec:
     right_type: NodeType
     description: str
     assumptions: tuple[str, ...] = field(default_factory=tuple)
-    excluded: dict[NodeType, dict[str, ExcludedMesh]] = field(default_factory=dict)
+    node_filters: dict[NodeType, MeshNodeFilter] = field(default_factory=dict)
 
     @property
     def same_dimension(self) -> bool:
@@ -709,10 +703,10 @@ RELATIONS: dict[Relation, RelationSpec] = {
         right_type=NodeType.DRUG,
         assumptions=(
             "Sponsors are lead sponsors only; collaborators are not included.",
-            NON_DRUG_MESH_NOTE,
+            DRUG_NODE_NOTE,
             NODE_TYPE_NOTE,
         ),
-        excluded={NodeType.DRUG: NETWORK_EXCLUDED_MESH},
+        node_filters={NodeType.DRUG: DRUG_NODE_FILTER},
     ),
     Relation.DRUG_DRUG_COOCCURRENCE: RelationSpec(
         label="drug co-occurrence",
@@ -724,8 +718,8 @@ RELATIONS: dict[Relation, RelationSpec] = {
         left_type=NodeType.DRUG,
         right=Dimension.INTERVENTION_MESH,
         right_type=NodeType.DRUG,
-        assumptions=(NON_DRUG_MESH_NOTE, NODE_TYPE_NOTE),
-        excluded={NodeType.DRUG: NETWORK_EXCLUDED_MESH},
+        assumptions=(DRUG_NODE_NOTE, NODE_TYPE_NOTE),
+        node_filters={NodeType.DRUG: DRUG_NODE_FILTER},
     ),
     Relation.CONDITION_DRUG: RelationSpec(
         label="condition-drug",
@@ -739,10 +733,10 @@ RELATIONS: dict[Relation, RelationSpec] = {
         right_type=NodeType.DRUG,
         assumptions=(
             "Conditions are the raw sponsor-entered strings, not MeSH-normalized.",
-            NON_DRUG_MESH_NOTE,
+            DRUG_NODE_NOTE,
             NODE_TYPE_NOTE,
         ),
-        excluded={NodeType.DRUG: NETWORK_EXCLUDED_MESH},
+        node_filters={NodeType.DRUG: DRUG_NODE_FILTER},
     ),
 }
 

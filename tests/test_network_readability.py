@@ -1,11 +1,10 @@
-"""Network rules found on live data: deny-listed MeSH terms, readability caps, size budget."""
+"""Network rules found on live data: drug node filter, readability caps, size budget."""
 
 from __future__ import annotations
 
 import pytest
 
 from ctviz.aggregate import build_network
-from ctviz.aggregate.registry import NETWORK_EXCLUDED_MESH
 from ctviz.config import Settings
 from ctviz.schemas.aggregate import Graph
 from ctviz.schemas.plan import Cohort, Filters, QueryPlan, Relation
@@ -15,6 +14,8 @@ from ctviz.schemas.response import (
     ExclusionReason,
     NetworkEdge,
     NetworkSummary,
+    NodeType,
+    UnmatchedTerm,
     VisualizationResponse,
 )
 from ctviz.schemas.trial import AgencyClass, MeshTerm, Sponsor, TrialRecord
@@ -25,6 +26,13 @@ STANDARD_OF_CARE = mesh("Standard of Care", "D059039")
 TAXES = mesh("Taxes", "D013660")
 RADIOTHERAPY = mesh("Radiotherapy", "D011878")
 PEMBROLIZUMAB = mesh("pembrolizumab", "C582435")
+CARBOPLATIN = mesh("Carboplatin", "D016190")
+PLATINUM = mesh("Platinum", "D010984")
+SALINE = mesh("Saline Solution", "D000077330")
+UNMATCHED = mesh("Retired Descriptor", "D999999")
+CHECKPOINT_INHIBITORS = mesh("Immune Checkpoint Inhibitors", "D000082082")
+SOLUTIONS = mesh("Solutions", "D012996")
+OFF_BRANCH = ExclusionReason.NOT_IN_CHEMICALS_AND_DRUGS_BRANCH
 
 
 def drugs(nct_id: str, *terms: MeshTerm) -> TrialRecord:
@@ -45,77 +53,151 @@ def summary_of(graph: Graph) -> NetworkSummary:
     return graph.summary
 
 
-class TestDenyList:
-    def test_comparator_and_mismapped_terms_are_not_nodes(self) -> None:
+class TestDrugNodeFilter:
+    def test_terms_outside_the_drug_branch_and_comparators_are_not_nodes(self) -> None:
         records = [
-            drugs("NCT1", PEMBROLIZUMAB, mesh("A", "M1"), STANDARD_OF_CARE),
-            drugs("NCT2", PEMBROLIZUMAB, TAXES),
+            drugs("NCT1", PEMBROLIZUMAB, CARBOPLATIN, STANDARD_OF_CARE),
+            drugs("NCT2", PEMBROLIZUMAB, TAXES, SALINE),
         ]
         graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
-        assert labels(graph) == {"pembrolizumab", "A"}
-        assert edge_weights(graph) == {frozenset({"pembrolizumab", "A"}): 1}
+        assert labels(graph) == {"pembrolizumab", "Carboplatin"}
+        assert edge_weights(graph) == {frozenset({"pembrolizumab", "Carboplatin"}): 1}
 
-    def test_excluded_terms_listed_with_trial_counts(self) -> None:
+    def test_excluded_terms_listed_with_reason_and_trial_counts(self) -> None:
         records = [
             drugs("NCT1", PEMBROLIZUMAB, STANDARD_OF_CARE),
-            drugs("NCT2", PEMBROLIZUMAB, STANDARD_OF_CARE, TAXES),
+            drugs("NCT2", PEMBROLIZUMAB, STANDARD_OF_CARE, TAXES, SALINE),
             drugs("NCT3", PEMBROLIZUMAB),
         ]
         summary = summary_of(build_network(records, Relation.DRUG_DRUG_COOCCURRENCE))
         assert summary.excluded_terms == [
+            ExcludedTerm(id="D059039", label="Standard of Care", reason=OFF_BRANCH, trials=2),
             ExcludedTerm(
-                id="D059039",
-                label="Standard of Care",
+                id="D000077330",
+                label="Saline Solution",
                 reason=ExclusionReason.COMPARATOR,
-                trials=2,
+                trials=1,
             ),
-            ExcludedTerm(
-                id="D013660", label="Taxes", reason=ExclusionReason.MESH_MISMAPPING, trials=1
-            ),
+            ExcludedTerm(id="D013660", label="Taxes", reason=OFF_BRANCH, trials=1),
         ]
         assert summary.trials_with_excluded_terms == 2
 
     def test_exclusion_stated_in_assumptions(self) -> None:
         records = [drugs("NCT1", PEMBROLIZUMAB, STANDARD_OF_CARE), drugs("NCT2", TAXES)]
         graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
-        (message,) = [a for a in graph.assumptions if "deny-list" in a]
-        assert "Standard of Care (D059039, comparator): 1 trial" in message
-        assert "Taxes (D013660, mesh_mismapping): 1 trial" in message
+        (message,) = [a for a in graph.assumptions if "not drawn as nodes" in a]
+        assert "2 intervention MeSH terms" in message
+        assert "Standard of Care (D059039, not_in_chemicals_and_drugs_branch): 1 trial" in message
         assert "2 trials affected" in message
+        assert "meta.network.excluded_terms" in message
 
     def test_no_exclusion_assumption_when_nothing_excluded(self) -> None:
         graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)
-        assert not any("deny-list" in a for a in graph.assumptions)
+        assert not any("not drawn as nodes" in a for a in graph.assumptions)
         assert summary_of(graph).excluded_terms == []
 
-    def test_matched_by_mesh_id_not_by_text(self) -> None:
+    def test_unmatched_descriptors_are_kept_and_reported(self) -> None:
+        records = [
+            drugs("NCT1", PEMBROLIZUMAB, UNMATCHED),
+            drugs("NCT2", PEMBROLIZUMAB, UNMATCHED),
+        ]
+        graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
+        assert labels(graph) == {"pembrolizumab", "Retired Descriptor"}
+        summary = summary_of(graph)
+        assert summary.unmatched_terms == [
+            UnmatchedTerm(id="D999999", label="Retired Descriptor", trials=2)
+        ]
+        assert summary.unmatched_terms[0].reason == "unmatched_in_tree"
+        assert summary.excluded_terms == []
+        (message,) = [a for a in graph.assumptions if "unmatched_in_tree" in a]
+        assert "Retired Descriptor (D999999): 2 trials" in message
+
+    def test_supplementary_concepts_are_never_reported(self) -> None:
+        graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)
+        assert summary_of(graph).unmatched_terms == []
+
+    def test_comparator_matched_by_mesh_id_not_by_text(self) -> None:
         records = [
             drugs(
                 "NCT1",
                 PEMBROLIZUMAB,
-                mesh("Standard of Care", "X0001"),
-                mesh("Renamed standard care", "D059039"),
+                mesh("Saline Solution", "D000001"),
+                mesh("Renamed saline", "D000077330"),
             )
         ]
         graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
-        assert labels(graph) == {"pembrolizumab", "Standard of Care"}
+        assert labels(graph) == {"pembrolizumab", "Saline Solution"}
 
     def test_applies_to_every_relation_with_drug_nodes(self) -> None:
         record = make_record(
             "NCT1",
             lead_sponsor=Sponsor(name="Acme", agency_class=AgencyClass.INDUSTRY),
             conditions=["Melanoma"],
-            intervention_mesh_terms=[PEMBROLIZUMAB, STANDARD_OF_CARE],
+            intervention_mesh_terms=[PEMBROLIZUMAB, STANDARD_OF_CARE, RADIOTHERAPY],
         )
         for relation in Relation:
             graph = build_network([record], relation)
-            assert "Standard of Care" not in labels(graph), relation
+            assert labels(graph) & {"Standard of Care", "Radiotherapy"} == set(), relation
 
-    def test_therapeutic_non_drugs_are_kept(self) -> None:
-        assert RADIOTHERAPY.id not in NETWORK_EXCLUDED_MESH
-        records = [drugs("NCT1", PEMBROLIZUMAB, RADIOTHERAPY)]
+    def test_only_drug_nodes_are_filtered(self) -> None:
+        record = make_record(
+            "NCT1",
+            lead_sponsor=Sponsor(name="Taxes", agency_class=AgencyClass.OTHER),
+            conditions=["Radiotherapy"],
+            intervention_mesh_terms=[PEMBROLIZUMAB],
+        )
+        assert "Taxes" in labels(build_network([record], Relation.SPONSOR_DRUG))
+        assert "Radiotherapy" in labels(build_network([record], Relation.CONDITION_DRUG))
+
+    def test_platinum_kept_and_radiotherapy_excluded(self) -> None:
+        records = [drugs("NCT1", PEMBROLIZUMAB, PLATINUM, RADIOTHERAPY)]
         graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
-        assert labels(graph) == {"pembrolizumab", "Radiotherapy"}
+        assert labels(graph) == {"pembrolizumab", "Platinum"}
+
+    def test_drug_classes_are_kept_with_their_own_node_type(self) -> None:
+        records = [drugs("NCT1", PEMBROLIZUMAB, CHECKPOINT_INHIBITORS, CARBOPLATIN)]
+        graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
+        types = {node.label: node.type for node in graph.nodes}
+        assert types == {
+            "pembrolizumab": NodeType.DRUG,
+            "Immune Checkpoint Inhibitors": NodeType.DRUG_CLASS,
+            "Carboplatin": NodeType.DRUG,
+        }
+        assert "drug:D000082082" in {node.id for node in graph.nodes}
+        assert len(graph.edges) == 3
+
+    def test_drug_classes_counted_in_summary_and_not_listed_as_excluded(self) -> None:
+        records = [
+            drugs("NCT1", PEMBROLIZUMAB, CHECKPOINT_INHIBITORS),
+            drugs("NCT2", PEMBROLIZUMAB, SOLUTIONS, CHECKPOINT_INHIBITORS),
+        ]
+        summary = summary_of(build_network(records, Relation.DRUG_DRUG_COOCCURRENCE))
+        assert summary.drug_class_nodes_total == 2
+        assert summary.drug_class_nodes_shown == 2
+        assert summary.excluded_terms == []
+        assert summary.unmatched_terms == []
+
+    def test_drug_class_count_follows_the_node_cap(self) -> None:
+        records = [drugs(f"NCT{i}", PEMBROLIZUMAB, CARBOPLATIN) for i in range(3)] + [
+            drugs("NCTX", PEMBROLIZUMAB, SOLUTIONS)
+        ]
+        graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE, max_nodes=2)
+        summary = summary_of(graph)
+        assert summary.drug_class_nodes_total == 1
+        assert summary.drug_class_nodes_shown == 0
+
+    def test_drug_classes_stated_in_one_assumption(self) -> None:
+        records = [drugs("NCT1", PEMBROLIZUMAB, CHECKPOINT_INHIBITORS, SOLUTIONS)]
+        graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
+        (message,) = [a for a in graph.assumptions if "drug_class" in a]
+        assert "2 nodes" in message
+        assert "D26" in message and "D27" in message
+        assert "Immune Checkpoint Inhibitors" in message
+
+    def test_no_drug_class_assumption_without_drug_classes(self) -> None:
+        graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)
+        assert not any("drug_class" in a for a in graph.assumptions)
+        assert summary_of(graph).drug_class_nodes_total == 0
 
     def test_node_type_limitation_stated(self) -> None:
         graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)

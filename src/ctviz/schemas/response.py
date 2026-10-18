@@ -62,23 +62,31 @@ class ResponseMode(StrEnum):
 
 
 class NodeType(StrEnum):
-    """Kind of entity a network node represents."""
+    """Kind of entity a network node represents.
+
+    `drug_class` marks an intervention MeSH descriptor whose tree numbers are all in D26
+    (Pharmaceutical Preparations) or D27 (Chemical Actions and Uses): a drug class or
+    dosage form, not a specific drug. Its node id keeps the `drug:` prefix.
+    """
 
     SPONSOR = "sponsor"
     DRUG = "drug"
+    DRUG_CLASS = "drug_class"
     CONDITION = "condition"
 
 
 class ExclusionReason(StrEnum):
-    """Why an intervention MeSH term is not drawn as a network node.
+    """Why an intervention MeSH term is not drawn as a drug network node.
 
-    - comparator: no active treatment (standard of care, observation, placebo vehicle).
-    - mesh_mismapping: the derived MeSH term is not an intervention at all (e.g. "Taxes"
-      derived from "taxane").
+    - comparator: a Chemicals and Drugs descriptor that is a comparator without active
+      treatment (Saline Solution, the term placebo arms map to; Placebos).
+    - not_in_chemicals_and_drugs_branch: a descriptor with no MeSH tree number in branch D,
+      e.g. Radiotherapy (E02), Specimen Handling (E01/E05), Taxes (N03, derived from
+      "taxane").
     """
 
     COMPARATOR = "comparator"
-    MESH_MISMAPPING = "mesh_mismapping"
+    NOT_IN_CHEMICALS_AND_DRUGS_BRANCH = "not_in_chemicals_and_drugs_branch"
 
 
 class FieldType(StrEnum):
@@ -146,7 +154,7 @@ class NetworkEdge(BaseModel):
 
 
 class ExcludedTerm(BaseModel):
-    """A deny-listed MeSH term that was left out of a network, and how many trials listed it."""
+    """A MeSH term that was left out of a drug network, and how many trials listed it."""
 
     id: str = Field(description="MeSH id, e.g. 'D059039'.")
     label: str = Field(description="MeSH term as observed, e.g. 'Standard of Care'.")
@@ -154,10 +162,23 @@ class ExcludedTerm(BaseModel):
     trials: int = Field(description="Trials in the result set that list this term.")
 
 
+class UnmatchedTerm(BaseModel):
+    """A MeSH descriptor kept as a drug node although the packaged MeSH trees lack its name.
+
+    The tree lookup is by preferred name, so a renamed or new descriptor can be missing;
+    it is kept rather than dropped on missing evidence, and listed here.
+    """
+
+    id: str = Field(description="MeSH id (or the term itself when the record has no id).")
+    label: str = Field(description="MeSH term as observed.")
+    reason: Literal["unmatched_in_tree"] = "unmatched_in_tree"
+    trials: int = Field(description="Trials in the result set that list this term.")
+
+
 class NetworkSummary(BaseModel):
     """What a network response leaves out, and why (invariant 3: nothing is silent).
 
-    Counts with `_total` describe the graph after deny-list exclusion and before the
+    Counts with `_total` describe the graph after drug node filtering and before the
     readability caps; `_shown` describe what the response contains. A trial "without a
     shown edge" contributed at least one edge before trimming and none after; a trial
     "without a shown node" appeared in at least one node before trimming and in none after.
@@ -165,6 +186,16 @@ class NetworkSummary(BaseModel):
 
     excluded_terms: list[ExcludedTerm] = Field(default_factory=list)
     trials_with_excluded_terms: int = 0
+    unmatched_terms: list[UnmatchedTerm] = Field(
+        default_factory=list,
+        description="Drug nodes kept although their descriptor is not in the MeSH trees.",
+    )
+    drug_class_nodes_total: int = Field(
+        default=0,
+        description="Nodes of type drug_class (MeSH tree numbers only in D26/D27) before the "
+        "readability caps.",
+    )
+    drug_class_nodes_shown: int = Field(default=0, description="drug_class nodes shown.")
     max_nodes: int | None = Field(description="Node cap; None means no cap.")
     min_edge_weight: int = Field(description="Edges with fewer co-occurring trials are omitted.")
     nodes_total: int

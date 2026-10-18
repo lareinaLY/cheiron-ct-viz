@@ -490,70 +490,6 @@
       },
       {
         "data": {
-          "id": "drug:D011827",
-          "label": "Radiation",
-          "type": "drug",
-          "size": 1,
-          "citations": [
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
-              "value": "Radiation",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "primary"
-            },
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
-              "value": "Radiation Therapy (RT)",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "supporting"
-            },
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
-              "value": "MK-3475",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "supporting"
-            }
-          ],
-          "citation_count_total": 3
-        }
-      },
-      {
-        "data": {
-          "id": "drug:D011878",
-          "label": "Radiotherapy",
-          "type": "drug",
-          "size": 1,
-          "citations": [
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
-              "value": "Radiotherapy",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "primary"
-            },
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
-              "value": "Radiation Therapy (RT)",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "supporting"
-            },
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
-              "value": "MK-3475",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "supporting"
-            }
-          ],
-          "citation_count_total": 3
-        }
-      },
-      {
-        "data": {
           "id": "sponsor:Seagen Inc.",
           "label": "Seagen Inc.",
           "type": "sponsor",
@@ -1288,56 +1224,6 @@
       },
       {
         "data": {
-          "source": "drug:D011827",
-          "target": "sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
-          "weight": 1,
-          "citations": [
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
-              "value": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "primary"
-            },
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
-              "value": "Radiation",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "primary"
-            }
-          ],
-          "citation_count_total": 2,
-          "id": "drug:D011827--sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University"
-        }
-      },
-      {
-        "data": {
-          "source": "drug:D011878",
-          "target": "sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
-          "weight": 1,
-          "citations": [
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
-              "value": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "primary"
-            },
-            {
-              "nct_id": "NCT02318771",
-              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
-              "value": "Radiotherapy",
-              "url": "https://clinicaltrials.gov/study/NCT02318771",
-              "role": "primary"
-            }
-          ],
-          "citation_count_total": 2,
-          "id": "drug:D011878--sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University"
-        }
-      },
-      {
-        "data": {
           "source": "drug:D016190",
           "target": "sponsor:Seagen Inc.",
           "weight": 1,
@@ -1447,14 +1333,30 @@
     "data_quality": "normal",
     "top_n": null,
     "network": {
-      "excluded_terms": [],
-      "trials_with_excluded_terms": 0,
+      "excluded_terms": [
+        {
+          "id": "D011827",
+          "label": "Radiation",
+          "reason": "not_in_chemicals_and_drugs_branch",
+          "trials": 1
+        },
+        {
+          "id": "D011878",
+          "label": "Radiotherapy",
+          "reason": "not_in_chemicals_and_drugs_branch",
+          "trials": 1
+        }
+      ],
+      "trials_with_excluded_terms": 1,
+      "unmatched_terms": [],
+      "drug_class_nodes_total": 0,
+      "drug_class_nodes_shown": 0,
       "max_nodes": null,
       "min_edge_weight": 1,
-      "nodes_total": 18,
-      "nodes_shown": 18,
-      "edges_total": 17,
-      "edges_shown": 17,
+      "nodes_total": 16,
+      "nodes_shown": 16,
+      "edges_total": 15,
+      "edges_shown": 15,
       "edges_below_min_weight": 0,
       "edges_with_omitted_node": 0,
       "trials_with_edges": 5,
@@ -1469,8 +1371,9 @@
     "data_timestamp": "2026-10-16T09:00:05",
     "assumptions": [
       "Sponsors are lead sponsors only; collaborators are not included.",
-      "Intervention MeSH terms are study-level and include non-drug interventions (e.g. radiation, procedures).",
-      "Node type 'drug' marks an intervention MeSH term: the API does not link MeSH terms to intervention types (DRUG, RADIATION, PROCEDURE, ...), so non-drug therapies such as radiotherapy keep type 'drug' rather than a guessed type.",
+      "Drug nodes are intervention MeSH terms filed under Chemicals and Drugs: supplementary concepts (ids starting with C) and descriptors with a MeSH tree number in branch D (NLM MeSH 2025 trees); non-drug interventions such as radiotherapy (E02), procedures and diagnostics are not drug nodes.",
+      "Node type 'drug' marks an intervention MeSH term: the API does not link MeSH terms to intervention types (DRUG, RADIATION, PROCEDURE, ...), so drug nodes are chosen by MeSH tree branch instead of by intervention type.",
+      "2 intervention MeSH terms outside the Chemicals and Drugs branch, or comparators without active treatment, are not drawn as nodes; most frequent: Radiation (D011827, not_in_chemicals_and_drugs_branch): 1 trial; Radiotherapy (D011878, not_in_chemicals_and_drugs_branch): 1 trial. 1 trial affected; their other values are kept. Full list in meta.network.excluded_terms.",
       "Node size is the number of trials an entity appears in; a trial counts toward every entity it lists, so node sizes can add up to more than the number of trials."
     ],
     "warnings": [],

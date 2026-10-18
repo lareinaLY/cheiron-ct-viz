@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from itertools import combinations, product
 
 from ctviz.aggregate.group import DEFAULT_CITATION_CAP
+from ctviz.aggregate.mesh_filter import MeshVerdict
 from ctviz.aggregate.registry import (
     DIMENSIONS,
     RELATIONS,
@@ -19,10 +20,12 @@ from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
 from ctviz.schemas.response import (
     ExcludedTerm,
+    ExclusionReason,
     NetworkEdge,
     NetworkNode,
     NetworkSummary,
     NodeType,
+    UnmatchedTerm,
 )
 from ctviz.schemas.trial import TrialRecord
 
@@ -46,17 +49,41 @@ class EdgeTally:
 
 
 @dataclass
-class Exclusions:
-    """Deny-listed values seen while building, with the trials that listed each one."""
+class ScreenedTerm:
+    """A value the node filter dropped, flagged or marked as a drug class, with its trials.
 
-    trials_by_key: dict[str, set[str]] = field(default_factory=dict)
+    `node_type` is the side the filter screened, which gives the value's node id.
+    """
 
-    def record(self, key: str, nct_id: str) -> None:
-        """Remember that `nct_id` listed the excluded value `key`."""
-        self.trials_by_key.setdefault(key, set()).add(nct_id)
+    label: str
+    verdict: MeshVerdict
+    node_type: NodeType
+    trials: set[str] = field(default_factory=set)
+
+
+@dataclass
+class Screening:
+    """Values the node filter did not keep as plain drugs, by node key."""
+
+    terms: dict[str, ScreenedTerm] = field(default_factory=dict)
+
+    def record(
+        self, value: DimensionValue, verdict: MeshVerdict, node_type: NodeType, nct_id: str
+    ) -> None:
+        """Remember that `nct_id` listed `value`, which the filter judged `verdict`."""
+        term = self.terms.setdefault(value.key, ScreenedTerm(value.label, verdict, node_type))
+        term.trials.add(nct_id)
+
+    def of(self, *verdicts: MeshVerdict) -> list[tuple[str, ScreenedTerm]]:
+        """Recorded terms with one of `verdicts`, most trials first, then by label."""
+        matching = [(key, term) for key, term in self.terms.items() if term.verdict in verdicts]
+        return sorted(matching, key=lambda item: (-len(item[1].trials), item[1].label, item[0]))
 
 
 type EdgeKey = tuple[str, str]
+
+# Terms named in the exclusion assumption sentences; meta.network lists all of them.
+ASSUMPTION_TERM_LIMIT = 10
 
 
 def build_network(
@@ -71,8 +98,10 @@ def build_network(
 
     Drugs are the study-level intervention MeSH terms (keyed by MeSH id when present).
     Sponsors are lead sponsors; conditions are the raw condition strings.
-    - Values on the relation's deny-list (`RelationSpec.excluded`) never become nodes;
-      they are listed in the summary with the number of trials that listed them.
+    - Values rejected by the relation's node filter (`RelationSpec.node_filters`: MeSH
+      tree branch and comparators, see `mesh_filter`) never become nodes; they are listed
+      in the summary with the number of trials that listed them, as are kept values the
+      filter could not match in the MeSH trees.
     - Node `size`: number of distinct trials the entity appears in.
     - Edge `weight`: number of distinct trials in which both endpoints co-occur.
     - Edge citations list the contributing trials.
@@ -85,15 +114,15 @@ def build_network(
     spec = RELATIONS[relation]
     nodes: dict[str, NodeTally] = {}
     edges: dict[EdgeKey, EdgeTally] = {}
-    exclusions = Exclusions()
+    screening = Screening()
     without_edges = 0
 
     for record in records:
-        left = kept_values(record, spec.left, spec.left_type, spec, exclusions)
+        left = kept_values(record, spec.left, spec.left_type, spec, screening)
         right = (
             left
             if spec.same_dimension
-            else kept_values(record, spec.right, spec.right_type, spec, exclusions)
+            else kept_values(record, spec.right, spec.right_type, spec, screening)
         )
         add_nodes(nodes, left, spec.left_type, record.nct_id)
         if not spec.same_dimension:
@@ -108,15 +137,22 @@ def build_network(
             edge.trials.add(record.nct_id)
             edge.citations.extend(primary(left_value) + primary(right_value))
 
+    drug_class_ids = mark_drug_classes(nodes, screening)
     strong = {key: tally for key, tally in edges.items() if len(tally.trials) >= min_edge_weight}
     shown_ids = top_nodes_by_weighted_degree(nodes, strong, max_nodes)
     shown_edges = {key: tally for key, tally in strong.items() if set(key) <= shown_ids}
     shown_nodes = {key: tally for key, tally in nodes.items() if key in shown_ids}
 
-    excluded = excluded_terms(spec, exclusions)
+    excluded = screening.of(MeshVerdict.COMPARATOR, MeshVerdict.NOT_IN_CHEMICALS_AND_DRUGS_BRANCH)
     summary = NetworkSummary(
-        excluded_terms=excluded,
-        trials_with_excluded_terms=len(set().union(*exclusions.trials_by_key.values())),
+        excluded_terms=[excluded_term(key, term) for key, term in excluded],
+        trials_with_excluded_terms=len(set().union(*(term.trials for _, term in excluded))),
+        unmatched_terms=[
+            UnmatchedTerm(id=key, label=term.label, trials=len(term.trials))
+            for key, term in screening.of(MeshVerdict.UNMATCHED_IN_TREE)
+        ],
+        drug_class_nodes_total=len(drug_class_ids),
+        drug_class_nodes_shown=len(drug_class_ids & shown_ids),
         max_nodes=max_nodes,
         min_edge_weight=min_edge_weight,
         nodes_total=len(nodes),
@@ -135,7 +171,11 @@ def build_network(
         nodes=[to_node(key, tally, citation_cap) for key, tally in sorted_nodes(shown_nodes)],
         edges=[to_edge(key, tally, citation_cap) for key, tally in sorted_edges(shown_edges)],
         summary=summary,
-        assumptions=[*spec.assumptions, *exclusion_assumptions(summary)],
+        assumptions=[
+            *spec.assumptions,
+            *exclusion_assumptions(summary),
+            *drug_class_assumptions(summary, screening),
+        ],
         warnings=[
             *edge_warnings(spec, without_edges, len(records)),
             *trim_warnings(summary),
@@ -148,15 +188,19 @@ def kept_values(
     dimension: Dimension,
     node_type: NodeType,
     spec: RelationSpec,
-    exclusions: Exclusions,
+    screening: Screening,
 ) -> list[DimensionValue]:
-    """A trial's distinct values for one side, without the deny-listed ones."""
-    denied = spec.excluded.get(node_type, {})
+    """A trial's distinct values for one side, without the ones the node filter rejects."""
+    values = distinct_values(record, DIMENSIONS[dimension])
+    node_filter = spec.node_filters.get(node_type)
+    if node_filter is None:
+        return values
     kept: list[DimensionValue] = []
-    for value in distinct_values(record, DIMENSIONS[dimension]):
-        if value.key in denied:
-            exclusions.record(value.key, record.nct_id)
-        else:
+    for value in values:
+        verdict = node_filter.classify(value.key, value.label)
+        if verdict is not MeshVerdict.KEPT:
+            screening.record(value, verdict, node_type, record.nct_id)
+        if verdict.kept:
             kept.append(value)
     return kept
 
@@ -194,24 +238,29 @@ def trials_of(tallies: Iterable[NodeTally | EdgeTally]) -> set[str]:
     return set().union(*(tally.trials for tally in tallies))
 
 
-def excluded_terms(spec: RelationSpec, exclusions: Exclusions) -> list[ExcludedTerm]:
-    """Deny-listed terms that occurred, in deny-list order, with their trial counts."""
-    denied = {key: entry for table in spec.excluded.values() for key, entry in table.items()}
-    return [
-        ExcludedTerm(
-            id=key,
-            label=entry.term,
-            reason=entry.reason,
-            trials=len(exclusions.trials_by_key[key]),
-        )
-        for key, entry in denied.items()
-        if key in exclusions.trials_by_key
-    ]
+def mark_drug_classes(nodes: dict[str, NodeTally], screening: Screening) -> set[str]:
+    """Retype drug-class nodes and return their ids; ids keep the screened side's prefix."""
+    ids = {node_key_id(term.node_type, key) for key, term in screening.of(MeshVerdict.DRUG_CLASS)}
+    for drug_class_id in ids:
+        nodes[drug_class_id].type = NodeType.DRUG_CLASS
+    return ids
+
+
+def excluded_term(key: str, term: ScreenedTerm) -> ExcludedTerm:
+    """Freeze a dropped term for the summary."""
+    return ExcludedTerm(
+        id=key, label=term.label, reason=ExclusionReason(term.verdict), trials=len(term.trials)
+    )
 
 
 def node_id(node_type: NodeType, value: DimensionValue) -> str:
     """Stable node id; type-prefixed so a sponsor and a drug never collide."""
-    return f"{node_type.value}:{value.key}"
+    return node_key_id(node_type, value.key)
+
+
+def node_key_id(node_type: NodeType, key: str) -> str:
+    """Node id for a value key (see `node_id`)."""
+    return f"{node_type.value}:{key}"
 
 
 def add_nodes(
@@ -291,18 +340,49 @@ def edge_warnings(spec: RelationSpec, without_edges: int, total: int) -> list[st
 
 
 def exclusion_assumptions(summary: NetworkSummary) -> list[str]:
-    """State which deny-listed terms were left out and how many trials listed them."""
-    if not summary.excluded_terms:
+    """State which terms the node filter dropped or could not match, with trial counts.
+
+    The sentence names the most frequent terms; the full lists are in `meta.network`.
+    """
+    statements = []
+    if summary.excluded_terms:
+        listed = "; ".join(
+            f"{term.label} ({term.id}, {term.reason.value}): {plural(term.trials, 'trial')}"
+            for term in summary.excluded_terms[:ASSUMPTION_TERM_LIMIT]
+        )
+        statements.append(
+            f"{plural(len(summary.excluded_terms), 'intervention MeSH term')} outside the "
+            "Chemicals and Drugs branch, or comparators without active treatment, are not "
+            f"drawn as nodes; most frequent: {listed}. "
+            f"{plural(summary.trials_with_excluded_terms, 'trial')} affected; their other "
+            "values are kept. Full list in meta.network.excluded_terms."
+        )
+    if summary.unmatched_terms:
+        listed = "; ".join(
+            f"{term.label} ({term.id}): {plural(term.trials, 'trial')}"
+            for term in summary.unmatched_terms[:ASSUMPTION_TERM_LIMIT]
+        )
+        statements.append(
+            f"{plural(len(summary.unmatched_terms), 'intervention MeSH term')} could not be "
+            "found by name in the MeSH trees (unmatched_in_tree) and are kept as drug nodes "
+            f"unchecked: {listed}. Full list in meta.network.unmatched_terms."
+        )
+    return statements
+
+
+def drug_class_assumptions(summary: NetworkSummary, screening: Screening) -> list[str]:
+    """State how many nodes are drug classes rather than specific drugs."""
+    if not summary.drug_class_nodes_total:
         return []
     listed = "; ".join(
-        f"{term.label} ({term.id}, {term.reason.value}): {plural(term.trials, 'trial')}"
-        for term in summary.excluded_terms
+        f"{term.label} ({key}): {plural(len(term.trials), 'trial')}"
+        for key, term in screening.of(MeshVerdict.DRUG_CLASS)[:ASSUMPTION_TERM_LIMIT]
     )
     return [
-        "Intervention MeSH terms on the registry deny-list (comparators without active "
-        f"treatment, and derived terms that are not interventions) are not drawn as nodes: "
-        f"{listed}. {plural(summary.trials_with_excluded_terms, 'trial')} affected; their "
-        "other values are kept."
+        f"{plural(summary.drug_class_nodes_total, 'node')} ({summary.drug_class_nodes_shown} "
+        "shown) have type drug_class: their MeSH tree numbers are all in D26 (Pharmaceutical "
+        "Preparations) or D27 (Chemical Actions and Uses), so they name a drug class or "
+        f"dosage form, not a specific drug. Most frequent: {listed}."
     ]
 
 
