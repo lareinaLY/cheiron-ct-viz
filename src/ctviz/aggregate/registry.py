@@ -1,0 +1,445 @@
+"""Registry of dimensions and relations.
+
+Each dimension declares how to pull its values from a TrialRecord, where those values
+are cited, whether a trial can fall into several buckets, and how buckets are ordered.
+`group_by` and `build_network` dispatch through this registry only, so a new query type
+is a new entry here, not a new branch elsewhere.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import date
+from enum import StrEnum
+
+from ctviz.schemas.citation import Citation, CitationRole
+from ctviz.schemas.plan import Dimension, Relation
+from ctviz.schemas.response import NodeType
+from ctviz.schemas.trial import UNKNOWN_BUCKET_KEY, EnrollmentType, Phase, TrialRecord
+
+STUDY_URL = "https://clinicaltrials.gov/study/{nct_id}"
+
+NON_DRUG_MESH_NOTE = (
+    "Intervention MeSH terms are study-level and include non-drug interventions "
+    "(e.g. radiation, procedures)."
+)
+MESH_NOT_LINKED_NOTE = (
+    "MeSH terms are not linked to individual interventions; the study's raw intervention "
+    "names are cited alongside as supporting citations."
+)
+
+# Lower bound of each enrollment bin, in order. The last bin is open-ended.
+ENROLLMENT_BIN_LOWER_BOUNDS = (0, 1, 50, 100, 500, 1000)
+
+PHASE_RANK = {
+    phase: rank
+    for rank, phase in enumerate(
+        [Phase.EARLY_PHASE1, Phase.PHASE1, Phase.PHASE2, Phase.PHASE3, Phase.PHASE4, Phase.NA]
+    )
+}
+
+
+class DimensionKind(StrEnum):
+    """What kind of axis a dimension produces; drives chart selection."""
+
+    CATEGORICAL = "categorical"
+    TEMPORAL = "temporal"
+    BINNED = "binned"
+
+
+class BucketOrder(StrEnum):
+    """How buckets are sorted. The Unknown bucket is always last."""
+
+    BY_COUNT = "by_count"
+    BY_KEY = "by_key"
+    BY_RANK = "by_rank"
+
+
+type PathFor = Callable[[int | None], str]
+
+
+@dataclass(frozen=True)
+class DimensionValue:
+    """One value a trial has for a dimension, with the citations that prove it."""
+
+    key: str
+    label: str
+    citations: tuple[Citation, ...]
+    estimated: bool = False
+    is_unknown: bool = False
+    rank: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class DimensionSpec:
+    """Declaration of one dimension.
+
+    `source_field` is a key of `TrialRecord.source_paths`; `leaf` is appended after the
+    list index (e.g. ".name"). `extract` returns [] when the trial lacks the value,
+    which puts it in the Unknown bucket.
+    """
+
+    label: str
+    kind: DimensionKind
+    can_overlap: bool
+    source_field: str
+    extract: Callable[[TrialRecord, PathFor], list[DimensionValue]]
+    order: BucketOrder
+    leaf: str = ""
+    period_key: Callable[[date], str] | None = None
+    assumptions: tuple[str, ...] = field(default_factory=tuple)
+
+
+def field_path(base: str, leaf: str, index: int | None) -> str:
+    """Build a citation path. A "[]" in `base` marks where the list index goes."""
+    if index is None:
+        return f"{base}{leaf}"
+    if "[]" in base:
+        return base.replace("[]", f"[{index}]", 1) + leaf
+    return f"{base}[{index}]{leaf}"
+
+
+def path_for(record: TrialRecord, spec: DimensionSpec) -> PathFor:
+    """Bind a dimension's citation path to one record."""
+    base = record.source_paths[spec.source_field]
+    return lambda index: field_path(base, spec.leaf, index)
+
+
+def cite(
+    record: TrialRecord,
+    path: str,
+    value: str | int | list[str] | None,
+    role: CitationRole = CitationRole.PRIMARY,
+) -> Citation:
+    """A citation of one exact source value."""
+    return Citation(
+        nct_id=record.nct_id,
+        field_path=path,
+        value=value,
+        url=STUDY_URL.format(nct_id=record.nct_id),
+        role=role,
+    )
+
+
+def single(
+    record: TrialRecord, key: str, path: str, value: str | int | list[str]
+) -> DimensionValue:
+    """A one-citation value whose key is also its label."""
+    return DimensionValue(key=key, label=key, citations=(cite(record, path, value),))
+
+
+def extract_phase(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The trial's single phase bucket, citing the raw phases list."""
+    if record.phase_bucket == UNKNOWN_BUCKET_KEY:
+        return []
+    value = DimensionValue(
+        key=record.phase_bucket,
+        label=record.phase_bucket,
+        citations=(cite(record, path(None), [phase.value for phase in record.phases]),),
+        rank=tuple(sorted(PHASE_RANK[phase] for phase in record.phases)),
+    )
+    return [value]
+
+
+def extract_start_year(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The start year, citing the raw date string; estimated dates are flagged."""
+    if record.start_date is None:
+        return []
+    key = str(record.start_date.year)
+    citation = cite(record, path(None), record.start_date_raw)
+    estimated = record.start_date_type == "estimated"
+    return [DimensionValue(key=key, label=key, citations=(citation,), estimated=estimated)]
+
+
+def extract_start_month(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The start month; a year-only date has no month and goes to Unknown."""
+    if record.start_date is None:
+        return []
+    citation = cite(record, path(None), record.start_date_raw)
+    if record.start_date_precision == "year":
+        # The month is not known; January 1 is only the indexing convention.
+        return [
+            DimensionValue(
+                key=UNKNOWN_BUCKET_KEY,
+                label=UNKNOWN_BUCKET_KEY,
+                citations=(citation,),
+                is_unknown=True,
+            )
+        ]
+    key = month_key(record.start_date)
+    estimated = record.start_date_type == "estimated"
+    return [DimensionValue(key=key, label=key, citations=(citation,), estimated=estimated)]
+
+
+def month_key(day: date) -> str:
+    """Bucket key for a month, e.g. '2026-09'."""
+    return f"{day.year:04d}-{day.month:02d}"
+
+
+def year_key(day: date) -> str:
+    """Bucket key for a year, e.g. '2026'."""
+    return str(day.year)
+
+
+def extract_country(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """Each distinct country, citing the first location row that lists it."""
+    return [
+        single(record, location.country, path(location.location_index), location.value_raw)
+        for location in record.country_locations
+    ]
+
+
+def extract_sponsor_class(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The lead sponsor's agency class (the API's UNKNOWN is a real value)."""
+    if record.lead_sponsor is None or record.lead_sponsor.agency_class is None:
+        return []
+    value = record.lead_sponsor.agency_class.value
+    return [single(record, value, path(None), value)]
+
+
+def extract_lead_sponsor(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The lead sponsor name."""
+    if record.lead_sponsor is None:
+        return []
+    return [single(record, record.lead_sponsor.name, path(None), record.lead_sponsor.name)]
+
+
+def extract_intervention_type(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """Each intervention type as listed; types are set per trial, not per drug."""
+    return [
+        single(record, intervention.type_raw, path(index), intervention.type_raw)
+        for index, intervention in enumerate(record.interventions)
+        if intervention.type_raw is not None
+    ]
+
+
+def extract_overall_status(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The overall status (the API's UNKNOWN is a real value)."""
+    if record.overall_status is None:
+        return []
+    value = record.overall_status.value
+    return [single(record, value, path(None), value)]
+
+
+def extract_condition(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """Each raw condition string; condition MeSH is not used (spurious terms)."""
+    return [
+        single(record, condition, path(index), condition)
+        for index, condition in enumerate(record.conditions)
+    ]
+
+
+def extract_intervention_mesh(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """Each study-level MeSH term, plus all raw intervention names as context."""
+    interventions_path = record.source_paths["interventions"]
+    supporting = tuple(
+        cite(
+            record,
+            field_path(interventions_path, ".name", index),
+            intervention.name_raw,
+            CitationRole.SUPPORTING,
+        )
+        for index, intervention in enumerate(record.interventions)
+    )
+    return [
+        DimensionValue(
+            key=mesh.id or mesh.term,
+            label=mesh.term,
+            citations=(cite(record, path(index), mesh.term), *supporting),
+        )
+        for index, mesh in enumerate(record.intervention_mesh_terms)
+    ]
+
+
+def enrollment_bin(count: int) -> tuple[int, str]:
+    """(bin index, bin label) for an enrollment count."""
+    bounds = ENROLLMENT_BIN_LOWER_BOUNDS
+    index = max(i for i, lower in enumerate(bounds) if count >= lower)
+    lower = bounds[index]
+    if index == len(bounds) - 1:
+        return index, f"{lower}+"
+    upper = bounds[index + 1] - 1
+    return index, str(lower) if lower == upper else f"{lower}-{upper}"
+
+
+def extract_enrollment_bucket(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """The enrollment bin, citing the raw count; estimated counts are flagged."""
+    if record.enrollment is None:
+        return []
+    index, key = enrollment_bin(record.enrollment)
+    value = DimensionValue(
+        key=key,
+        label=key,
+        citations=(cite(record, path(None), record.enrollment),),
+        estimated=record.enrollment_type == EnrollmentType.ESTIMATED,
+        rank=(index,),
+    )
+    return [value]
+
+
+DIMENSIONS: dict[Dimension, DimensionSpec] = {
+    Dimension.PHASE: DimensionSpec(
+        label="phase",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=False,
+        source_field="phases",
+        extract=extract_phase,
+        order=BucketOrder.BY_RANK,
+        assumptions=(
+            "Multi-phase trials form their own bucket (e.g. 'Phase 1/Phase 2'); "
+            "phase buckets are mutually exclusive.",
+        ),
+    ),
+    Dimension.START_YEAR: DimensionSpec(
+        label="start date",
+        kind=DimensionKind.TEMPORAL,
+        can_overlap=False,
+        source_field="start_date",
+        extract=extract_start_year,
+        order=BucketOrder.BY_KEY,
+        period_key=year_key,
+    ),
+    Dimension.START_MONTH: DimensionSpec(
+        label="start month",
+        kind=DimensionKind.TEMPORAL,
+        can_overlap=False,
+        source_field="start_date",
+        extract=extract_start_month,
+        order=BucketOrder.BY_KEY,
+        period_key=month_key,
+    ),
+    Dimension.COUNTRY: DimensionSpec(
+        label="location country",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=True,
+        source_field="countries",
+        extract=extract_country,
+        order=BucketOrder.BY_COUNT,
+        assumptions=(
+            "Countries are reported as the API gives them; territories are not rolled up.",
+        ),
+    ),
+    Dimension.SPONSOR_CLASS: DimensionSpec(
+        label="lead sponsor class",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=False,
+        source_field="lead_sponsor",
+        leaf=".class",
+        extract=extract_sponsor_class,
+        order=BucketOrder.BY_COUNT,
+    ),
+    Dimension.LEAD_SPONSOR: DimensionSpec(
+        label="lead sponsor",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=False,
+        source_field="lead_sponsor",
+        leaf=".name",
+        extract=extract_lead_sponsor,
+        order=BucketOrder.BY_COUNT,
+    ),
+    Dimension.INTERVENTION_TYPE: DimensionSpec(
+        label="intervention type",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=True,
+        source_field="interventions",
+        leaf=".type",
+        extract=extract_intervention_type,
+        order=BucketOrder.BY_COUNT,
+    ),
+    Dimension.OVERALL_STATUS: DimensionSpec(
+        label="overall status",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=False,
+        source_field="overall_status",
+        extract=extract_overall_status,
+        order=BucketOrder.BY_COUNT,
+    ),
+    Dimension.CONDITION: DimensionSpec(
+        label="condition",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=True,
+        source_field="conditions",
+        extract=extract_condition,
+        order=BucketOrder.BY_COUNT,
+        assumptions=("Conditions are the raw sponsor-entered strings, not MeSH-normalized.",),
+    ),
+    Dimension.INTERVENTION_MESH: DimensionSpec(
+        label="intervention MeSH term",
+        kind=DimensionKind.CATEGORICAL,
+        can_overlap=True,
+        source_field="intervention_mesh_terms",
+        leaf=".term",
+        extract=extract_intervention_mesh,
+        order=BucketOrder.BY_COUNT,
+        assumptions=(NON_DRUG_MESH_NOTE, MESH_NOT_LINKED_NOTE),
+    ),
+    Dimension.ENROLLMENT_BUCKET: DimensionSpec(
+        label="enrollment count",
+        kind=DimensionKind.BINNED,
+        can_overlap=False,
+        source_field="enrollment",
+        extract=extract_enrollment_bucket,
+        order=BucketOrder.BY_RANK,
+        assumptions=("Enrollment bins: 0, 1-49, 50-99, 100-499, 500-999, 1000+.",),
+    ),
+}
+
+
+@dataclass(frozen=True)
+class RelationSpec:
+    """Declaration of one relation: two dimensions whose values become linked nodes.
+
+    When both sides are the same dimension, edges are the unordered pairs of distinct
+    values within a trial; otherwise every left value links to every right value.
+    """
+
+    left: Dimension
+    left_type: NodeType
+    right: Dimension
+    right_type: NodeType
+    assumptions: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def same_dimension(self) -> bool:
+        """True when edges link values of one dimension to each other (co-occurrence)."""
+        return self.left == self.right
+
+
+RELATIONS: dict[Relation, RelationSpec] = {
+    Relation.SPONSOR_DRUG: RelationSpec(
+        left=Dimension.LEAD_SPONSOR,
+        left_type=NodeType.SPONSOR,
+        right=Dimension.INTERVENTION_MESH,
+        right_type=NodeType.DRUG,
+        assumptions=(
+            "Sponsors are lead sponsors only; collaborators are not included.",
+            NON_DRUG_MESH_NOTE,
+        ),
+    ),
+    Relation.DRUG_DRUG_COOCCURRENCE: RelationSpec(
+        left=Dimension.INTERVENTION_MESH,
+        left_type=NodeType.DRUG,
+        right=Dimension.INTERVENTION_MESH,
+        right_type=NodeType.DRUG,
+        assumptions=(NON_DRUG_MESH_NOTE,),
+    ),
+    Relation.CONDITION_DRUG: RelationSpec(
+        left=Dimension.CONDITION,
+        left_type=NodeType.CONDITION,
+        right=Dimension.INTERVENTION_MESH,
+        right_type=NodeType.DRUG,
+        assumptions=(
+            "Conditions are the raw sponsor-entered strings, not MeSH-normalized.",
+            NON_DRUG_MESH_NOTE,
+        ),
+    ),
+}
+
+
+def distinct_values(record: TrialRecord, spec: DimensionSpec) -> list[DimensionValue]:
+    """A trial's values for a dimension, keeping the first occurrence of each key."""
+    seen: dict[str, DimensionValue] = {}
+    for value in spec.extract(record, path_for(record, spec)):
+        seen.setdefault(value.key, value)
+    return list(seen.values())

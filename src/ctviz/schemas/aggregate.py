@@ -31,17 +31,24 @@ class GroupResult(BaseModel):
 
     `buckets_overlap` is True when one trial can count in several buckets
     (e.g. a multi-country trial), so the bucket counts can add up to more than the
-    number of trials.
+    number of trials. `assumptions` and `warnings` are copied into the response meta.
     """
 
     dimension: Dimension
     buckets: list[Bucket]
     buckets_overlap: bool
+    assumptions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class Graph(BaseModel):
-    """Output of `aggregate.build_network`."""
+    """Output of `aggregate.build_network`.
+
+    `assumptions` and `warnings` are copied into the response meta by the spec stage.
+    """
 
     relation: Relation
     nodes: list[NetworkNode]
     edges: list[NetworkEdge]
+    assumptions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

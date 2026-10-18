@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ctviz.schemas.plan import Cohort, Filters, QueryPlan
-from ctviz.schemas.trial import MeshTerm, TrialRecord
+from ctviz.schemas.trial import CountryLocation, MeshTerm, TrialRecord
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -96,3 +96,12 @@ def make_plan(cohort_count: int = 1, **fields: Any) -> QueryPlan:
         Cohort(label=f"cohort {i}", filters=Filters(drug=f"drug{i}")) for i in range(cohort_count)
     ]
     return QueryPlan(cohorts=cohorts, **fields)
+
+
+def country(name: str, *, location_index: int, value_raw: str | None = None) -> CountryLocation:
+    """Shorthand for a CountryLocation; the raw value defaults to the trimmed name."""
+    return CountryLocation(
+        country=name,
+        value_raw=name if value_raw is None else value_raw,
+        location_index=location_index,
+    )
