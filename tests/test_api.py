@@ -62,7 +62,10 @@ def test_phase_query_end_to_end(api: TestClient, mock_api: respx.MockRouter) -> 
     assert response.status_code == 200, response.text
     body = VisualizationResponse.model_validate(response.json())
     sent = dict(route.calls[0].request.url.params)
-    assert sent["filter.advanced"] == 'AREA[InterventionName]"pembrolizumab"'
+    assert (
+        sent["filter.advanced"]
+        == '(AREA[InterventionName]"pembrolizumab" OR AREA[InterventionMeshTerm]"pembrolizumab")'
+    )
 
     visualization, meta = body.visualization, body.meta
     assert visualization.type == "bar_chart"

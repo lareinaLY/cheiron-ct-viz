@@ -100,7 +100,10 @@ def test_query_alone_is_planned_by_the_llm(mock_api: respx.MockRouter) -> None:
     assert interpretation.plan.cohorts[0].filters.drug == "pembrolizumab"
     assert body.visualization.title == "Trials by phase for pembrolizumab"
     sent = dict(mock_api.routes[1].calls[0].request.url.params)
-    assert sent["filter.advanced"] == 'AREA[InterventionName]"pembrolizumab"'
+    assert (
+        sent["filter.advanced"]
+        == '(AREA[InterventionName]"pembrolizumab" OR AREA[InterventionMeshTerm]"pembrolizumab")'
+    )
 
 
 def test_override_is_reported_in_meta(mock_api: respx.MockRouter) -> None:

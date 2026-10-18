@@ -302,7 +302,7 @@
     ],
     "match_mode": "intervention_name",
     "search_semantics": {
-      "drug": "Exact intervention name: filter.advanced AREA[InterventionName]\"<drug>\" matches the listed intervention names (with the API's concept expansion of aliases), not titles or descriptions.",
+      "drug": "Matches the intervention name or derived intervention MeSH term: filter.advanced (AREA[InterventionName]\"<drug>\" OR AREA[InterventionMeshTerm]\"<drug>\") matches the listed intervention names (with the API's concept expansion of aliases) or the study-level intervention MeSH terms, not titles or descriptions. Trials whose intervention is a class placeholder (e.g. 'PD-1 inhibitor') listing the drug as an other name are included, and so are MeSH mis-mappings.",
       "start_year": "AREA[StartDate] inclusive year range; month-only dates count as the first of the month, and trials with no start date are excluded."
     },
     "phase_bucketing": "exclusive_combined",

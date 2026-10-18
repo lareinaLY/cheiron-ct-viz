@@ -88,7 +88,9 @@ chart selection cannot disagree (invariant 7).
 
 **retrieval** (`retrieval/`). This is the only stage that does network I/O.
 - `query_builder.py` (pure) turns one cohort's `Filters` into `/studies` params. The
-  drug goes to `filter.advanced=AREA[InterventionName]"<drug>"` (always quoted; values
+  drug goes to `filter.advanced=(AREA[InterventionName]"<drug>" OR
+  AREA[InterventionMeshTerm]"<drug>")`, the intervention name or the derived intervention
+  MeSH term (docs/api_findings.md §16) (always quoted; values
   with `"` or a standalone `AND`/`OR`/`NOT` are rejected, parentheses are kept) or, in
   `broad` mode, to `query.intr`. Condition, sponsor and country go raw to `query.cond`,
   `query.spons` and `query.locn`; values containing Essie syntax (`"`, `()`, `[]`,

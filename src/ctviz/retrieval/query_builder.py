@@ -6,6 +6,12 @@ Any Essie syntax in such a value is rejected instead, so neither a user nor the 
 change search semantics by accident. The drug name in `intervention_name` mode is
 always quoted: unquoted, "pembrolizumab (KEYTRUDA®)" is parsed as grouping (559 hits
 instead of 43). See docs/api_findings.md §14.
+
+`intervention_name` mode matches the intervention name OR the derived intervention MeSH
+term, because each misses trials the other finds: the API does not expand every code name
+(28 nivolumab trials are listed only as ONO-4538 / BMS-936558 and reachable only via MeSH),
+and combination strings like "Pembrolizumab+Lenvatinib" have no MeSH term (72 pembrolizumab
+trials). See docs/api_findings.md §16.
 """
 
 from __future__ import annotations
@@ -33,9 +39,12 @@ FREE_TEXT_PARAMS: dict[str, str] = {
 
 SEMANTICS: dict[str, str] = {
     "drug_intervention_name": (
-        'Exact intervention name: filter.advanced AREA[InterventionName]"<drug>" matches the '
-        "listed intervention names (with the API's concept expansion of aliases), not titles "
-        "or descriptions."
+        "Matches the intervention name or derived intervention MeSH term: filter.advanced "
+        '(AREA[InterventionName]"<drug>" OR AREA[InterventionMeshTerm]"<drug>") matches the '
+        "listed intervention names (with the API's concept expansion of aliases) or the "
+        "study-level intervention MeSH terms, not titles or descriptions. Trials whose "
+        "intervention is a class placeholder (e.g. 'PD-1 inhibitor') listing the drug as an "
+        "other name are included, and so are MeSH mis-mappings."
     ),
     "drug_broad": (
         "Broad search: query.intr matches intervention names and other names, arm labels and "
@@ -69,8 +78,8 @@ SEMANTICS: dict[str, str] = {
 def build_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     """Translate one cohort's filters into /studies query params.
 
-    - drug: `intervention_name` -> `filter.advanced=AREA[InterventionName]"<drug>"`;
-      `broad` -> `query.intr=<drug>`.
+    - drug: `intervention_name` -> `filter.advanced=(AREA[InterventionName]"<drug>" OR
+      AREA[InterventionMeshTerm]"<drug>")`; `broad` -> `query.intr=<drug>`.
     - condition / sponsor / country -> `query.cond` / `query.spons` / `query.locn`, raw.
     - phases -> `AREA[Phase]X` or `AREA[Phase](X OR Y)`; statuses -> `filter.overallStatus=A|B`.
     - start years -> `AREA[StartDate]RANGE[<from>-01-01,<to>-12-31]`, MIN/MAX when open.
@@ -85,7 +94,7 @@ def build_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
         if match_mode == "broad":
             params["query.intr"] = free_text_value("drug", filters.drug)
         else:
-            clauses.append(f'AREA[InterventionName]"{quotable_value("drug", filters.drug)}"')
+            clauses.append(intervention_clause(quotable_value("drug", filters.drug)))
     for field, param in FREE_TEXT_PARAMS.items():
         value = getattr(filters, field)
         if value is not None:
@@ -174,6 +183,15 @@ def reject_operators(field: str, value: str, trimmed: str) -> None:
             f"contains the search operator {operator.group(1)}; use one value per filter "
             "or lowercase the word",
         )
+
+
+def intervention_clause(drug: str) -> str:
+    """Intervention name OR derived intervention MeSH term, parenthesized for AND-joining.
+
+    Without the parentheses AND binds tighter than OR, so other filters would apply to the
+    MeSH branch only (2611 hits instead of 1951 for pembrolizumab in Phase 2/3, §16).
+    """
+    return f'(AREA[InterventionName]"{drug}" OR AREA[InterventionMeshTerm]"{drug}")'
 
 
 def phase_clause(phases: list[str]) -> str:

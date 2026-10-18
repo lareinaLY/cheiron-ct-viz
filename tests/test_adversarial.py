@@ -173,7 +173,9 @@ def test_sql_in_drug_field_is_searched_as_one_quoted_literal(mock_api: respx.Moc
     response = post(None, body)
     assert response.status_code == 200, response.text
     [params] = sent_params(mock_api)
-    assert params["filter.advanced"] == f'AREA[InterventionName]"{SQL_INJECTION}"'
+    assert params["filter.advanced"] == (
+        f'(AREA[InterventionName]"{SQL_INJECTION}" OR AREA[InterventionMeshTerm]"{SQL_INJECTION}")'
+    )
 
 
 # Essie injection through structured fields.
@@ -217,7 +219,10 @@ def test_drug_name_with_parentheses_but_no_operator_is_still_allowed(
     response = post(None, body)
     assert response.status_code == 200, response.text
     [params] = sent_params(mock_api)
-    assert params["filter.advanced"] == 'AREA[InterventionName]"pembrolizumab (KEYTRUDA®)"'
+    assert params["filter.advanced"] == (
+        '(AREA[InterventionName]"pembrolizumab (KEYTRUDA®)" '
+        'OR AREA[InterventionMeshTerm]"pembrolizumab (KEYTRUDA®)")'
+    )
 
 
 def test_unknown_field_name_is_a_structured_422(mock_api: respx.MockRouter) -> None:
@@ -241,7 +246,10 @@ def test_explicit_drug_wins_over_the_question(mock_api: respx.MockRouter) -> Non
     assert override.explicit_value == "pembrolizumab"
     assert meta.interpretation.plan.cohorts[0].filters.drug == "pembrolizumab"
     [params] = sent_params(mock_api)
-    assert params["filter.advanced"] == 'AREA[InterventionName]"pembrolizumab"'
+    assert (
+        params["filter.advanced"]
+        == '(AREA[InterventionName]"pembrolizumab" OR AREA[InterventionMeshTerm]"pembrolizumab")'
+    )
 
 
 def test_nonexistent_drug_is_an_empty_200_with_a_warning(mock_api: respx.MockRouter) -> None:

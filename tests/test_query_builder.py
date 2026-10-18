@@ -13,7 +13,33 @@ from ctviz.schemas.trial import OverallStatus, Phase
 class TestDrug:
     def test_intervention_name_mode_uses_quoted_area_filter(self) -> None:
         params = build_params(Filters(drug="pembrolizumab"), "intervention_name")
-        assert params == {"filter.advanced": 'AREA[InterventionName]"pembrolizumab"'}
+        assert params == {
+            "filter.advanced": (
+                '(AREA[InterventionName]"pembrolizumab" '
+                'OR AREA[InterventionMeshTerm]"pembrolizumab")'
+            )
+        }
+
+    def test_intervention_name_mode_also_matches_derived_intervention_mesh(self) -> None:
+        # Name and MeSH each miss trials the other finds: ONO-4538-only nivolumab trials
+        # are reachable only via MeSH, "Pembrolizumab+Lenvatinib" only via the name (§16).
+        params = build_params(Filters(drug="nivolumab"), "intervention_name")
+        assert params == {
+            "filter.advanced": (
+                '(AREA[InterventionName]"nivolumab" OR AREA[InterventionMeshTerm]"nivolumab")'
+            )
+        }
+
+    def test_name_or_mesh_union_is_parenthesized_before_and(self) -> None:
+        # AND binds tighter than OR: unparenthesized, the phase filter applies to the MeSH
+        # branch only (2611 hits instead of 1951, §16).
+        params = build_params(
+            Filters(drug="pembrolizumab", phases=[Phase.PHASE2]), "intervention_name"
+        )
+        assert params["filter.advanced"] == (
+            '(AREA[InterventionName]"pembrolizumab" OR AREA[InterventionMeshTerm]"pembrolizumab")'
+            " AND AREA[Phase]PHASE2"
+        )
 
     def test_broad_mode_uses_query_intr(self) -> None:
         params = build_params(Filters(drug="pembrolizumab"), "broad")
@@ -22,7 +48,12 @@ class TestDrug:
     def test_name_with_spaces_and_parentheses_is_quoted_as_one_phrase(self) -> None:
         # Unquoted, the API parses "(KEYTRUDA®)" as grouping: 559 hits instead of 43.
         params = build_params(Filters(drug="pembrolizumab (KEYTRUDA®)"), "intervention_name")
-        assert params == {"filter.advanced": 'AREA[InterventionName]"pembrolizumab (KEYTRUDA®)"'}
+        assert params == {
+            "filter.advanced": (
+                '(AREA[InterventionName]"pembrolizumab (KEYTRUDA®)" '
+                'OR AREA[InterventionMeshTerm]"pembrolizumab (KEYTRUDA®)")'
+            )
+        }
 
     def test_double_quote_in_intervention_name_rejected(self) -> None:
         with pytest.raises(InvalidFilterError, match="drug"):
@@ -37,11 +68,21 @@ class TestDrug:
 
     def test_lowercase_operator_word_in_intervention_name_allowed(self) -> None:
         params = build_params(Filters(drug="salt and pepper"), "intervention_name")
-        assert params == {"filter.advanced": 'AREA[InterventionName]"salt and pepper"'}
+        assert params == {
+            "filter.advanced": (
+                '(AREA[InterventionName]"salt and pepper" '
+                'OR AREA[InterventionMeshTerm]"salt and pepper")'
+            )
+        }
 
     def test_value_is_trimmed(self) -> None:
         params = build_params(Filters(drug="  pembrolizumab "), "intervention_name")
-        assert params == {"filter.advanced": 'AREA[InterventionName]"pembrolizumab"'}
+        assert params == {
+            "filter.advanced": (
+                '(AREA[InterventionName]"pembrolizumab" '
+                'OR AREA[InterventionMeshTerm]"pembrolizumab")'
+            )
+        }
 
     def test_blank_value_rejected(self) -> None:
         with pytest.raises(InvalidFilterError, match="drug"):
@@ -138,7 +179,9 @@ class TestCombination:
             "query.locn": "Germany",
             "filter.overallStatus": "RECRUITING",
             "filter.advanced": (
-                'AREA[InterventionName]"pembrolizumab" AND AREA[Phase](PHASE2 OR PHASE3) '
+                '(AREA[InterventionName]"pembrolizumab" '
+                'OR AREA[InterventionMeshTerm]"pembrolizumab") '
+                "AND AREA[Phase](PHASE2 OR PHASE3) "
                 "AND AREA[StartDate]RANGE[2015-01-01,MAX]"
             ),
         }
@@ -153,6 +196,11 @@ class TestSearchSemantics:
         assert set(semantics) == {"drug", "phases"}
         assert "InterventionName" in semantics["drug"]
         assert "any" in semantics["phases"]
+
+    def test_intervention_name_semantics_name_both_sources(self) -> None:
+        semantics = search_semantics(Filters(drug="x"), "intervention_name")
+        assert "intervention name or derived intervention MeSH term" in semantics["drug"]
+        assert "InterventionMeshTerm" in semantics["drug"]
 
     def test_broad_drug_semantics_mention_free_text(self) -> None:
         semantics = search_semantics(Filters(drug="x"), "broad")
