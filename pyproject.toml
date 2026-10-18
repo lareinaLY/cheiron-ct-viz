@@ -37,6 +37,8 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Live tests hit the real API; run them explicitly with `pytest -m live`.
+addopts = "-m 'not live'"
 markers = [
     "live: tests that call the real ClinicalTrials.gov API (network required)",
 ]
