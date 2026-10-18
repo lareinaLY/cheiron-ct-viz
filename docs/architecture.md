@@ -117,7 +117,16 @@ the caller can drop the record and report it.
   incomplete-period flag, a future-period flag (`is_future`: periods after `as_of`,
   reported in one warning as projections), capped citations plus the true citation total, an overlap
   flag, and `assumptions`/`warnings`.
-- `build_network` returns a `Graph` (nodes, weighted edges, citations).
+- `build_network` returns a `Graph` (nodes, weighted edges, citations, and a
+  `NetworkSummary`). Node size and edge weight are counts of distinct trials. Values on the
+  relation's deny-list (`RelationSpec.excluded`, by MeSH id) never become nodes; each
+  excluded term is listed with its trial count. With readability caps (off by default;
+  the pipeline passes `MAX_NETWORK_NODES`=50 and `MIN_EDGE_WEIGHT`=2 from settings), edges
+  below the weight threshold are dropped, then the nodes with the highest weighted degree
+  (sum of the remaining incident edge weights) are kept (ties: size, then label) with
+  only the edges between them. Node sizes are not recomputed. Omitted nodes and edges,
+  and the trials left without a shown edge or node, are counted in the summary and
+  stated in a warning.
 - `group_cohorts` runs `group_by` per cohort and returns `GroupedCohorts`: one result per
   cohort on a shared `key_order` (the dimension's order over the union of trials). With
   `top_n`, it keeps the N known keys with the most trials plus Unknown, and records the
@@ -136,6 +145,11 @@ checked against golden snapshots in `tests/golden/`.
   Vega-Lite-style channels (`field`, `type`: nominal | temporal | quantitative, `sort`,
   `time_unit`), and several cohorts are colored by `cohort`.
 - Graphs become Cytoscape-style `nodes`/`edges` elements, with the payload under `data`.
+  The graph's `NetworkSummary` becomes `meta.network`. When the serialized network
+  response is larger than `NETWORK_MAX_RESPONSE_BYTES` (1 MB), `fit_network_budget` cuts
+  each edge's citations to `NETWORK_REDUCED_EDGE_CITATION_CAP` (2: both endpoints in one
+  trial) instead of dropping edges, keeps `citation_count_total`, and states the sizes
+  before and after in a warning.
 - Titles are derived from the plan only (e.g. "Trials by phase for pembrolizumab").
   Titles and axis titles use the dimension's `title_label`, which states the granularity
   of temporal dimensions ("start year"); warnings keep using `label` ("start date").
@@ -147,7 +161,8 @@ checked against golden snapshots in `tests/golden/`.
 - `Meta` carries `interpretation` (the question, the executed plan, `planned_by` and,
   for LLM plans, the model, draft, overrides and rejected drafts),
   `count_unit`, `search_semantics`, retrieval totals plus per-cohort `cohorts` stats,
-  `top_n`, `data_timestamp`, `timing_ms`, and every assumption and warning (invariants 3, 5).
+  `top_n`, `network` (exclusions, caps and citation reduction; networks only),
+  `data_timestamp`, `timing_ms`, and every assumption and warning (invariants 3, 5).
 
 **pipeline** (`pipeline.py`). `execute(interpretation, client)` calls the stages in order
 and times each one (planning time is `interpretation.planning_ms`). `run(plan, question,
@@ -167,7 +182,8 @@ malformed chain or API key stops the server with a clear message. Failures retur
 `ErrorResponse` (`code`, `message`, `suggestions`): 422 for invalid requests, plans and
 filter values, and for unsupported, ambiguous or unplannable questions; 502 when the API
 or the LLM provider fails, or the API rejects the query; 503 when the API keeps
-rate-limiting. `GET /health` is a liveness probe. Run the app with
+rate-limiting. The network caps come from settings (`Settings.network_limits()`) and are
+passed to `pipeline.execute`. `GET /health` is a liveness probe. Run the app with
 `uv run uvicorn ctviz.api.app:app`. Example requests and real responses are in `examples/`.
 
 ## Registry
@@ -177,7 +193,12 @@ rate-limiting. `GET /health` is a liveness probe. Run the app with
   (`source_field` + `leaf`), whether a trial can fall into several buckets, the bucket
   order, the period key for in-progress flags, its kind (categorical, temporal or
   binned), fixed assumptions, and a `description` rendered into the planner prompt.
-- A `RelationSpec` pairs two dimensions with node types, plus a `description`.
+- A `RelationSpec` pairs two dimensions with node types, plus a `description` and
+  `excluded`: per node type, the value keys that are never drawn. All three relations
+  exclude `NETWORK_EXCLUDED_MESH`, a short list of exact MeSH ids observed on live data:
+  comparators without active treatment (Standard of Care, Observation, Watchful Waiting,
+  Saline Solution as the placebo mapping) and derived terms that are not interventions
+  (Taxes, Single Person, Automobiles, Congresses as Topic, Solutions).
 
 `group_by`, `build_network` and `select_chart` dispatch through the registry only. To
 add a new query type, add a registry entry and a `Dimension`/`Relation` enum value; no
@@ -189,7 +210,7 @@ other code should branch on dimension names.
 |---|---|
 | 1. LLM only produces a plan | `planner/` boundary; the LLM returns an `LlmPlanDraft` (filters and a grouping only); `QueryPlan` has no data fields (`extra="forbid"`); cohort labels are derived in code |
 | 2. Citations on every datum | `aggregate/registry.py` extractors and `cite`; `Bucket`, `NetworkNode`, `NetworkEdge` |
-| 3. Nothing silent | `GroupResult`/`Graph` `assumptions` and `warnings`, copied into `Meta` |
+| 3. Nothing silent | `GroupResult`/`Graph` `assumptions` and `warnings`, copied into `Meta`; `Meta.network` for network exclusions, caps and citation cuts |
 | 4. Missing is not zero | `UNKNOWN_BUCKET_KEY`, kept separate from the API's own `UNKNOWN` |
 | 5. Count unit stated | `Meta.count_unit` |
 | 6. Count reconciles with totalCount | `CtGovClient.fetch_all` (`FetchResult.reconciled`), then `Meta.cohorts[]` and a meta warning |

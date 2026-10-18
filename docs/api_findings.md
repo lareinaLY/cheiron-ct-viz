@@ -24,7 +24,7 @@ These are choices a reasonable person could make differently. Each states our ch
 | Multi-phase bucketing | Own combined bucket ("Phase 1/Phase 2"); buckets are mutually exclusive | Count the trial in every phase it lists (totals exceed the number of trials), or assign it to its highest phase |
 | Territories | Reported as the API gives them (Puerto Rico, Guam, Hong Kong are separate) | Roll territories up into a sovereign country |
 | Drug matching | Exact `AREA[InterventionName]` by default; `query.intr` as opt-in `broad` | Broad by default, or `AREA[InterventionMeshTerm]` |
-| Non-drug nodes in networks | Drug nodes are all intervention MeSH terms, including radiation or procedures; this is noted in meta assumptions | Filter nodes by intervention type (DRUG/BIOLOGICAL). This needs an intervention↔MeSH link the API doesn't provide |
+| Non-drug nodes in networks | Drug nodes are all intervention MeSH terms, including radiation, procedures and diagnostics; this is noted in meta assumptions. A small deny-list of exact MeSH ids (comparators, mis-mapped terms, §8) is excluded and reported in `meta.network` | Filter nodes by intervention type (DRUG/BIOLOGICAL), which needs an intervention↔MeSH link the API doesn't provide; or by `browseLeaves[].relevance`, which the API does not serve (§8) |
 | Trials without intervention MeSH | `Unknown` bucket, with a meta warning giving the count | Fall back to the raw intervention name as the bucket key, which splits aliases into separate buckets |
 | "Fewest" questions ("which countries have the fewest trials") | Not a ranking: `ranking_intent` covers most/top/leading only, so the chart is untrimmed and sorted by count, with the smallest values last | Trim to the N smallest buckets, which needs a sort direction in the plan |
 | Year-only start date in monthly views | `Unknown` bucket for `start_month` (citing the raw year); counted normally for `start_year` | Place it in January (the API's indexing convention) |
@@ -227,6 +227,21 @@ Quirks:
   Use condition MeSH with care, and keep `conditions` (raw) as the cited source value.
 - Intervention MeSH `ancestors` are chemical classes (e.g. "Purines", "Amino Acids"),
   not drug classes, so they are not useful for grouping.
+- **Derived intervention MeSH terms include mis-mappings and non-treatments** (2575
+  pembrolizumab trials, 2026-10-18): `Taxes` (D013660, 48 trials, from "taxane"),
+  `Automobiles` (D001336, from "CAR" T-cell therapy), `Single Person` (D012847, 4), `Congresses
+  as Topic` (D003226, 3), `Solutions` (D012996, 4, from "solution for injection"). Comparators
+  appear too: `Standard of Care` (8), `Observation` (10), `Watchful Waiting` (7). No trial
+  carries `Placebos` (D010919); placebo arms map to `Saline Solution` (D000077330; 8 of its 18
+  trials list an intervention named "Placebo"). Diagnostics are frequent and large:
+  `Specimen Handling` (81), `Magnetic Resonance Spectroscopy` (84, mapped from "Magnetic
+  Resonance Imaging"), `Biopsy` (49).
+- **`browseLeaves` and `browseBranches` are in the OpenAPI schema but not served.** On
+  2026-10-18 full records (`/studies/NCT07198074`, `/studies/NCT02142738`) carry only
+  `meshes` and `ancestors` in both browse modules; projecting
+  `InterventionBrowseLeafRelevance` returns an empty module, and
+  `AREA[InterventionBrowseLeafRelevance]LOW` matches 0 studies. The per-term `relevance`
+  (HIGH/LOW) is therefore not available as a node filter.
 
 ## 9. Locations
 
