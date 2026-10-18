@@ -95,3 +95,27 @@ Screenshots are in `docs/ui_screenshots/`, and the links below are relative to t
 | 11 | Make the Render button for pasted JSON reliable on the first click. Show "source: pasted JSON" instead of "HTTP status: no response". | E5 | minor | XS–S |
 | 12 | Print: expand "How these numbers were made" and print the question asked. Show a hint for Cmd/Ctrl+Enter. Strengthen the chip focus ring. | E6, E8 | cosmetic | XS |
 | 13 | Bundle ECharts locally rather than loading it from jsDelivr. | — | minor | XS |
+
+## Follow-up (2026-10-18)
+
+Fixes were checked in Chrome against the patched server. The before screenshots come from the previous commit run on a separate port, and the after screenshots from the working tree.
+
+| Blocker | Before | After |
+|---|---|---|
+| 1. Warning notices not rendered | [before_1_trastuzumab_subset_warning_missing.jpg](ui_screenshots/fixes/before_1_trastuzumab_subset_warning_missing.jpg) | [after_1a_trastuzumab_subset_warning.jpg](ui_screenshots/fixes/after_1a_trastuzumab_subset_warning.jpg), [after_1b_pembro_did_you_mean.jpg](ui_screenshots/fixes/after_1b_pembro_did_you_mean.jpg) |
+| 2. Lead-sponsor chart blank (2,755 bars) | [before_2_breast_lead_sponsor_blank_canvas.jpg](ui_screenshots/fixes/before_2_breast_lead_sponsor_blank_canvas.jpg) | [after_2_breast_lead_sponsor_top50.jpg](ui_screenshots/fixes/after_2_breast_lead_sponsor_top50.jpg) |
+
+**Fixed:**
+- Fix 1 (A2, A6, C1, C2, C3). Warning notices were built into a container that was never un-hidden. Errors now appear as red banners and warnings as amber banners, both above the chart in response order; info notices stay below.
+- Fix 2 (C5). The server shows the 50 most frequent values (`MAX_BARS`), with an Other bar where it is exact, a `readability_cap` warning and "(top 50)" in the title. The page also caps the chart at 4,000 px and 200 bars.
+- Fix 3 (C1). While a question is being answered, the previous result is dimmed, elapsed seconds are shown and the button is disabled.
+- Fix 4 (A6, A7, E3 chip 7). The network fits its box and has the same layout on every run. Only the 12 largest nodes and the hub are labelled, and overlapping labels are hidden.
+- Fix 5 (D3). An empty question shows an inline message and sends no request.
+- Fix 6 (A4). The month-axis title and the first tick are no longer cut off.
+- Fix 7 (E1). Citations show NCT IDs in monospace, the field path, and values such as "Phase 2 (PHASE2)".
+- Fix 8, partly (A6, C5). Network and size-limit notices no longer name settings.
+
+**Remaining:**
+- In the dense hub of a network, node marks can still cover labels.
+- Structured-only queries need a question, because the API requires one. The page now says so.
+- Fixes 8–13 except as noted above: other notice copy, the key-facts layout, the hue of grouped not-applicable bars, the first-click flake of the pasted-JSON Render button, print, and the CDN dependency.

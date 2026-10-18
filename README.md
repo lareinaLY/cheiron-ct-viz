@@ -99,6 +99,7 @@ requirements.txt`, or use `uv pip install --python .venv -r requirements.txt`.
 | `DEEPSEEK_API_KEY` | empty | Optional fallback provider. Providers without a key are skipped at startup |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek endpoint |
 | `DEFAULT_TOP_N_FOR_RANKING` | `15` | `top_n` (or `bottom_n`) that code applies when a question asks for "the most …" (or "the fewest …") without a number |
+| `MAX_BARS` | `50` | A categorical chart with more values and no `top_n`/`bottom_n` shows the top this many (Other bar where exact), with a `readability_cap` warning and "(top 50)" in the title |
 | `CTGOV_BASE_URL` | `https://clinicaltrials.gov/api/v2` | Registry API |
 | `DEGRADED_SKIP_RATIO` | `0.05` | Share of unreadable records per cohort that marks a result `degraded` |
 | `REFUSE_SKIP_RATIO` | `0.5` | Share at which no chart is returned (502) |
@@ -148,7 +149,7 @@ curl -s -X POST http://127.0.0.1:8000/query -H 'content-type: application/json' 
 page (plain JS, ECharts 5.5.1 from a pinned CDN URL, no build step) that posts to `/query` and
 draws the response. The default view is for an analyst: eight example questions as chips
 (one per chart type, a ranking, a "fewest", a comparison and an unsupported question), the
-title, the chart, banners for notices of severity `error`/`warning`, a key-facts row in
+title, red (`error`) and amber (`warning`) notice banners above the chart, a key-facts row in
 words ("Counting: registered studies — any study type, any status", "based on
 2,642 retrieved records (reconciled with the registry total)", "Registry data as of 16 Oct
 2026", "173 studies appear in more than one group"), info notices and the assumptions
@@ -159,6 +160,26 @@ the request and response JSON, and a box to render a saved response such as thos
 `examples/`) is in the collapsed "Details for developers". The page computes no counts:
 banners come from `severity`, greys from `is_unknown`/`is_unrecognized`/`is_not_applicable`,
 the lighter Other bar from `is_other`, and zero periods from `encoding.x.sort`.
+
+The page has two audiences on purpose. The default view is for an analyst who wants the
+chart and its caveats. The collapsed "Details for developers" section is for the reviewer
+of this assignment: it shows the response JSON, the request ID, per-stage timings, and a box
+to paste a saved response, because the deliverable is the backend and its schema, not the
+page. A QA pass of the page is in [docs/ui_test_report.md](docs/ui_test_report.md) (29
+cases). Fixed from it: warning notices rendered as amber banners above the chart (they were
+built into a hidden container); a 50-bar readability cap on categorical charts (`MAX_BARS`,
+`readability_cap` warning, Other bar where exact), plus a 200-bar and 4,000 px ceiling in
+the page; a loading state (previous result dimmed, elapsed seconds, button disabled); an
+inline message for an empty question; citations with monospace NCT IDs, the field path,
+and "Phase 2 (PHASE2)"-style values; network notices without setting names; a network that
+fits its box, labels only the 12 largest nodes and the hub, hides overlapping labels and
+lays out the same way on every run; the month-axis title no longer cut off; and 8 px / 12 px
+corner radii. Still open: notice copy elsewhere ("trials" vs "studies", JSON paths such as
+`meta.network.excluded_terms`, "ACTUAL/ESTIMATED"); structured-only queries (the API
+requires a question); node marks can still cover labels in a dense hub; the Other bar can
+dwarf the real bars; key facts as a grid; grouped not-applicable bars keep grey instead of
+the series hue; the pasted-JSON Render button's first-click flake; print expanding the
+method notes; and ECharts still loads from a CDN.
 
 Responses of 1 KB or more are gzipped for clients that send `Accept-Encoding: gzip`. Every
 `/query` response (errors included) carries an `X-Request-ID` header, also in
@@ -243,7 +264,7 @@ is rejected and redrafted).
 | `network` | Networks only: <ul><li>`excluded_terms` (with reason and trials), `unmatched_terms`</li><li>`drug_class_nodes_total`/`_shown`</li><li>node and edge totals vs shown, trials without a shown edge or node</li><li>`edge_citation_cap`, `edge_citations_reduced`, `node_supporting_citations_dropped`, `response_bytes_before_reduction`</li></ul> |
 | `estimated_count`, `unknown_date_type_count` | Datum values summed over cohorts. `estimated_count` applies to start-date and enrollment charts, `unknown_date_type_count` to start-date charts only (`DimensionSpec.estimate_kind`); null where they do not apply, for networks, and when not determined (count route) |
 | `data_timestamp` | The API's `dataTimestamp` from `/version`. Null, with a warning, if `/version` failed |
-| `assumptions[]`, `warnings[]` | `Notice` objects `{code, severity, cohort, message}`. `code` is a `NoticeCode` (one per kind of message, e.g. `degraded_data`, `record_cap`, `not_applied`, `unknown_bucket`, `topn_ties`, `cohorts_overlap`, `cohort_subset`, `did_you_mean`; full list in `schemas/response.py`). `severity` is `error` (only `degraded_data`, always first), `warning` (the chart answers a narrower question than it seems, or data is missing) or `info`. `cohort` names the cohort a notice is about; in a comparison the message also starts with `"<label>: "`. Skipped records are listed 10 at a time, then one "and N more" line |
+| `assumptions[]`, `warnings[]` | `Notice` objects `{code, severity, cohort, message}`. `code` is a `NoticeCode` (one per kind of message, e.g. `degraded_data`, `record_cap`, `not_applied`, `unknown_bucket`, `topn_ties`, `cohorts_overlap`, `cohort_subset`, `did_you_mean`, `readability_cap`; full list in `schemas/response.py`). `severity` is `error` (only `degraded_data`, always first), `warning` (the chart answers a narrower question than it seems, or data is missing) or `info`. `cohort` names the cohort a notice is about; in a comparison the message also starts with `"<label>: "`. Skipped records are listed 10 at a time, then one "and N more" line |
 | `timing_ms` | Wall time per stage: `validate`, `retrieve`, `retrieve_fallback`, `normalize`, `suggest` (the did-you-mean count, when made), `aggregate`, `spec`, `total` |
 | `request_id` | Same as the `X-Request-ID` header |
 | `llm` | `{calls[], total_latency_ms, total_input_tokens, total_output_tokens, total_estimated_cost_usd, skipped_providers[]}`. Each call: `request_id`, `provider`, `model_requested`, `model_used`, `response_mode`, `latency_ms`, `input_tokens`, `output_tokens`, `estimated_cost_usd` (null for a model not in `LLM_PRICES`), `outcome` (`ok`, `retry` = same-provider retry after an infrastructure failure, `fallback`, `validation_retry` = draft rejected and asked again, `failed`), `error_class`. A total is null when any call lacks it. `calls` is empty for rules-only requests. `skipped_providers` lists providers whose circuit breaker was open |
@@ -787,8 +808,9 @@ limitations"), verbatim:
   intervention types): a sum of omitted values would count a study more than once. The
   assumption says so and `meta.top_n.trials_omitted` gives the studies seen only there.
 - No percent or share view for comparisons of different-sized cohorts (user #3, #8).
-- Warning texts still contain setting names and engineering terms (`MAX_NETWORK_NODES=50`),
-  and most say "trials" where titles say "studies" (user #10).
+- Network notices no longer name settings (the caps are in `meta.network`), but other
+  notices still use engineering terms (JSON paths, "ACTUAL/ESTIMATED"), and most say
+  "trials" where titles say "studies" (user #10).
 - "Did you mean" only covers a tiny cohort (< 20 studies) whose records carry a MeSH term;
   a name that matches nothing at all gets no suggestion (user #5).
 - No ranked edge table next to networks, and no CSV export (user #9 and §3).
@@ -796,6 +818,11 @@ limitations"), verbatim:
   generic (user #9).
 
 **Engineering**
+- **LLM refusal text is filtered, not trusted.** An `unsupported_question` shows the LLM's
+  reason, cut to 240 characters. If any 30-character run of it appears in the system prompt
+  (ignoring case and whitespace), the reason is replaced with a fixed sentence and a
+  `code=unsupported_reason_redacted` warning is logged. A paraphrased prompt, or the
+  readings in a `clarification_needed` error, is not caught.
 - **Single worker.** The rate limiter and SQLite cache are per process. With `--workers N`,
   pacing becomes N × 1 req / 1.2 s, which brings back the 429s (H4). Normalize and aggregate
   now run in a thread and at most `MAX_CONCURRENT_QUERIES` requests execute at once, but the

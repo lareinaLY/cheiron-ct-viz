@@ -200,6 +200,9 @@ count route, over API-counted buckets with their sample records):
   per-cohort counts). With `top_n`, it keeps the N known keys with the most trials plus
   Unknown, and records the omitted keys and, per cohort, the trials that appear only in
   omitted buckets (for a counted cohort, the summed counts of its omitted buckets).
+  Without `top_n` or `bottom_n`, a categorical dimension with more than `max_bars`
+  (`MAX_BARS`, 50) known values gets `top_n = max_bars` the same way, with a
+  `readability_cap` warning.
   With two or more cohorts, all fetched, it also sets `cohorts_overlap`: shared NCT IDs per
   pair of cohorts and the distinct trials in more than one cohort (0 when none); null for
   a single cohort or when any cohort was counted per bucket (only samples are known).
