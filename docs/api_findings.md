@@ -1,5 +1,35 @@
 # ClinicalTrials.gov API v2 — verified findings
 
+## Expectations vs. findings
+
+| Assumption before exploring | What the data showed | Design consequence |
+|---|---|---|
+| `query.intr=X` returns trials that test drug X | It also matches titles, arm labels, keywords, intervention/arm descriptions and MeSH ancestors, with synonym expansion. 336 / 2981 pembrolizumab hits mention the drug only in text or comparator arms (§2) | Default match mode is `AREA[InterventionName]` (exact). `query.intr` is an opt-in `broad` mode, echoed in `meta.match_mode` |
+| Derived MeSH terms are a clean normalization layer | Intervention MeSH reliably merges aliases (Keytruda, MK-3475 → pembrolizumab, C582435). Condition MeSH has spurious terms (201 cancer trials tagged "Parkinson Disease 4…"), and 435 / 2981 studies have none. MeSH is study-level, not tied to an intervention (§8) | Drugs are grouped by study-level intervention MeSH (id + term). Conditions use raw strings. No intervention↔MeSH linking is attempted |
+| `ESTIMATED` start dates are future dates | 266 `ESTIMATED` start dates are already in the past, and 55 legacy records have a date but no type (§5) | Estimated dates are counted and flagged (`estimated_count`), not excluded. A missing type is `"unknown"` |
+| A trial has one phase | `phases` is a list; 24,765 studies have two. A Phase filter matches any element, so per-phase API counts overlap (§4) | Multi-phase trials get their own mutually exclusive bucket ("Phase 1/Phase 2") |
+| One location row per country | Locations are per site, up to 1660 rows for one study, with repeated countries (§9) | Countries are deduplicated within a study. Country buckets overlap across multi-country trials, and the result is flagged `buckets_overlap` |
+| `pageSize` can be set as large as needed | It is silently capped at 1000, with no error (§6) | Retrieval pages at 1000 and reconciles the retrieved count against `totalCount` |
+| A `pageToken` is tied to its query | The token is not bound to the query; reusing it with other params returns wrong results with HTTP 200 (§6) | Page requests resend frozen params; only `pageToken` changes |
+| The API publishes a rate limit or `Retry-After` | It publishes neither. After about 10 rapid requests it returns HTML 429 with no `Retry-After`; 1 request / 1.2 s is sustainable (§11) | Retrieval paces requests itself and retries 429 with exponential backoff |
+| `/stats/field/values` can count values within a query | It rejects `query.*` and `filter.*` params with 400 and only covers the whole database (§10) | Subset aggregation is done client-side over fetched records |
+
+## Open ambiguities
+
+These are choices a reasonable person could make differently. Each states our choice and the alternative.
+
+| Question | Our choice | Alternative |
+|---|---|---|
+| Count unit | Trials (studies), stated in `meta.count_unit` | Sites, arms or enrolled participants |
+| Multi-phase bucketing | Own combined bucket ("Phase 1/Phase 2"); buckets are mutually exclusive | Count the trial in every phase it lists (totals exceed the number of trials), or assign it to its highest phase |
+| Territories | Reported as the API gives them (Puerto Rico, Guam, Hong Kong are separate) | Roll territories up into a sovereign country |
+| Drug matching | Exact `AREA[InterventionName]` by default; `query.intr` as opt-in `broad` | Broad by default, or `AREA[InterventionMeshTerm]` |
+| Non-drug nodes in networks | Drug nodes are all intervention MeSH terms, including radiation or procedures; this is noted in meta assumptions | Filter nodes by intervention type (DRUG/BIOLOGICAL). This needs an intervention↔MeSH link the API doesn't provide |
+| Trials without intervention MeSH | `Unknown` bucket, with a meta warning giving the count | Fall back to the raw intervention name as the bucket key, which splits aliases into separate buckets |
+| Year-only start date in monthly views | `Unknown` bucket for `start_month` (citing the raw year); counted normally for `start_year` | Place it in January (the API's indexing convention) |
+
+---
+
 Source of truth for params and enums: `docs/ctgov_openapi.yaml`, downloaded from
 `https://clinicaltrials.gov/api/oas/v2` (OpenAPI 3.0.3, API version `2.0.5`).
 Every number below was produced by `scripts/explore_api.py` against the live API.
