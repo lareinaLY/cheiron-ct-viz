@@ -93,7 +93,12 @@ def plan_by_rules(request: QueryRequest) -> Interpretation:
 async def plan_by_llm(
     request: QueryRequest, llm: LlmClient, today: date, default_top_n_for_ranking: int
 ) -> Interpretation:
-    """Draft with the LLM, merge explicit fields, validate; retry once on rejection."""
+    """Draft with the LLM, merge explicit fields, validate; retry once on rejection.
+
+    Explicit filter values are checked first: they override every draft, so asking the
+    LLM again could not fix them, and the caller should get the filter error itself.
+    """
+    build_params(request.filters(), request.match_mode)
     messages = build_messages(request.query, today)
     rejected: list[str] = []
     for attempt in range(1, MAX_ATTEMPTS + 1):

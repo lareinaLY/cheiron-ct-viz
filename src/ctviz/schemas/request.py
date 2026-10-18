@@ -7,10 +7,13 @@ the structured fields alone define the query: one cohort plus a dimension or rel
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ctviz.normalize.study import PHASE_LABELS
 from ctviz.schemas.plan import (
+    MAX_START_YEAR,
+    MAX_TOP_N,
+    MIN_START_YEAR,
     ChartType,
     Cohort,
     Dimension,
@@ -50,13 +53,21 @@ class QueryRequest(BaseModel):
     country: str | None = None
     phases: list[Phase] = Field(default_factory=list)
     statuses: list[OverallStatus] = Field(default_factory=list)
-    start_year_from: int | None = None
-    start_year_to: int | None = None
+    start_year_from: int | None = Field(default=None, ge=MIN_START_YEAR, le=MAX_START_YEAR)
+    start_year_to: int | None = Field(default=None, ge=MIN_START_YEAR, le=MAX_START_YEAR)
     dimension: Dimension | None = None
     relation: Relation | None = None
     chart_hint: ChartType | None = None
-    top_n: int | None = None
+    top_n: int | None = Field(default=None, ge=1, le=MAX_TOP_N)
     match_mode: MatchMode = "intervention_name"
+
+    @field_validator("query")
+    @classmethod
+    def query_not_blank(cls, query: str) -> str:
+        """A blank question has nothing to interpret; reject it before the LLM is asked."""
+        if not query.strip():
+            raise ValueError("must contain more than whitespace")
+        return query
 
     def explicit_fields(self) -> set[str]:
         """Names of the structured fields the caller set, defaults excluded."""

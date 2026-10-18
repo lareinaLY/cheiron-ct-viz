@@ -6,7 +6,17 @@ import pytest
 
 from ctviz.errors import PlanErrorReason, PlanValidationError
 from ctviz.planner import validate_plan
-from ctviz.schemas.plan import ChartType, Cohort, Dimension, Filters, QueryPlan, Relation
+from ctviz.schemas.plan import (
+    MAX_START_YEAR,
+    MAX_TOP_N,
+    MIN_START_YEAR,
+    ChartType,
+    Cohort,
+    Dimension,
+    Filters,
+    QueryPlan,
+    Relation,
+)
 from tests.factories import make_plan
 
 
@@ -62,6 +72,32 @@ def test_valid_plan_passes_unchanged(plan: QueryPlan) -> None:
 def test_non_positive_top_n_rejected(top_n: int) -> None:
     plan = make_plan(dimension=Dimension.COUNTRY, top_n=top_n)
     assert_rejected(plan, PlanErrorReason.INVALID_TOP_N)
+
+
+def test_top_n_above_maximum_rejected() -> None:
+    assert validate_plan(make_plan(dimension=Dimension.COUNTRY, top_n=MAX_TOP_N))
+    plan = make_plan(dimension=Dimension.COUNTRY, top_n=MAX_TOP_N + 1)
+    assert_rejected(plan, PlanErrorReason.INVALID_TOP_N)
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        Filters(start_year_from=MIN_START_YEAR - 1),
+        Filters(start_year_to=MAX_START_YEAR + 1),
+        Filters(start_year_from=-5, start_year_to=2020),
+    ],
+    ids=["from-too-early", "to-too-late", "negative"],
+)
+def test_start_year_out_of_range_rejected(filters: Filters) -> None:
+    plan = QueryPlan(cohorts=[Cohort(label="x", filters=filters)], dimension=Dimension.PHASE)
+    assert_rejected(plan, PlanErrorReason.INVALID_YEAR_RANGE)
+
+
+def test_start_year_bounds_are_inclusive() -> None:
+    filters = Filters(start_year_from=MIN_START_YEAR, start_year_to=MAX_START_YEAR)
+    plan = QueryPlan(cohorts=[Cohort(label="x", filters=filters)], dimension=Dimension.PHASE)
+    assert validate_plan(plan) == plan
 
 
 def test_top_n_with_relation_rejected() -> None:

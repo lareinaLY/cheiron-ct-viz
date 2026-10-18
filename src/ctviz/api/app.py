@@ -37,7 +37,14 @@ from ctviz.planner.plan import plan
 from ctviz.retrieval.cache import build_cache
 from ctviz.retrieval.client import CtGovClient
 from ctviz.retrieval.enums import check_enum_drift
-from ctviz.schemas.plan import ChartType, Dimension, Relation
+from ctviz.schemas.plan import (
+    MAX_START_YEAR,
+    MAX_TOP_N,
+    MIN_START_YEAR,
+    ChartType,
+    Dimension,
+    Relation,
+)
 from ctviz.schemas.request import QueryRequest
 from ctviz.schemas.response import ErrorResponse, VisualizationResponse
 
@@ -57,9 +64,12 @@ PLAN_SUGGESTIONS: dict[PlanErrorReason, list[str]] = {
         "Remove `chart_hint` to let the server choose a chart.",
         f"Chart types: {', '.join(c.value for c in ChartType)}.",
     ],
-    PlanErrorReason.INVALID_TOP_N: ["Use a `top_n` of 1 or more, or omit it."],
+    PlanErrorReason.INVALID_TOP_N: [f"Use a `top_n` between 1 and {MAX_TOP_N}, or omit it."],
     PlanErrorReason.TOP_N_REQUIRES_DIMENSION: ["Remove `top_n` for network queries."],
-    PlanErrorReason.INVALID_YEAR_RANGE: ["Make `start_year_from` <= `start_year_to`."],
+    PlanErrorReason.INVALID_YEAR_RANGE: [
+        f"Use start years between {MIN_START_YEAR} and {MAX_START_YEAR}.",
+        "Make `start_year_from` <= `start_year_to`.",
+    ],
     PlanErrorReason.DUPLICATE_COHORT: ["Give each cohort different filters."],
 }
 

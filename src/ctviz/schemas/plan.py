@@ -52,6 +52,13 @@ class ChartType(StrEnum):
 
 MatchMode = Literal["intervention_name", "broad"]
 
+# Bounds on numeric plan values. A dimension has at most a few hundred buckets, so a
+# larger top_n is a typo; years outside this range are typos too, and a year that is not
+# four digits cannot be written as an AREA[StartDate] date at all.
+MAX_TOP_N = 1000
+MIN_START_YEAR = 1900
+MAX_START_YEAR = 2100
+
 
 class Filters(BaseModel):
     """Retrieval filters for one cohort. All are optional and combined with AND."""

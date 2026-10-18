@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ctviz.errors import PlanErrorReason, PlanValidationError
-from ctviz.schemas.plan import QueryPlan
+from ctviz.schemas.plan import MAX_START_YEAR, MAX_TOP_N, MIN_START_YEAR, QueryPlan
 from ctviz.spec.chart import check_chart_hint
 
 
@@ -12,9 +12,10 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
 
     Rejects: neither dimension nor relation; both set; a relation combined with two or
     more cohorts (comparisons need a dimension); a chart_hint incompatible with the
-    dimension or relation (e.g. bar_chart for a relation); a top_n below 1, or combined
-    with a relation (top_n trims buckets, and networks have none); a cohort whose
-    start_year_from is after its start_year_to; two cohorts with the same label or the
+    dimension or relation (e.g. bar_chart for a relation); a top_n outside 1..MAX_TOP_N,
+    or combined with a relation (top_n trims buckets, and networks have none); a start
+    year outside MIN_START_YEAR..MAX_START_YEAR, or a cohort whose start_year_from is
+    after its start_year_to; two cohorts with the same label or the
     same filters (results are keyed by label, and identical cohorts compare nothing).
     """
     if plan.dimension is None and plan.relation is None:
@@ -45,9 +46,10 @@ def check_top_n(plan: QueryPlan) -> None:
     """Raise PlanValidationError if top_n cannot be applied as written."""
     if plan.top_n is None:
         return
-    if plan.top_n < 1:
+    if not 1 <= plan.top_n <= MAX_TOP_N:
         raise PlanValidationError(
-            PlanErrorReason.INVALID_TOP_N, f"top_n must be at least 1, got {plan.top_n}."
+            PlanErrorReason.INVALID_TOP_N,
+            f"top_n must be between 1 and {MAX_TOP_N}, got {plan.top_n}.",
         )
     if plan.relation is not None:
         raise PlanValidationError(
@@ -57,9 +59,16 @@ def check_top_n(plan: QueryPlan) -> None:
 
 
 def check_year_ranges(plan: QueryPlan) -> None:
-    """Raise PlanValidationError for a cohort whose start-year range is empty."""
+    """Raise PlanValidationError for an out-of-range start year or an empty range."""
     for cohort in plan.cohorts:
         start, end = cohort.filters.start_year_from, cohort.filters.start_year_to
+        for name, year in (("start_year_from", start), ("start_year_to", end)):
+            if year is not None and not MIN_START_YEAR <= year <= MAX_START_YEAR:
+                raise PlanValidationError(
+                    PlanErrorReason.INVALID_YEAR_RANGE,
+                    f"Cohort '{cohort.label}': {name} must be between {MIN_START_YEAR} and "
+                    f"{MAX_START_YEAR}, got {year}.",
+                )
         if start is not None and end is not None and start > end:
             raise PlanValidationError(
                 PlanErrorReason.INVALID_YEAR_RANGE,
