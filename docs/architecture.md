@@ -43,6 +43,9 @@ data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) retur
   outcome ok, retry, fallback or failed). A set
   `unsupported_reason` or `clarification` becomes a `PlannerError`
   (`unsupported_question`, `clarification_needed` with the readings as suggestions).
+  Explicit filter values are run through the query builder's checks before the LLM is
+  asked, because they override every draft and a retry could not fix them (an
+  `invalid_filter_value` error, no LLM call).
   Otherwise `merge_draft` applies the request's explicit fields on top: an explicit
   filter replaces the LLM's value in every cohort; an explicit dimension clears the
   LLM's relation and vice versa. Each replaced value is an `overrides` entry. Cohort
@@ -72,8 +75,11 @@ answered faithfully, raising `PlanValidationError` with a `PlanErrorReason`:
 - neither or both of dimension/relation is set;
 - a relation is combined with several cohorts;
 - the chart hint is incompatible with the data;
-- `top_n` is below 1, or combined with a relation (networks have no buckets to trim);
-- a cohort's `start_year_from` is after its `start_year_to`;
+- `top_n` is outside 1..`MAX_TOP_N` (1000), or combined with a relation (networks have
+  no buckets to trim);
+- a start year is outside `MIN_START_YEAR`..`MAX_START_YEAR` (1900..2100; a year that is
+  not four digits cannot be written as an `AREA[StartDate]` date), or a cohort's
+  `start_year_from` is after its `start_year_to`;
 - two cohorts share a label or identical filters (results are keyed by label, and
   identical cohorts compare nothing; e.g. an explicit `drug` over an LLM comparison).
 
@@ -82,12 +88,16 @@ chart selection cannot disagree (invariant 7).
 
 **retrieval** (`retrieval/`). This is the only stage that does network I/O.
 - `query_builder.py` (pure) turns one cohort's `Filters` into `/studies` params. The
-  drug goes to `filter.advanced=AREA[InterventionName]"<drug>"` (always quoted) or, in
+  drug goes to `filter.advanced=AREA[InterventionName]"<drug>"` (always quoted; values
+  with `"` or a standalone `AND`/`OR`/`NOT` are rejected, parentheses are kept) or, in
   `broad` mode, to `query.intr`. Condition, sponsor and country go raw to `query.cond`,
   `query.spons` and `query.locn`; values containing Essie syntax (`"`, `()`, `[]`,
   standalone `AND`/`OR`/`NOT`) are rejected with `InvalidFilterError`. Phases, start
   years and the drug clause are AND-joined in `filter.advanced`; statuses use
-  `filter.overallStatus`. `search_semantics` describes what each filter actually
+  `filter.overallStatus`. `study_query_params` adds `sort=StudyFirstPostDate:desc` to
+  every cohort's params (the pipeline fetches with these), so a capped fetch is the most
+  recently registered trials rather than the API's undocumented default order.
+  `search_semantics` describes what each filter actually
   matches, for `meta.search_semantics`.
 - `client.py` (`CtGovClient`) always projects with `STUDY_FIELDS`, sends identical
   params on every page (only `pageToken` changes), pages at min(1000, cap), paces
@@ -186,7 +196,7 @@ checked against golden snapshots in `tests/golden/`.
 - `Meta` carries `interpretation` (the question, the executed plan, `planned_by` and,
   for LLM plans, the model, draft, overrides and rejected drafts),
   `count_unit`, `search_semantics`, retrieval totals plus per-cohort `cohorts` stats,
-  `data_quality` ("normal" or "degraded"), `top_n`, `network` (exclusions, caps and
+  `data_quality` ("normal", "degraded" or "partial"), `top_n`, `network` (exclusions, caps and
   citation reduction; networks only),
   `data_timestamp`, `timing_ms`, and every assumption and warning (invariants 3, 5).
 
@@ -206,6 +216,13 @@ classified with `DataQualityThresholds` (`DEGRADED_SKIP_RATIO` 0.05, `REFUSE_SKI
 the result is normal; at the degraded ratio `meta.data_quality` is "degraded" and a
 `DEGRADED DATA:` warning comes first; at the refuse ratio in any cohort,
 `UpstreamDataFormatError` is raised instead of returning a chart that could mislead.
+When the record cap cuts any cohort's fetch, `meta.data_quality` is "partial" (it takes
+precedence over "degraded", whose warning still comes first), the title ends with
+" (partial: first 10,000 of 16,913 matches)" (per truncated cohort when several are
+compared), and `meta.assumptions` names the order ("first 10,000 of 16,913 matches
+ordered by StudyFirstPostDate desc (the most recently registered)"), says it is not a
+random sample, and that trials sharing the cutoff date are picked in the API's
+unspecified tie order.
 
 **api** (`api/`). `POST /query` takes `QueryRequest` (`schemas/request.py`): `query`,
 which alone is enough when the LLM planner is configured, plus optional structured
@@ -214,7 +231,8 @@ dimension or relation). The app builds the LLM fallback chain at startup, so a
 malformed chain or API key stops the server with a clear message. It also starts the enum
 drift check as a background task (`CTVIZ_ENUM_DRIFT_CHECK`, on by default), so a slow or
 failing `/studies/enums` never delays startup; the task is cancelled at shutdown. Failures return
-`ErrorResponse` (`code`, `message`, `suggestions`): 422 for invalid requests, plans and
+`ErrorResponse` (`code`, `message`, `suggestions`): 422 for invalid requests (unknown
+fields, a blank `query`, `top_n` or start years outside the validator's bounds), plans and
 filter values, and for unsupported, ambiguous or unplannable questions; 502 when the API
 or the LLM provider fails, the API rejects the query, or too many retrieved records are
 unreadable (`upstream_data_format_changed`); 503 when the API keeps

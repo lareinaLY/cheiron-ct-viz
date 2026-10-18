@@ -193,7 +193,20 @@ Quirks:
   A malformed token gives `400 Incorrect pageToken format`.
 - Full fetch (`query.intr=pembrolizumab`, pageSize 1000, projected): 3 pages, about 4.6 s,
   **2981 records = totalCount 2981, 2981 unique NCT IDs**. The count reconciles, with no duplicates across pages.
-- Results are unsorted by default; `sort` accepts only date and numeric fields, plus `@relevance`.
+- Results are unsorted by default; the spec says this is "for a performance reason". `sort`
+  accepts only date and numeric fields, plus `@relevance`, with at most 2 keys
+  (`field:asc|desc`; studies missing the field come last). `NCTId` is a string, so it cannot
+  be a tie-breaker, and no unique numeric field exists.
+- Verified 2026-10-18 on `query.cond=breast cancer` (16,913 matches): the default order is
+  repeatable between calls but follows no date (its first page shares 62 of 1,000 studies
+  with the `LastUpdatePostDate:desc` first page). Within ties, sorted order was repeatable but
+  not by NCT ID. At the 10,000 cap, `LastUpdatePostDate:desc` cut through a date shared by 6
+  matches (2 included); `StudyFirstPostDate:desc` ended on 2016-07-15 with all 4 of its
+  matches included.
+- Every `/studies` query is sent with `sort=StudyFirstPostDate:desc`, so a capped fetch is
+  "the most recently registered trials" (decisions.md). This only matters for dimensions
+  that cannot use the exact count route being added next; for API-countable dimensions,
+  truncation will no longer occur.
 
 ## 7. `fields` projection
 
@@ -307,6 +320,16 @@ Quirks:
 At 1000 per page and about 1.3 s per request, a full projected fetch takes about 3 pages for
 pembrolizumab and about 25 pages (about 35 s) for diabetes. Projection is required to keep
 payloads small, about 1.7 KB per study with 20 fields.
+
+Measured at the record cap (2026-10-18, `examples/i_breast_cancer_by_phase.*`, no
+cache): `query.cond=breast cancer` by phase gave totalCount 16,913, 10,000 retrieved
+(10 pages), `truncated=true`, coverage 59.1%, 0 skipped. With the default order: 13.8-14.0 s
+wall time over two runs (about 12.2 s retrieval). With `sort=StudyFirstPostDate:desc`
+(the current example): 13.9 s (12.1 s retrieval, 1.3 s normalize, 0.4 s aggregate), a
+158.6 MB tracemalloc peak in the process, and a 35.2 KB response (citations capped at 20
+per bucket); sorting added no measurable time. The two orders select different subsets
+(e.g. Phase 2: 2,094 vs 1,699; Not Applicable: 2,952 vs 3,557), which is why the order
+is named in `meta.assumptions` with the title suffix and `data_quality="partial"`.
 
 ## 13. Other syntax notes
 
