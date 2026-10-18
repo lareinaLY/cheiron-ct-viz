@@ -55,7 +55,15 @@ No misses.
   reading is not a supported dimension). A spurious clarification is a safe failure
   (a 422 with options, never a wrong chart) but costs the user a round trip.
 - `gpt-5-mini` is about 5x slower (mean 6.6 s vs 1.2 s per question, max 10.7 s) for no
-  accuracy gain on this set. `gpt-4.1-mini` stays the default (`LLM_MODEL`).
+  accuracy gain on this set. `gpt-4.1-mini` stays the default (first entry of `LLM_FALLBACK_CHAIN`).
+
+## Later additions
+
+- 2026-10-17: `geographic_ranking_without_number` ("Which countries have the most
+  recruiting trials for non-small cell lung cancer?", expected `top_n` 15 from the
+  ranking default) was added with the `ranking_intent` prompt change and run alone with
+  `--ids`: `gpt-4.1-mini` got every field right (2.9s). The tables above predate this
+  case and the prompt change; the full set has not been re-run.
 
 ## Limitations
 

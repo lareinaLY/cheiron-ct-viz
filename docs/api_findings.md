@@ -26,6 +26,7 @@ These are choices a reasonable person could make differently. Each states our ch
 | Drug matching | Exact `AREA[InterventionName]` by default; `query.intr` as opt-in `broad` | Broad by default, or `AREA[InterventionMeshTerm]` |
 | Non-drug nodes in networks | Drug nodes are all intervention MeSH terms, including radiation or procedures; this is noted in meta assumptions | Filter nodes by intervention type (DRUG/BIOLOGICAL). This needs an intervention↔MeSH link the API doesn't provide |
 | Trials without intervention MeSH | `Unknown` bucket, with a meta warning giving the count | Fall back to the raw intervention name as the bucket key, which splits aliases into separate buckets |
+| "Fewest" questions ("which countries have the fewest trials") | Not a ranking: `ranking_intent` covers most/top/leading only, so the chart is untrimmed and sorted by count, with the smallest values last | Trim to the N smallest buckets, which needs a sort direction in the plan |
 | Year-only start date in monthly views | `Unknown` bucket for `start_month` (citing the raw year); counted normally for `start_year` | Place it in January (the API's indexing convention) |
 
 ---

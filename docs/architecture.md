@@ -27,10 +27,20 @@ question into a `QueryPlan` (`schemas/plan.py`): cohorts with filters, one dimen
 one relation, an optional chart hint, `top_n` and the match mode. The plan never holds
 data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) returns an
 `Interpretation` (`schemas/response.py`):
-- With an LLM (`OPENAI_API_KEY` set): `prompt.py` builds the messages and `llm.py`
-  (`OpenAiLlm.structured_plan`, OpenAI `chat.completions.parse` with a strict JSON
-  schema, one retry on transient errors) returns an `LlmPlanDraft`: filter sets per
-  cohort, the grouping, `unsupported_reason` and `clarification`. A set
+- With an LLM (a key for at least one provider in `LLM_FALLBACK_CHAIN`): `prompt.py`
+  builds the messages and `llm.py` returns an `LlmPlanDraft`: filter sets per cohort,
+  the grouping, `ranking_intent`, `unsupported_reason` and `clarification`.
+  `FallbackChain` tries the configured providers in order (default
+  `openai:gpt-4.1-mini`; optionally `deepseek:deepseek-chat`). Each is an
+  `OpenAICompatibleProvider` with one SDK retry on transient errors, asked in its
+  recorded response mode: OpenAI with a strict JSON schema (`chat.completions.parse`),
+  DeepSeek in `json_object` mode with the schema embedded in the system prompt (it
+  rejects strict `json_schema`). The chain moves to the next provider only after an
+  infrastructure failure (timeout, connection error, 429, 5xx); any other failure is
+  final, and validation rejections stay on the retry-with-error path below. A provider
+  without a key is skipped at startup with a log line. Every LLM call logs one line
+  (`llm_call provider= model= latency_ms= input_tokens= output_tokens= outcome=`, with
+  outcome ok, retry, fallback or failed). A set
   `unsupported_reason` or `clarification` becomes a `PlannerError`
   (`unsupported_question`, `clarification_needed` with the readings as suggestions).
   Otherwise `merge_draft` applies the request's explicit fields on top: an explicit
@@ -39,8 +49,13 @@ data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) retur
   labels are derived from the merged filters, never taken from the LLM. The plan is then
   validated (`validate_plan` plus the query builder's filter checks). A rejected draft is
   retried once with the error appended to the conversation; a second rejection is a
-  `planning_failed` error. `planned_by="llm"`, with `model`, `draft`, `overrides`,
-  `rejected_attempts` and `planning_ms`.
+  `planning_failed` error. When the draft flags `ranking_intent` ("which countries have
+  the most ...") and neither the question nor the request gives `top_n`, the planner
+  sets `top_n` to `DEFAULT_TOP_N_FOR_RANKING` (15) and records it in `ranking_top_n`;
+  the LLM never picks the number, and relations are never trimmed. `planned_by="llm"`,
+  with `model` (primary of the chain), `provider`, `model_used` (as reported by the
+  provider), `response_mode`, `fallback_reason`, `draft`, `overrides`,
+  `rejected_attempts`, `ranking_top_n` and `planning_ms`.
 - Without an LLM: a request with structured fields is planned from them alone
   (`planned_by="rules"`); a request with `query` only is an `llm_not_configured` error.
 - The prompt is rendered from the registry (dimension and relation descriptions),
@@ -99,7 +114,8 @@ the caller can drop the record and report it.
 **aggregate** (`aggregate/`). These are pure functions over `TrialRecord`s:
 - `group_by` returns a `GroupResult`: buckets with counts, estimated and
   unknown-date-type counts (also totalled on the result), an
-  incomplete-period flag, capped citations plus the true citation total, an overlap
+  incomplete-period flag, a future-period flag (`is_future`: periods after `as_of`,
+  reported in one warning as projections), capped citations plus the true citation total, an overlap
   flag, and `assumptions`/`warnings`.
 - `build_network` returns a `Graph` (nodes, weighted edges, citations).
 - `group_cohorts` runs `group_by` per cohort and returns `GroupedCohorts`: one result per
@@ -123,7 +139,8 @@ checked against golden snapshots in `tests/golden/`.
 - Titles are derived from the plan only (e.g. "Trials by phase for pembrolizumab").
   Titles and axis titles use the dimension's `title_label`, which states the granularity
   of temporal dimensions ("start year"); warnings keep using `label` ("start date").
-- Every temporal datum carries `estimated_count` and `unknown_date_type_count` (dates
+- Every temporal datum carries `is_future` (its period starts after the as-of date, so
+  it is a projection of planned starts), `estimated_count` and `unknown_date_type_count` (dates
   with no ACTUAL/ESTIMATED type), so a renderer can style recent or uncertain periods
   differently. The totals are in `meta.estimated_count` and `meta.unknown_date_type_count`
   (None when they do not apply).
@@ -135,8 +152,9 @@ checked against golden snapshots in `tests/golden/`.
 **pipeline** (`pipeline.py`). `execute(interpretation, client)` calls the stages in order
 and times each one (planning time is `interpretation.planning_ms`). `run(plan, question,
 client)` executes a plan supplied directly by code (`planned_by="structured_fields"`).
-How the plan was made (who read the question, each explicit override, each rejected
-draft) is stated in `meta.assumptions`. Filters are built during validation, so bad values fail before any
+How the plan was made (who read the question and through which provider, a provider
+fallback, each explicit override, each rejected draft, a ranking default for `top_n`
+with the number of omitted buckets) is stated in `meta.assumptions`. Filters are built during validation, so bad values fail before any
 network call. A study that raises `SourceRecordError` is skipped, counted in
 `cohorts[].records_skipped` and reported by NCT ID in `meta.warnings`, never fatal.
 Truncation, reconciliation failures, duplicates and cache use also go into meta.
@@ -144,8 +162,8 @@ Truncation, reconciliation failures, duplicates and cache use also go into meta.
 **api** (`api/`). `POST /query` takes `QueryRequest` (`schemas/request.py`): `query`,
 which alone is enough when the LLM planner is configured, plus optional structured
 fields that override the LLM's reading (without an LLM they map to one cohort and a
-dimension or relation). The app builds the LLM client at startup, so a malformed
-`OPENAI_API_KEY` stops the server with a clear message. Failures return
+dimension or relation). The app builds the LLM fallback chain at startup, so a
+malformed chain or API key stops the server with a clear message. Failures return
 `ErrorResponse` (`code`, `message`, `suggestions`): 422 for invalid requests, plans and
 filter values, and for unsupported, ambiguous or unplannable questions; 502 when the API
 or the LLM provider fails, or the API rejects the query; 503 when the API keeps
