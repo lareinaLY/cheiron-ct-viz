@@ -245,3 +245,12 @@ def test_openapi_docs_render(api: TestClient) -> None:
     assert "/query" in schema.json()["paths"]
     assert "ErrorResponse" in schema.json()["components"]["schemas"]
     assert api.get("/docs").status_code == 200
+
+
+def test_demo_ui_is_served_uncached(api: TestClient) -> None:
+    response = api.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["cache-control"] == "no-store"
+    assert "/query" in response.text
+    assert "/" not in api.get("/openapi.json").json()["paths"]
