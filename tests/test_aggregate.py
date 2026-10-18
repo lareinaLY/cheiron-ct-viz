@@ -639,3 +639,71 @@ def test_every_dimension_is_registered() -> None:
 def test_every_relation_is_registered() -> None:
     for relation in Relation:
         assert isinstance(build_network([make_record("NCT1")], relation), Graph)
+
+
+def dated(nct_id: str, day: date, date_type: str, precision: str = "day") -> TrialRecord:
+    return make_record(
+        nct_id,
+        start_date=day,
+        start_date_raw=day.isoformat() if precision == "day" else day.isoformat()[:7],
+        start_date_precision=precision,
+        start_date_type=date_type,
+    )
+
+
+class TestUnknownDateType:
+    def records(self) -> list[TrialRecord]:
+        return [
+            dated("NCT1", date(2020, 3, 1), "actual"),
+            dated("NCT2", date(2020, 4, 1), "estimated"),
+            dated("NCT3", date(2020, 5, 1), "unknown"),
+            dated("NCT4", date(2021, 6, 1), "unknown", precision="month"),
+            make_record("NCT5"),
+        ]
+
+    @pytest.mark.parametrize("dimension", [Dimension.START_YEAR, Dimension.START_MONTH])
+    def test_totals_on_result(self, dimension: Dimension) -> None:
+        result = group_by(self.records(), dimension, as_of=AS_OF)
+        assert result.estimated_count == 1
+        # NCT5 has no start date at all: it is in Unknown, not an unknown-type date.
+        assert result.unknown_date_type_count == 2
+
+    def test_counts_per_bucket(self) -> None:
+        result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
+        year_2020 = bucket(result, "2020")
+        assert year_2020.estimated_count == 1
+        assert year_2020.unknown_date_type_count == 1
+        assert bucket(result, "2021").unknown_date_type_count == 1
+        assert bucket(result, UNKNOWN_BUCKET_KEY).unknown_date_type_count == 0
+
+    def test_warning_when_present(self) -> None:
+        result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
+        matches = [w for w in result.warnings if "no ACTUAL/ESTIMATED type" in w]
+        assert len(matches) == 1
+        assert matches[0].startswith("2 trials")
+
+    def test_no_warning_when_all_typed(self) -> None:
+        records = [dated("NCT1", date(2020, 3, 1), "actual")]
+        result = group_by(records, Dimension.START_YEAR, as_of=AS_OF)
+        assert result.unknown_date_type_count == 0
+        assert not any("ACTUAL/ESTIMATED" in w for w in result.warnings)
+
+    def test_not_applicable_to_non_temporal_dimensions(self) -> None:
+        result = group_by(self.records(), Dimension.PHASE, as_of=AS_OF)
+        assert result.unknown_date_type_count is None
+        assert all(b.unknown_date_type_count == 0 for b in result.buckets)
+
+    def test_year_only_month_value_in_unknown_bucket_not_double_reported(self) -> None:
+        records = [dated("NCT1", date(2026, 1, 1), "unknown", precision="year")]
+        result = group_by(records, Dimension.START_MONTH, as_of=AS_OF)
+        assert bucket(result, UNKNOWN_BUCKET_KEY).count == 1
+        assert result.unknown_date_type_count == 0
+
+
+def test_temporal_title_label_differs_from_warning_label() -> None:
+    from ctviz.aggregate.registry import DIMENSIONS
+
+    assert DIMENSIONS[Dimension.START_YEAR].label == "start date"
+    assert DIMENSIONS[Dimension.START_YEAR].title_label == "start year"
+    assert DIMENSIONS[Dimension.START_MONTH].title_label == "start month"
+    assert DIMENSIONS[Dimension.PHASE].title_label == "phase"

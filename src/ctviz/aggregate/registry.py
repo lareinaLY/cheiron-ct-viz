@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
+from typing import Literal
 
 from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
@@ -67,6 +68,7 @@ class DimensionValue:
     label: str
     citations: tuple[Citation, ...]
     estimated: bool = False
+    unknown_date_type: bool = False
     is_unknown: bool = False
     rank: tuple[int, ...] = ()
 
@@ -75,12 +77,17 @@ class DimensionValue:
 class DimensionSpec:
     """Declaration of one dimension.
 
+    `label` names the dimension in warnings and assumptions; `title_label` names it in
+    chart titles and axis titles, where temporal dimensions state their granularity
+    ("start year" rather than "start date").
     `source_field` is a key of `TrialRecord.source_paths`; `leaf` is appended after the
     list index (e.g. ".name"). `extract` returns [] when the trial lacks the value,
-    which puts it in the Unknown bucket.
+    which puts it in the Unknown bucket. `time_unit` is the Vega-Lite time unit of a
+    temporal dimension's bucket keys.
     """
 
     label: str
+    title_label: str
     kind: DimensionKind
     can_overlap: bool
     source_field: str
@@ -88,6 +95,7 @@ class DimensionSpec:
     order: BucketOrder
     leaf: str = ""
     period_key: Callable[[date], str] | None = None
+    time_unit: Literal["year", "yearmonth"] | None = None
     assumptions: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -148,8 +156,18 @@ def extract_start_year(record: TrialRecord, path: PathFor) -> list[DimensionValu
         return []
     key = str(record.start_date.year)
     citation = cite(record, path(None), record.start_date_raw)
-    estimated = record.start_date_type == "estimated"
-    return [DimensionValue(key=key, label=key, citations=(citation,), estimated=estimated)]
+    return [dated_value(record, key, citation)]
+
+
+def dated_value(record: TrialRecord, key: str, citation: Citation) -> DimensionValue:
+    """A period value flagged with the start date's type (estimated, or no type at all)."""
+    return DimensionValue(
+        key=key,
+        label=key,
+        citations=(citation,),
+        estimated=record.start_date_type == "estimated",
+        unknown_date_type=record.start_date_type == "unknown",
+    )
 
 
 def extract_start_month(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
@@ -167,9 +185,7 @@ def extract_start_month(record: TrialRecord, path: PathFor) -> list[DimensionVal
                 is_unknown=True,
             )
         ]
-    key = month_key(record.start_date)
-    estimated = record.start_date_type == "estimated"
-    return [DimensionValue(key=key, label=key, citations=(citation,), estimated=estimated)]
+    return [dated_value(record, month_key(record.start_date), citation)]
 
 
 def month_key(day: date) -> str:
@@ -281,6 +297,7 @@ def extract_enrollment_bucket(record: TrialRecord, path: PathFor) -> list[Dimens
 DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.PHASE: DimensionSpec(
         label="phase",
+        title_label="phase",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="phases",
@@ -293,24 +310,29 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.START_YEAR: DimensionSpec(
         label="start date",
+        title_label="start year",
         kind=DimensionKind.TEMPORAL,
         can_overlap=False,
         source_field="start_date",
         extract=extract_start_year,
         order=BucketOrder.BY_KEY,
         period_key=year_key,
+        time_unit="year",
     ),
     Dimension.START_MONTH: DimensionSpec(
         label="start month",
+        title_label="start month",
         kind=DimensionKind.TEMPORAL,
         can_overlap=False,
         source_field="start_date",
         extract=extract_start_month,
         order=BucketOrder.BY_KEY,
         period_key=month_key,
+        time_unit="yearmonth",
     ),
     Dimension.COUNTRY: DimensionSpec(
         label="location country",
+        title_label="location country",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="countries",
@@ -322,6 +344,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.SPONSOR_CLASS: DimensionSpec(
         label="lead sponsor class",
+        title_label="lead sponsor class",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="lead_sponsor",
@@ -331,6 +354,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.LEAD_SPONSOR: DimensionSpec(
         label="lead sponsor",
+        title_label="lead sponsor",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="lead_sponsor",
@@ -340,6 +364,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.INTERVENTION_TYPE: DimensionSpec(
         label="intervention type",
+        title_label="intervention type",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="interventions",
@@ -349,6 +374,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.OVERALL_STATUS: DimensionSpec(
         label="overall status",
+        title_label="overall status",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="overall_status",
@@ -357,6 +383,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.CONDITION: DimensionSpec(
         label="condition",
+        title_label="condition",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="conditions",
@@ -366,6 +393,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.INTERVENTION_MESH: DimensionSpec(
         label="intervention MeSH term",
+        title_label="intervention MeSH term",
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="intervention_mesh_terms",
@@ -376,6 +404,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     ),
     Dimension.ENROLLMENT_BUCKET: DimensionSpec(
         label="enrollment count",
+        title_label="enrollment count",
         kind=DimensionKind.BINNED,
         can_overlap=False,
         source_field="enrollment",
@@ -390,10 +419,13 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
 class RelationSpec:
     """Declaration of one relation: two dimensions whose values become linked nodes.
 
+    `label` names the relation in chart titles.
+
     When both sides are the same dimension, edges are the unordered pairs of distinct
     values within a trial; otherwise every left value links to every right value.
     """
 
+    label: str
     left: Dimension
     left_type: NodeType
     right: Dimension
@@ -408,6 +440,7 @@ class RelationSpec:
 
 RELATIONS: dict[Relation, RelationSpec] = {
     Relation.SPONSOR_DRUG: RelationSpec(
+        label="lead sponsor-drug",
         left=Dimension.LEAD_SPONSOR,
         left_type=NodeType.SPONSOR,
         right=Dimension.INTERVENTION_MESH,
@@ -418,6 +451,7 @@ RELATIONS: dict[Relation, RelationSpec] = {
         ),
     ),
     Relation.DRUG_DRUG_COOCCURRENCE: RelationSpec(
+        label="drug co-occurrence",
         left=Dimension.INTERVENTION_MESH,
         left_type=NodeType.DRUG,
         right=Dimension.INTERVENTION_MESH,
@@ -425,6 +459,7 @@ RELATIONS: dict[Relation, RelationSpec] = {
         assumptions=(NON_DRUG_MESH_NOTE,),
     ),
     Relation.CONDITION_DRUG: RelationSpec(
+        label="condition-drug",
         left=Dimension.CONDITION,
         left_type=NodeType.CONDITION,
         right=Dimension.INTERVENTION_MESH,

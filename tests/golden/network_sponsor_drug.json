@@ -1,0 +1,1445 @@
+{
+  "visualization": {
+    "type": "network_graph",
+    "title": "Lead sponsor-drug network for pembrolizumab",
+    "encoding": {
+      "x": null,
+      "y": null,
+      "color": {
+        "field": "type",
+        "type": "nominal",
+        "title": "Entity type",
+        "sort": null,
+        "time_unit": null
+      },
+      "size": {
+        "field": "size",
+        "type": "quantitative",
+        "title": "Trials",
+        "sort": null,
+        "time_unit": null
+      }
+    },
+    "data": [],
+    "nodes": [
+      {
+        "data": {
+          "id": "drug:C582435",
+          "label": "pembrolizumab",
+          "type": "drug",
+          "size": 5,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "SEA-CD40",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "pembrolizumab (KEYTRUDA®)",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "pemetrexed",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "carboplatin",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Vicriviroc",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Abiraterone acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[3].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "225Ac-SSO110 + SoC",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Atezolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Durvalumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Avelumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 25
+        }
+      },
+      {
+        "data": {
+          "id": "sponsor:Merck Sharp & Dohme LLC",
+          "label": "Merck Sharp & Dohme LLC",
+          "type": "sponsor",
+          "size": 2,
+          "citations": [
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D000069501",
+          "label": "Abiraterone Acetate",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "Abiraterone Acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Abiraterone acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "sponsor:Ariceum Therapeutics GmbH",
+          "label": "Ariceum Therapeutics GmbH",
+          "type": "sponsor",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Ariceum Therapeutics GmbH",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 1
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D016190",
+          "label": "Carboplatin",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "Carboplatin",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "SEA-CD40",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "pembrolizumab (KEYTRUDA®)",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "pemetrexed",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "carboplatin",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 5
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D000068437",
+          "label": "Pemetrexed",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "Pemetrexed",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "SEA-CD40",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "pembrolizumab (KEYTRUDA®)",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "pemetrexed",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "carboplatin",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 5
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D011239",
+          "label": "Prednisolone",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[5].term",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Abiraterone acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D011241",
+          "label": "Prednisone",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[3].term",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Abiraterone acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D011827",
+          "label": "Radiation",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "Radiation",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Radiation Therapy (RT)",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "MK-3475",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 3
+        }
+      },
+      {
+        "data": {
+          "id": "drug:D011878",
+          "label": "Radiotherapy",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "Radiotherapy",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Radiation Therapy (RT)",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "MK-3475",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 3
+        }
+      },
+      {
+        "data": {
+          "id": "sponsor:Seagen Inc.",
+          "label": "Seagen Inc.",
+          "type": "sponsor",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Seagen Inc.",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 1
+        }
+      },
+      {
+        "data": {
+          "id": "sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+          "label": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+          "type": "sponsor",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 1
+        }
+      },
+      {
+        "data": {
+          "id": "drug:C000594389",
+          "label": "atezolizumab",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "atezolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "225Ac-SSO110 + SoC",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Atezolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Durvalumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Avelumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Retifanlimab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:C000609138",
+          "label": "avelumab",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "avelumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "225Ac-SSO110 + SoC",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Atezolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Durvalumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Avelumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Retifanlimab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:C000613593",
+          "label": "durvalumab",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "durvalumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "225Ac-SSO110 + SoC",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Atezolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Durvalumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Avelumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Retifanlimab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:C540278",
+          "label": "enzalutamide",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[4].term",
+              "value": "enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Abiraterone acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:C531550",
+          "label": "olaparib",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[2].name",
+              "value": "Abiraterone acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[3].name",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 7
+        }
+      },
+      {
+        "data": {
+          "id": "drug:C486781",
+          "label": "vicriviroc",
+          "type": "drug",
+          "size": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "vicriviroc",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Vicriviroc",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "supporting"
+            }
+          ],
+          "citation_count_total": 3
+        }
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "source": "drug:C582435",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 2,
+          "citations": [
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 4,
+          "id": "drug:C582435--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C000594389",
+          "target": "sponsor:Ariceum Therapeutics GmbH",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Ariceum Therapeutics GmbH",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "atezolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C000594389--sponsor:Ariceum Therapeutics GmbH"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C000609138",
+          "target": "sponsor:Ariceum Therapeutics GmbH",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Ariceum Therapeutics GmbH",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "avelumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C000609138--sponsor:Ariceum Therapeutics GmbH"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C000613593",
+          "target": "sponsor:Ariceum Therapeutics GmbH",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Ariceum Therapeutics GmbH",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "durvalumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C000613593--sponsor:Ariceum Therapeutics GmbH"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C486781",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03631407",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "vicriviroc",
+              "url": "https://clinicaltrials.gov/study/NCT03631407",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C486781--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C531550",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "olaparib",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C531550--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C540278",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[4].term",
+              "value": "enzalutamide",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C540278--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C582435",
+          "target": "sponsor:Ariceum Therapeutics GmbH",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Ariceum Therapeutics GmbH",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[3].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C582435--sponsor:Ariceum Therapeutics GmbH"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C582435",
+          "target": "sponsor:Seagen Inc.",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Seagen Inc.",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C582435--sponsor:Seagen Inc."
+        }
+      },
+      {
+        "data": {
+          "source": "drug:C582435",
+          "target": "sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:C582435--sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D000068437",
+          "target": "sponsor:Seagen Inc.",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Seagen Inc.",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "Pemetrexed",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D000068437--sponsor:Seagen Inc."
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D000069501",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "Abiraterone Acetate",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D000069501--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D011239",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[5].term",
+              "value": "Prednisolone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D011239--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D011241",
+          "target": "sponsor:Merck Sharp & Dohme LLC",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Merck Sharp & Dohme LLC",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT03834519",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[3].term",
+              "value": "Prednisone",
+              "url": "https://clinicaltrials.gov/study/NCT03834519",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D011241--sponsor:Merck Sharp & Dohme LLC"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D011827",
+          "target": "sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[1].term",
+              "value": "Radiation",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D011827--sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D011878",
+          "target": "sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[0].term",
+              "value": "Radiotherapy",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D011878--sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University"
+        }
+      },
+      {
+        "data": {
+          "source": "drug:D016190",
+          "target": "sponsor:Seagen Inc.",
+          "weight": 1,
+          "citations": [
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+              "value": "Seagen Inc.",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT04993677",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "Carboplatin",
+              "url": "https://clinicaltrials.gov/study/NCT04993677",
+              "role": "primary"
+            }
+          ],
+          "citation_count_total": 2,
+          "id": "drug:D016190--sponsor:Seagen Inc."
+        }
+      }
+    ]
+  },
+  "meta": {
+    "interpretation": {
+      "question": "who sponsors pembrolizumab with which drugs",
+      "plan": {
+        "cohorts": [
+          {
+            "label": "pembrolizumab",
+            "filters": {
+              "drug": "pembrolizumab",
+              "condition": null,
+              "sponsor": null,
+              "country": null,
+              "phases": [],
+              "statuses": [],
+              "start_year_from": null,
+              "start_year_to": null
+            }
+          }
+        ],
+        "dimension": null,
+        "relation": "sponsor_drug",
+        "metric": "trial_count",
+        "chart_hint": null,
+        "time_granularity": null,
+        "top_n": null,
+        "match_mode": "intervention_name"
+      },
+      "planned_by": "structured_fields"
+    },
+    "count_unit": "trials",
+    "filters_applied": [
+      {
+        "label": "pembrolizumab",
+        "filters": {
+          "drug": "pembrolizumab",
+          "condition": null,
+          "sponsor": null,
+          "country": null,
+          "phases": [],
+          "statuses": [],
+          "start_year_from": null,
+          "start_year_to": null
+        }
+      }
+    ],
+    "match_mode": "intervention_name",
+    "search_semantics": {
+      "drug": "Exact intervention name: filter.advanced AREA[InterventionName]\"<drug>\" matches the listed intervention names (with the API's concept expansion of aliases), not titles or descriptions."
+    },
+    "phase_bucketing": "exclusive_combined",
+    "country_granularity": "country_as_reported",
+    "buckets_overlap": true,
+    "total_matched": 5,
+    "records_retrieved": 5,
+    "truncated": false,
+    "coverage": 1.0,
+    "cohorts": [
+      {
+        "label": "pembrolizumab",
+        "total_matched": 5,
+        "records_retrieved": 5,
+        "records_skipped": 0,
+        "truncated": false,
+        "coverage": 1.0,
+        "reconciled": true
+      }
+    ],
+    "top_n": null,
+    "estimated_count": null,
+    "unknown_date_type_count": null,
+    "data_timestamp": "2026-10-16T09:00:05",
+    "assumptions": [
+      "Sponsors are lead sponsors only; collaborators are not included.",
+      "Intervention MeSH terms are study-level and include non-drug interventions (e.g. radiation, procedures).",
+      "Node size is the number of trials an entity appears in; a trial counts toward every entity it lists, so node sizes can add up to more than the number of trials."
+    ],
+    "warnings": [],
+    "timing_ms": {}
+  }
+}

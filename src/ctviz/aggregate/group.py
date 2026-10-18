@@ -10,6 +10,7 @@ from ctviz.aggregate.registry import (
     DIMENSIONS,
     UNKNOWN_BUCKET_KEY,
     BucketOrder,
+    DimensionKind,
     DimensionSpec,
     DimensionValue,
     cite,
@@ -34,12 +35,14 @@ class BucketTally:
     rank: tuple[int, ...]
     count: int = 0
     estimated_count: int = 0
+    unknown_date_type_count: int = 0
     citations: list[Citation] = field(default_factory=list)
 
     def add(self, value: DimensionValue) -> None:
         """Count one trial into this bucket."""
         self.count += 1
         self.estimated_count += int(value.estimated)
+        self.unknown_date_type_count += int(value.unknown_date_type)
         self.citations.extend(value.citations)
 
 
@@ -60,6 +63,9 @@ def group_by(
     - Multi-valued dimensions (country, condition, intervention_mesh) count a trial once
       per distinct value and set `buckets_overlap=True`.
     - Temporal dimensions count estimated dates and report them in `estimated_count`.
+      Dates with no ACTUAL/ESTIMATED type are counted too, reported per bucket and in
+      total in `unknown_date_type_count`, with a warning. A trial with no date at all is
+      in Unknown and is not counted there.
       The bucket for the period containing `as_of` (default: today) is `incomplete`.
     - intervention_mesh: primary citation is `...meshes[i].term`; the study's raw
       intervention names are attached as supporting citations, with no claimed link.
@@ -89,10 +95,15 @@ def group_by(
         to_bucket(tally, citation_cap, incomplete=tally.key == current_period)
         for tally in sort_tallies(list(tallies.values()), spec.order)
     ]
+    temporal = spec.kind == DimensionKind.TEMPORAL
     return GroupResult(
         dimension=dimension,
         buckets=buckets,
         buckets_overlap=overlap,
+        estimated_count=sum(b.estimated_count for b in buckets),
+        unknown_date_type_count=(
+            sum(b.unknown_date_type_count for b in buckets) if temporal else None
+        ),
         assumptions=list(spec.assumptions) + overlap_assumptions(spec, overlap, len(records)),
         warnings=bucket_warnings(spec, buckets, len(records), as_of),
     )
@@ -124,6 +135,7 @@ def to_bucket(tally: BucketTally, citation_cap: int, *, incomplete: bool) -> Buc
         label=tally.label,
         count=tally.count,
         estimated_count=tally.estimated_count,
+        unknown_date_type_count=tally.unknown_date_type_count,
         incomplete=incomplete,
         is_unknown=tally.is_unknown,
         citations=tally.citations[:citation_cap],
@@ -155,6 +167,12 @@ def bucket_warnings(
     estimated = sum(b.estimated_count for b in buckets)
     if estimated:
         warnings.append(f"{estimated} trials are counted using an estimated {spec.label}.")
+    untyped = sum(b.unknown_date_type_count for b in buckets)
+    if untyped:
+        warnings.append(
+            f"{untyped} trials have a {spec.label} with no ACTUAL/ESTIMATED type (legacy "
+            "records); they are counted but marked neither actual nor estimated."
+        )
     warnings.extend(
         f"Bucket '{b.key}' is still in progress as of {as_of.isoformat()}; its count may grow."
         for b in buckets

@@ -1,0 +1,311 @@
+{
+  "visualization": {
+    "type": "time_series",
+    "title": "Trials by start year for pembrolizumab, started 2014 or later",
+    "encoding": {
+      "x": {
+        "field": "key",
+        "type": "temporal",
+        "title": "Start year",
+        "sort": null,
+        "time_unit": "year"
+      },
+      "y": {
+        "field": "count",
+        "type": "quantitative",
+        "title": "Trials",
+        "sort": null,
+        "time_unit": null
+      },
+      "color": null,
+      "size": null
+    },
+    "data": [
+      {
+        "key": "2014",
+        "label": "2014",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 1,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT02129556",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2014-12",
+            "url": "https://clinicaltrials.gov/study/NCT02129556",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2015",
+        "label": "2015",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT02318771",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2015-02-05",
+            "url": "https://clinicaltrials.gov/study/NCT02318771",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2018",
+        "label": "2018",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT03631407",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2018-09-24",
+            "url": "https://clinicaltrials.gov/study/NCT03631407",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2019",
+        "label": "2019",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT03834519",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2019-05-02",
+            "url": "https://clinicaltrials.gov/study/NCT03834519",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2021",
+        "label": "2021",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT04993677",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2021-10-06",
+            "url": "https://clinicaltrials.gov/study/NCT04993677",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2024",
+        "label": "2024",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT05973903",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2024-06-01",
+            "url": "https://clinicaltrials.gov/study/NCT05973903",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2025",
+        "label": "2025",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT06939036",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2025-07-01",
+            "url": "https://clinicaltrials.gov/study/NCT06939036",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2026",
+        "label": "2026",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 1,
+        "unknown_date_type_count": 0,
+        "incomplete": true,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT09000001",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2026-09",
+            "url": "https://clinicaltrials.gov/study/NCT09000001",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "2027",
+        "label": "2027",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 1,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": false,
+        "citations": [
+          {
+            "nct_id": "NCT07843550",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": "2027-03-01",
+            "url": "https://clinicaltrials.gov/study/NCT07843550",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      },
+      {
+        "key": "Unknown",
+        "label": "Unknown",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "count": 1,
+        "estimated_count": 0,
+        "unknown_date_type_count": 0,
+        "incomplete": false,
+        "is_unknown": true,
+        "citations": [
+          {
+            "nct_id": "NCT09000002",
+            "field_path": "protocolSection.statusModule.startDateStruct.date",
+            "value": null,
+            "url": "https://clinicaltrials.gov/study/NCT09000002",
+            "role": "primary"
+          }
+        ],
+        "citation_count_total": 1
+      }
+    ],
+    "nodes": [],
+    "edges": []
+  },
+  "meta": {
+    "interpretation": {
+      "question": "pembrolizumab trials per start year",
+      "plan": {
+        "cohorts": [
+          {
+            "label": "pembrolizumab, started 2014 or later",
+            "filters": {
+              "drug": "pembrolizumab",
+              "condition": null,
+              "sponsor": null,
+              "country": null,
+              "phases": [],
+              "statuses": [],
+              "start_year_from": 2014,
+              "start_year_to": null
+            }
+          }
+        ],
+        "dimension": "start_year",
+        "relation": null,
+        "metric": "trial_count",
+        "chart_hint": null,
+        "time_granularity": null,
+        "top_n": null,
+        "match_mode": "intervention_name"
+      },
+      "planned_by": "structured_fields"
+    },
+    "count_unit": "trials",
+    "filters_applied": [
+      {
+        "label": "pembrolizumab, started 2014 or later",
+        "filters": {
+          "drug": "pembrolizumab",
+          "condition": null,
+          "sponsor": null,
+          "country": null,
+          "phases": [],
+          "statuses": [],
+          "start_year_from": 2014,
+          "start_year_to": null
+        }
+      }
+    ],
+    "match_mode": "intervention_name",
+    "search_semantics": {
+      "drug": "Exact intervention name: filter.advanced AREA[InterventionName]\"<drug>\" matches the listed intervention names (with the API's concept expansion of aliases), not titles or descriptions.",
+      "start_year": "AREA[StartDate] inclusive year range; month-only dates count as the first of the month, and trials with no start date are excluded."
+    },
+    "phase_bucketing": "exclusive_combined",
+    "country_granularity": "country_as_reported",
+    "buckets_overlap": false,
+    "total_matched": 10,
+    "records_retrieved": 10,
+    "truncated": false,
+    "coverage": 1.0,
+    "cohorts": [
+      {
+        "label": "pembrolizumab, started 2014 or later",
+        "total_matched": 10,
+        "records_retrieved": 10,
+        "records_skipped": 0,
+        "truncated": false,
+        "coverage": 1.0,
+        "reconciled": true
+      }
+    ],
+    "top_n": null,
+    "estimated_count": 2,
+    "unknown_date_type_count": 1,
+    "data_timestamp": "2026-10-16T09:00:05",
+    "assumptions": [
+      "The 'Unknown' bucket has no position on a time axis; it is included in data with is_unknown=true and should be shown separately."
+    ],
+    "warnings": [
+      "1 of 10 trials have no start date; they are counted in the 'Unknown' bucket.",
+      "2 trials are counted using an estimated start date.",
+      "1 trials have a start date with no ACTUAL/ESTIMATED type (legacy records); they are counted but marked neither actual nor estimated.",
+      "Bucket '2026' is still in progress as of 2026-10-17; its count may grow."
+    ],
+    "timing_ms": {}
+  }
+}
