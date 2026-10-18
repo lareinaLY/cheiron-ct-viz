@@ -6,7 +6,7 @@ import pytest
 
 from ctviz.errors import PlanErrorReason, PlanValidationError
 from ctviz.planner import validate_plan
-from ctviz.schemas.plan import ChartType, Dimension, QueryPlan, Relation
+from ctviz.schemas.plan import ChartType, Cohort, Dimension, Filters, QueryPlan, Relation
 from tests.factories import make_plan
 
 
@@ -56,3 +56,35 @@ def test_valid_plan_passes_unchanged(plan: QueryPlan) -> None:
     before = plan.model_dump()
     assert validate_plan(plan) == plan
     assert plan.model_dump() == before
+
+
+@pytest.mark.parametrize("top_n", [0, -3])
+def test_non_positive_top_n_rejected(top_n: int) -> None:
+    plan = make_plan(dimension=Dimension.COUNTRY, top_n=top_n)
+    assert_rejected(plan, PlanErrorReason.INVALID_TOP_N)
+
+
+def test_top_n_with_relation_rejected() -> None:
+    plan = make_plan(relation=Relation.SPONSOR_DRUG, top_n=10)
+    assert_rejected(plan, PlanErrorReason.TOP_N_REQUIRES_DIMENSION)
+
+
+def test_start_year_range_reversed_rejected() -> None:
+    plan = QueryPlan(
+        cohorts=[
+            Cohort(label="ok", filters=Filters(drug="a")),
+            Cohort(
+                label="bad", filters=Filters(drug="b", start_year_from=2020, start_year_to=2015)
+            ),
+        ],
+        dimension=Dimension.PHASE,
+    )
+    assert_rejected(plan, PlanErrorReason.INVALID_YEAR_RANGE)
+
+
+def test_single_year_range_passes() -> None:
+    plan = QueryPlan(
+        cohorts=[Cohort(label="x", filters=Filters(start_year_from=2020, start_year_to=2020))],
+        dimension=Dimension.START_YEAR,
+    )
+    assert validate_plan(plan) == plan

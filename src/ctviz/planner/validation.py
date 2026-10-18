@@ -12,7 +12,9 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
 
     Rejects: neither dimension nor relation; both set; a relation combined with two or
     more cohorts (comparisons need a dimension); a chart_hint incompatible with the
-    dimension or relation (e.g. bar_chart for a relation).
+    dimension or relation (e.g. bar_chart for a relation); a top_n below 1, or combined
+    with a relation (top_n trims buckets, and networks have none); a cohort whose
+    start_year_from is after its start_year_to.
     """
     if plan.dimension is None and plan.relation is None:
         raise PlanValidationError(
@@ -32,4 +34,32 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
             f"relation {plan.relation} supports a single cohort.",
         )
     check_chart_hint(plan)
+    check_top_n(plan)
+    check_year_ranges(plan)
     return plan
+
+
+def check_top_n(plan: QueryPlan) -> None:
+    """Raise PlanValidationError if top_n cannot be applied as written."""
+    if plan.top_n is None:
+        return
+    if plan.top_n < 1:
+        raise PlanValidationError(
+            PlanErrorReason.INVALID_TOP_N, f"top_n must be at least 1, got {plan.top_n}."
+        )
+    if plan.relation is not None:
+        raise PlanValidationError(
+            PlanErrorReason.TOP_N_REQUIRES_DIMENSION,
+            f"top_n limits the buckets of a dimension; relation {plan.relation} has none.",
+        )
+
+
+def check_year_ranges(plan: QueryPlan) -> None:
+    """Raise PlanValidationError for a cohort whose start-year range is empty."""
+    for cohort in plan.cohorts:
+        start, end = cohort.filters.start_year_from, cohort.filters.start_year_to
+        if start is not None and end is not None and start > end:
+            raise PlanValidationError(
+                PlanErrorReason.INVALID_YEAR_RANGE,
+                f"Cohort '{cohort.label}': start_year_from {start} is after start_year_to {end}.",
+            )
