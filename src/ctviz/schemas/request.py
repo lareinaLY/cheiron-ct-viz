@@ -1,7 +1,8 @@
 """The POST /query request body and its mapping to a QueryPlan.
 
-Until the LLM planner exists, the structured fields alone define the query: they map
-to one cohort plus a dimension or relation. `query` is echoed in meta but not read.
+`query` is read by the LLM planner. Structured fields are optional; any field the
+caller sets explicitly overrides what the LLM read from the question. Without an LLM,
+the structured fields alone define the query: one cohort plus a dimension or relation.
 """
 
 from __future__ import annotations
@@ -22,23 +23,26 @@ from ctviz.schemas.trial import OverallStatus, Phase
 
 
 class QueryRequest(BaseModel):
-    """A question plus the structured fields that answer it."""
+    """A question plus optional structured fields that pin parts of the plan."""
 
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
             "examples": [
+                {"query": "Compare phases for trials involving pembrolizumab vs nivolumab"},
                 {
                     "query": "pembrolizumab trials by phase",
                     "drug": "pembrolizumab",
                     "dimension": "phase",
-                }
+                },
             ]
         },
     )
 
     query: str = Field(
-        min_length=1, description="The user's question. Stored in meta; not interpreted yet."
+        min_length=1,
+        description="The user's question, interpreted by the LLM planner when one is "
+        "configured. Explicit structured fields below override the LLM's reading.",
     )
     drug: str | None = None
     condition: str | None = None
@@ -53,6 +57,10 @@ class QueryRequest(BaseModel):
     chart_hint: ChartType | None = None
     top_n: int | None = None
     match_mode: MatchMode = "intervention_name"
+
+    def explicit_fields(self) -> set[str]:
+        """Names of the structured fields the caller set, defaults excluded."""
+        return self.model_fields_set - {"query"}
 
     def filters(self) -> Filters:
         """The request's retrieval filters."""

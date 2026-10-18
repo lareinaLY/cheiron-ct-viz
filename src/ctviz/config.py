@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Retrieval and cache settings. Defaults follow docs/api_findings.md §6 and §11."""
+    """Retrieval, cache and LLM settings. Defaults follow docs/api_findings.md §6 and §11.
+
+    The LLM settings also accept the provider's conventional names (OPENAI_API_KEY,
+    OPENAI_BASE_URL, LLM_MODEL). Without an API key the planner uses structured fields only.
+    """
 
     model_config = SettingsConfigDict(env_prefix="CTVIZ_", env_file=".env", extra="ignore")
 
@@ -31,3 +35,15 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_dir: Path = Path(".cache")
     cache_ttl_seconds: float = Field(default=6 * 3600.0, ge=0)
+    openai_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("OPENAI_API_KEY", "CTVIZ_OPENAI_API_KEY")
+    )
+    openai_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "CTVIZ_OPENAI_BASE_URL"),
+        description="OpenAI-compatible endpoint; None uses the SDK default.",
+    )
+    llm_model: str = Field(
+        default="gpt-4.1-mini", validation_alias=AliasChoices("LLM_MODEL", "CTVIZ_LLM_MODEL")
+    )
+    llm_timeout_seconds: float = Field(default=60.0, gt=0, description="Per LLM request.")

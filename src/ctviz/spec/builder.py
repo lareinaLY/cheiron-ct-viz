@@ -52,8 +52,12 @@ def build_response(
     timing_ms: dict[str, float],
     warnings: Sequence[str] = (),
     assumptions: Sequence[str] = (),
+    interpretation: Interpretation | None = None,
 ) -> VisualizationResponse:
     """Build the chart spec and its meta block.
+
+    `interpretation` comes from the planner; without one, the plan is recorded as
+    passed in directly (planned_by "structured_fields").
 
     - Grouped results become `data` (one Datum per cohort and bucket, in the shared key
       order) with Vega-Lite-style encoding; several cohorts are colored by `cohort`.
@@ -87,7 +91,7 @@ def build_response(
     total_matched = sum(stats.total_matched for stats in cohort_stats) if cohort_stats else None
     records_retrieved = sum(stats.records_retrieved for stats in cohort_stats)
     meta = Meta(
-        interpretation=Interpretation(question=question, plan=plan, planned_by="structured_fields"),
+        interpretation=resolve_interpretation(plan, question, interpretation),
         count_unit=CountUnit.TRIALS,
         filters_applied=plan.cohorts,
         match_mode=plan.match_mode,
@@ -216,3 +220,14 @@ def unique(items: Iterable[str]) -> list[str]:
 def capitalize(text: str) -> str:
     """Upper-case the first character only ('lead sponsor' -> 'Lead sponsor')."""
     return text[:1].upper() + text[1:]
+
+
+def resolve_interpretation(
+    plan: QueryPlan, question: str, interpretation: Interpretation | None
+) -> Interpretation:
+    """The planner's interpretation, checked against the executed plan, or a direct-plan one."""
+    if interpretation is None:
+        return Interpretation(question=question, plan=plan, planned_by="structured_fields")
+    if interpretation.plan != plan or interpretation.question != question:
+        raise ValueError("The interpretation does not describe the plan being executed.")
+    return interpretation

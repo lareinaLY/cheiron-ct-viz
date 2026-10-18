@@ -6,10 +6,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from ctviz.schemas.citation import Citation
-from ctviz.schemas.plan import ChartType, Cohort, MatchMode, QueryPlan
+from ctviz.schemas.plan import ChartType, Cohort, LlmPlanDraft, MatchMode, QueryPlan
 
 
 class CountUnit(StrEnum):
@@ -129,16 +129,44 @@ class Visualization(BaseModel):
     edges: list[EdgeElement] = Field(default_factory=list)
 
 
-class Interpretation(BaseModel):
-    """The question as asked and the plan that was executed for it.
+class FieldOverride(BaseModel):
+    """An explicit request field that replaced what the LLM read from the question.
 
-    `planned_by` says where the plan came from. With "structured_fields" the question
-    text was NOT interpreted: the request's structured fields alone define the query.
+    `path` names the plan field, e.g. "cohorts[1].filters.drug" or "dimension". When an
+    explicit dimension replaces the LLM's relation (or the reverse), the cleared field is
+    recorded with `explicit_value` None.
+    """
+
+    path: str
+    llm_value: JsonValue
+    explicit_value: JsonValue
+
+
+PlannedBy = Literal["llm", "rules", "structured_fields"]
+
+
+class Interpretation(BaseModel):
+    """The question as asked, the plan that was executed for it, and where the plan came from.
+
+    `planned_by`:
+    - "llm": the LLM translated the question into `draft`, explicit request fields were
+      applied on top (`overrides`), and the result was validated.
+    - "rules": no LLM is configured; the request's structured fields alone define the
+      query and the question text was NOT interpreted.
+    - "structured_fields": a QueryPlan was passed to the pipeline directly by code (no
+      planner ran); the question text was not interpreted.
+    `rejected_attempts` holds the validation error of each LLM draft that was rejected
+    and retried.
     """
 
     question: str
     plan: QueryPlan
-    planned_by: Literal["structured_fields"]
+    planned_by: PlannedBy
+    model: str | None = Field(default=None, description="LLM model that drafted the plan.")
+    draft: LlmPlanDraft | None = Field(default=None, description="The accepted LLM draft.")
+    overrides: list[FieldOverride] = Field(default_factory=list)
+    rejected_attempts: list[str] = Field(default_factory=list)
+    planning_ms: float | None = Field(default=None, description="Planner wall-clock time.")
 
 
 class CohortStats(BaseModel):

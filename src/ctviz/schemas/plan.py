@@ -94,3 +94,41 @@ class QueryPlan(BaseModel):
     time_granularity: Literal["year", "month"] | None = None
     top_n: int | None = None
     match_mode: MatchMode = "intervention_name"
+
+
+class Clarification(BaseModel):
+    """A question the user must answer because their question has two readings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(description="One short question naming the ambiguity.")
+    options: list[str] = Field(description="The readings to choose from, usually two.")
+
+
+class LlmPlanDraft(BaseModel):
+    """What the LLM returns: a QueryPlan draft, or a reason it cannot make one.
+
+    Separate from QueryPlan so the model can decline (`unsupported_reason`) or ask
+    (`clarification`) instead of guessing, and so cohort labels stay deterministic:
+    the planner derives them from the filters. Every field is required and nullable,
+    which is what OpenAI strict structured outputs expect.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cohorts: list[Filters] = Field(
+        description="One filter set per cohort; two or more only when comparing groups."
+    )
+    dimension: Dimension | None = Field(description="The attribute to group trials by.")
+    relation: Relation | None = Field(description="The relation to draw as a network.")
+    chart_hint: ChartType | None = Field(description="Only when the user names a chart type.")
+    top_n: int | None = Field(description="Only when the user asks for a number of top values.")
+    match_mode: MatchMode = Field(
+        description="intervention_name unless the user asks for any mention of the drug."
+    )
+    unsupported_reason: str | None = Field(
+        description="Why the question cannot be answered with the available data."
+    )
+    clarification: Clarification | None = Field(
+        description="Set when the question has two plausible readings."
+    )

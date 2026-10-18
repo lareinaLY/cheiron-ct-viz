@@ -1,12 +1,14 @@
 """The fixed pipeline: validate -> retrieve -> normalize -> aggregate -> spec.
 
-Each stage is called once per request and timed. Retrieval facts that the chart alone
-cannot show (truncation, reconciliation, duplicates, skipped records, cache use) become
-meta warnings or assumptions here (invariants 3 and 6).
+The planner runs before it (see `api.app`) and hands over an `Interpretation`. Each
+stage is called once per request and timed. Facts that the chart alone cannot show
+(how the plan was made, explicit overrides, truncation, reconciliation, duplicates,
+skipped records, cache use) become meta warnings or assumptions here (invariants 3 and 6).
 """
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -22,7 +24,7 @@ from ctviz.retrieval.client import CtGovClient
 from ctviz.retrieval.query_builder import build_params, search_semantics
 from ctviz.schemas.aggregate import Graph, GroupedCohorts
 from ctviz.schemas.plan import Cohort, QueryPlan
-from ctviz.schemas.response import CohortStats, VisualizationResponse
+from ctviz.schemas.response import CohortStats, Interpretation, VisualizationResponse
 from ctviz.schemas.retrieval import FetchResult
 from ctviz.schemas.trial import TrialRecord
 from ctviz.spec import build_response
@@ -61,12 +63,24 @@ async def run(
     client: CtGovClient,
     as_of: date | None = None,
 ) -> VisualizationResponse:
-    """Answer a structured plan with live data.
+    """Answer a plan supplied directly by code (no planner; planned_by "structured_fields")."""
+    interpretation = Interpretation(question=question, plan=plan, planned_by="structured_fields")
+    return await execute(interpretation, client=client, as_of=as_of)
+
+
+async def execute(
+    interpretation: Interpretation,
+    *,
+    client: CtGovClient,
+    as_of: date | None = None,
+) -> VisualizationResponse:
+    """Answer the planner's plan with live data.
 
     Raises PlanValidationError or InvalidFilterError before any network call, and
     RetrievalError subclasses if the API cannot be reached. A record that fails to
     normalize is skipped and reported, never fatal.
     """
+    plan, question = interpretation.plan, interpretation.question
     timer = StageTimer()
     started = time.perf_counter()
 
@@ -97,12 +111,42 @@ async def run(
             data_timestamp=data_timestamp,
             timing_ms={},
             warnings=[w for data in cohorts for w in retrieval_warnings(data, len(cohorts))],
-            assumptions=[a for data in cohorts for a in retrieval_assumptions(data, len(cohorts))],
+            assumptions=[
+                *planning_assumptions(interpretation),
+                *(a for data in cohorts for a in retrieval_assumptions(data, len(cohorts))),
+            ],
+            interpretation=interpretation,
         )
 
     timer.timings["total"] = round((time.perf_counter() - started) * 1000, 1)
     response.meta.timing_ms = timer.timings
     return response
+
+
+def planning_assumptions(interpretation: Interpretation) -> list[str]:
+    """How the plan was made: who read the question, and what explicit fields replaced."""
+    if interpretation.planned_by == "rules":
+        return [
+            "The question text was not interpreted (no LLM planner is configured); the "
+            "request's structured fields alone define the query."
+        ]
+    if interpretation.planned_by == "structured_fields":
+        return ["The question text was not interpreted; the plan was supplied directly."]
+    messages = [
+        f"The plan was drafted from the question by the LLM ({interpretation.model}) and "
+        "validated; meta.interpretation.draft holds the draft. Counts come from the registry."
+    ]
+    messages.extend(
+        f"The explicit request field set `{override.path}` to "
+        f"{json.dumps(override.explicit_value)}; the LLM had read "
+        f"{json.dumps(override.llm_value)} from the question."
+        for override in interpretation.overrides
+    )
+    messages.extend(
+        f"An earlier LLM draft was rejected and redrafted: {problem}"
+        for problem in interpretation.rejected_attempts
+    )
+    return messages
 
 
 def normalize_all(

@@ -1390,7 +1390,12 @@
         "top_n": null,
         "match_mode": "intervention_name"
       },
-      "planned_by": "structured_fields"
+      "planned_by": "structured_fields",
+      "model": null,
+      "draft": null,
+      "overrides": [],
+      "rejected_attempts": [],
+      "planning_ms": null
     },
     "count_unit": "trials",
     "filters_applied": [
