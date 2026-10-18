@@ -22,10 +22,35 @@ VisualizationResponse         aggregate/registry.py (DIMENSIONS, RELATIONS)
 
 ## Stages
 
-**planner** (`planner/`, not built yet). This is the only stage that calls the LLM. It
-translates the question into a `QueryPlan` (`schemas/plan.py`): cohorts with filters, one
-dimension or one relation, an optional chart hint, and the match mode. The plan
-never holds data values (invariant 1).
+**planner** (`planner/`). This is the only stage that calls the LLM. It translates the
+question into a `QueryPlan` (`schemas/plan.py`): cohorts with filters, one dimension or
+one relation, an optional chart hint, `top_n` and the match mode. The plan never holds
+data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) returns an
+`Interpretation` (`schemas/response.py`):
+- With an LLM (`OPENAI_API_KEY` set): `prompt.py` builds the messages and `llm.py`
+  (`OpenAiLlm.structured_plan`, OpenAI `chat.completions.parse` with a strict JSON
+  schema, one retry on transient errors) returns an `LlmPlanDraft`: filter sets per
+  cohort, the grouping, `unsupported_reason` and `clarification`. A set
+  `unsupported_reason` or `clarification` becomes a `PlannerError`
+  (`unsupported_question`, `clarification_needed` with the readings as suggestions).
+  Otherwise `merge_draft` applies the request's explicit fields on top: an explicit
+  filter replaces the LLM's value in every cohort; an explicit dimension clears the
+  LLM's relation and vice versa. Each replaced value is an `overrides` entry. Cohort
+  labels are derived from the merged filters, never taken from the LLM. The plan is then
+  validated (`validate_plan` plus the query builder's filter checks). A rejected draft is
+  retried once with the error appended to the conversation; a second rejection is a
+  `planning_failed` error. `planned_by="llm"`, with `model`, `draft`, `overrides`,
+  `rejected_attempts` and `planning_ms`.
+- Without an LLM: a request with structured fields is planned from them alone
+  (`planned_by="rules"`); a request with `query` only is an `llm_not_configured` error.
+- The prompt is rendered from the registry (dimension and relation descriptions),
+  `spec/chart.py` (chart descriptions and compatibility) and the API enums (phases,
+  statuses), so prompt and code cannot drift. It states the rules: copy names verbatim,
+  never add a filter that was not stated, decline or ask instead of guessing, plain
+  filter values only. It ends with 8 few-shot `LlmPlanDraft` examples, one per query
+  class plus one decline and one clarification, and each of them validates in a test.
+- `tests/eval/questions.yaml` and `scripts/eval_planner.py` score the planner on real
+  models; results are in `docs/planner_eval.md`.
 
 **validator** (`planner/validation.py`). `validate_plan` rejects plans that cannot be
 answered faithfully, raising `PlanValidationError` with a `PlanErrorReason`:
@@ -33,7 +58,9 @@ answered faithfully, raising `PlanValidationError` with a `PlanErrorReason`:
 - a relation is combined with several cohorts;
 - the chart hint is incompatible with the data;
 - `top_n` is below 1, or combined with a relation (networks have no buckets to trim);
-- a cohort's `start_year_from` is after its `start_year_to`.
+- a cohort's `start_year_from` is after its `start_year_to`;
+- two cohorts share a label or identical filters (results are keyed by label, and
+  identical cohorts compare nothing; e.g. an explicit `drug` over an LLM comparison).
 
 It reuses the chart compatibility rules from `spec/chart.py`, so the validator and
 chart selection cannot disagree (invariant 7).
@@ -100,21 +127,28 @@ checked against golden snapshots in `tests/golden/`.
   with no ACTUAL/ESTIMATED type), so a renderer can style recent or uncertain periods
   differently. The totals are in `meta.estimated_count` and `meta.unknown_date_type_count`
   (None when they do not apply).
-- `Meta` carries `interpretation` (the question, the executed plan and `planned_by`),
+- `Meta` carries `interpretation` (the question, the executed plan, `planned_by` and,
+  for LLM plans, the model, draft, overrides and rejected drafts),
   `count_unit`, `search_semantics`, retrieval totals plus per-cohort `cohorts` stats,
   `top_n`, `data_timestamp`, `timing_ms`, and every assumption and warning (invariants 3, 5).
 
-**pipeline** (`pipeline.py`). `run(plan, question, client)` calls the stages in order and
-times each one. Filters are built during validation, so bad values fail before any
+**pipeline** (`pipeline.py`). `execute(interpretation, client)` calls the stages in order
+and times each one (planning time is `interpretation.planning_ms`). `run(plan, question,
+client)` executes a plan supplied directly by code (`planned_by="structured_fields"`).
+How the plan was made (who read the question, each explicit override, each rejected
+draft) is stated in `meta.assumptions`. Filters are built during validation, so bad values fail before any
 network call. A study that raises `SourceRecordError` is skipped, counted in
 `cohorts[].records_skipped` and reported by NCT ID in `meta.warnings`, never fatal.
 Truncation, reconciliation failures, duplicates and cache use also go into meta.
 
-**api** (`api/`). `POST /query` takes `QueryRequest`: `query` (echoed in
-`meta.interpretation`, not interpreted until the LLM planner exists) plus structured
-fields that map to one cohort and a dimension or relation. Failures return
+**api** (`api/`). `POST /query` takes `QueryRequest` (`schemas/request.py`): `query`,
+which alone is enough when the LLM planner is configured, plus optional structured
+fields that override the LLM's reading (without an LLM they map to one cohort and a
+dimension or relation). The app builds the LLM client at startup, so a malformed
+`OPENAI_API_KEY` stops the server with a clear message. Failures return
 `ErrorResponse` (`code`, `message`, `suggestions`): 422 for invalid requests, plans and
-filter values; 502 when the API fails or rejects the query; 503 when it keeps
+filter values, and for unsupported, ambiguous or unplannable questions; 502 when the API
+or the LLM provider fails, or the API rejects the query; 503 when the API keeps
 rate-limiting. `GET /health` is a liveness probe. Run the app with
 `uv run uvicorn ctviz.api.app:app`. Example requests and real responses are in `examples/`.
 
@@ -124,8 +158,8 @@ rate-limiting. `GET /health` is a liveness probe. Run the app with
 - A `DimensionSpec` gives: how to extract values from a record, the citation path
   (`source_field` + `leaf`), whether a trial can fall into several buckets, the bucket
   order, the period key for in-progress flags, its kind (categorical, temporal or
-  binned), and fixed assumptions.
-- A `RelationSpec` pairs two dimensions with node types.
+  binned), fixed assumptions, and a `description` rendered into the planner prompt.
+- A `RelationSpec` pairs two dimensions with node types, plus a `description`.
 
 `group_by`, `build_network` and `select_chart` dispatch through the registry only. To
 add a new query type, add a registry entry and a `Dimension`/`Relation` enum value; no
@@ -135,7 +169,7 @@ other code should branch on dimension names.
 
 | Invariant | Enforced in |
 |---|---|
-| 1. LLM only produces a plan | `planner/` boundary; `QueryPlan` has no data fields (`extra="forbid"`) |
+| 1. LLM only produces a plan | `planner/` boundary; the LLM returns an `LlmPlanDraft` (filters and a grouping only); `QueryPlan` has no data fields (`extra="forbid"`); cohort labels are derived in code |
 | 2. Citations on every datum | `aggregate/registry.py` extractors and `cite`; `Bucket`, `NetworkNode`, `NetworkEdge` |
 | 3. Nothing silent | `GroupResult`/`Graph` `assumptions` and `warnings`, copied into `Meta` |
 | 4. Missing is not zero | `UNKNOWN_BUCKET_KEY`, kept separate from the API's own `UNKNOWN` |
