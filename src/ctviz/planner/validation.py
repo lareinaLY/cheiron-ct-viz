@@ -14,7 +14,8 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
     more cohorts (comparisons need a dimension); a chart_hint incompatible with the
     dimension or relation (e.g. bar_chart for a relation); a top_n below 1, or combined
     with a relation (top_n trims buckets, and networks have none); a cohort whose
-    start_year_from is after its start_year_to.
+    start_year_from is after its start_year_to; two cohorts with the same label or the
+    same filters (results are keyed by label, and identical cohorts compare nothing).
     """
     if plan.dimension is None and plan.relation is None:
         raise PlanValidationError(
@@ -36,6 +37,7 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
     check_chart_hint(plan)
     check_top_n(plan)
     check_year_ranges(plan)
+    check_distinct_cohorts(plan)
     return plan
 
 
@@ -62,4 +64,23 @@ def check_year_ranges(plan: QueryPlan) -> None:
             raise PlanValidationError(
                 PlanErrorReason.INVALID_YEAR_RANGE,
                 f"Cohort '{cohort.label}': start_year_from {start} is after start_year_to {end}.",
+            )
+
+
+def check_distinct_cohorts(plan: QueryPlan) -> None:
+    """Raise PlanValidationError if two cohorts share a label or their filters."""
+    labels = [cohort.label for cohort in plan.cohorts]
+    for label in labels:
+        if labels.count(label) > 1:
+            raise PlanValidationError(
+                PlanErrorReason.DUPLICATE_COHORT,
+                f"Duplicate cohort label '{label}'; every cohort needs its own label.",
+            )
+    filters = [cohort.filters for cohort in plan.cohorts]
+    for index, cohort in enumerate(plan.cohorts):
+        if cohort.filters in filters[:index]:
+            raise PlanValidationError(
+                PlanErrorReason.DUPLICATE_COHORT,
+                f"Cohort '{cohort.label}' has the same filters as an earlier cohort "
+                "(duplicate cohorts); a comparison needs cohorts that differ.",
             )

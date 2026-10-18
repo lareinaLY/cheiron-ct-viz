@@ -88,3 +88,21 @@ def test_single_year_range_passes() -> None:
         dimension=Dimension.START_YEAR,
     )
     assert validate_plan(plan) == plan
+
+
+def test_duplicate_cohort_labels_rejected() -> None:
+    cohorts = [
+        Cohort(label="same", filters=Filters(drug="drug0")),
+        Cohort(label="same", filters=Filters(drug="drug1")),
+    ]
+    plan = QueryPlan(cohorts=cohorts, dimension=Dimension.PHASE)
+    assert_rejected(plan, PlanErrorReason.DUPLICATE_COHORT)
+
+
+def test_identical_cohort_filters_rejected() -> None:
+    cohorts = [
+        Cohort(label="first", filters=Filters(drug="pembrolizumab")),
+        Cohort(label="second", filters=Filters(drug="pembrolizumab")),
+    ]
+    plan = QueryPlan(cohorts=cohorts, dimension=Dimension.PHASE)
+    assert_rejected(plan, PlanErrorReason.DUPLICATE_COHORT)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -17,19 +18,23 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from ctviz import pipeline
-from ctviz.api.request import QueryRequest
 from ctviz.config import Settings
 from ctviz.errors import (
     ApiRequestError,
     InvalidFilterError,
     PlanErrorReason,
+    PlannerError,
+    PlannerErrorCode,
     PlanValidationError,
     RateLimitError,
     UpstreamError,
 )
+from ctviz.planner.llm import LlmClient, build_llm
+from ctviz.planner.plan import plan
 from ctviz.retrieval.cache import build_cache
 from ctviz.retrieval.client import CtGovClient
 from ctviz.schemas.plan import ChartType, Dimension, Relation
+from ctviz.schemas.request import QueryRequest
 from ctviz.schemas.response import ErrorResponse, VisualizationResponse
 
 logger = logging.getLogger(__name__)
@@ -51,24 +56,41 @@ PLAN_SUGGESTIONS: dict[PlanErrorReason, list[str]] = {
     PlanErrorReason.INVALID_TOP_N: ["Use a `top_n` of 1 or more, or omit it."],
     PlanErrorReason.TOP_N_REQUIRES_DIMENSION: ["Remove `top_n` for network queries."],
     PlanErrorReason.INVALID_YEAR_RANGE: ["Make `start_year_from` <= `start_year_to`."],
+    PlanErrorReason.DUPLICATE_COHORT: ["Give each cohort different filters."],
+}
+
+# An LLM provider failure is upstream (502); every other planner error is about the question.
+PLANNER_ERROR_STATUS: dict[PlannerErrorCode, int] = {
+    PlannerErrorCode.LLM_NOT_CONFIGURED: 422,
+    PlannerErrorCode.LLM_UNAVAILABLE: 502,
+    PlannerErrorCode.UNSUPPORTED_QUESTION: 422,
+    PlannerErrorCode.CLARIFICATION_NEEDED: 422,
+    PlannerErrorCode.PLANNING_FAILED: 422,
 }
 
 ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     status: {"model": ErrorResponse, "description": description}
     for status, description in {
-        422: "The request or plan cannot be answered faithfully as written.",
-        502: "ClinicalTrials.gov failed or rejected the generated query.",
+        422: "The question, request or plan cannot be answered faithfully as written "
+        "(including unsupported or ambiguous questions).",
+        502: "ClinicalTrials.gov or the LLM provider failed, or the API rejected the query.",
         503: "ClinicalTrials.gov is rate-limiting this server; retry later.",
     }.items()
 }
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the app; the API client lives for the app's lifetime (shared pacing)."""
+def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -> FastAPI:
+    """Build the app; the API client lives for the app's lifetime (shared pacing).
+
+    `llm` defaults to the one configured in settings, built at startup so a malformed
+    key stops the server with a clear message (None without an API key: then only
+    structured fields are planned). Tests pass a fake.
+    """
     settings = settings or Settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        app.state.llm = llm if llm is not None else build_llm(settings)
         async with CtGovClient(settings, cache=build_cache(settings)) as client:
             app.state.client = client
             yield
@@ -87,10 +109,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/query", responses=ERROR_RESPONSES)
     async def query(
-        body: QueryRequest, client: Annotated[CtGovClient, Depends(get_client)]
+        body: QueryRequest,
+        client: Annotated[CtGovClient, Depends(get_client)],
+        llm: Annotated[LlmClient | None, Depends(get_llm)],
     ) -> VisualizationResponse:
-        """Answer a question from its structured fields with a cited chart spec."""
-        return await pipeline.run(body.to_plan(), question=body.query, client=client)
+        """Answer a question with a cited chart spec.
+
+        `query` alone is enough when the LLM planner is configured; structured fields
+        override what the LLM reads from it.
+        """
+        interpretation = await plan(body, llm, today=date.today())
+        return await pipeline.execute(interpretation, client=client)
 
     return app
 
@@ -98,6 +127,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def get_client(request: Request) -> CtGovClient:
     """The app-wide API client created in the lifespan."""
     return request.app.state.client
+
+
+def get_llm(request: Request) -> LlmClient | None:
+    """The app-wide LLM planner client, or None when no LLM is configured."""
+    return request.app.state.llm
 
 
 def error_response(status: int, code: str, message: str, suggestions: list[str]) -> JSONResponse:
@@ -112,6 +146,13 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(PlanValidationError)
     async def plan_error(request: Request, error: PlanValidationError) -> JSONResponse:
         return error_response(422, error.reason.value, str(error), PLAN_SUGGESTIONS[error.reason])
+
+    @app.exception_handler(PlannerError)
+    async def planner_error(request: Request, error: PlannerError) -> JSONResponse:
+        logger.info("Planner could not plan the question: %s: %s", error.code, error)
+        return error_response(
+            PLANNER_ERROR_STATUS[error.code], error.code.value, str(error), error.suggestions
+        )
 
     @app.exception_handler(InvalidFilterError)
     async def filter_error(request: Request, error: InvalidFilterError) -> JSONResponse:

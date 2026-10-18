@@ -15,6 +15,7 @@ class PlanErrorReason(StrEnum):
     INVALID_TOP_N = "invalid_top_n"
     TOP_N_REQUIRES_DIMENSION = "top_n_requires_dimension"
     INVALID_YEAR_RANGE = "invalid_year_range"
+    DUPLICATE_COHORT = "duplicate_cohort"
 
 
 class PlanValidationError(ValueError):
@@ -26,6 +27,31 @@ class PlanValidationError(ValueError):
     def __init__(self, reason: PlanErrorReason, message: str) -> None:
         super().__init__(message)
         self.reason = reason
+
+
+class PlannerErrorCode(StrEnum):
+    """Machine-readable reason the planner could not produce a plan."""
+
+    LLM_NOT_CONFIGURED = "llm_not_configured"
+    LLM_UNAVAILABLE = "llm_unavailable"
+    UNSUPPORTED_QUESTION = "unsupported_question"
+    CLARIFICATION_NEEDED = "clarification_needed"
+    PLANNING_FAILED = "planning_failed"
+
+
+class PlannerError(Exception):
+    """The question could not be turned into a valid QueryPlan.
+
+    `suggestions` tell the caller how to proceed (e.g. the readings of an ambiguous
+    question, or the structured fields to send instead).
+    """
+
+    def __init__(
+        self, code: PlannerErrorCode, message: str, suggestions: list[str] | None = None
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.suggestions = suggestions or []
 
 
 class SourceRecordError(ValueError):
