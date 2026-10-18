@@ -22,7 +22,7 @@ from ctviz.schemas.plan import (
     RankingDirection,
     Relation,
 )
-from ctviz.schemas.trial import OverallStatus, Phase
+from ctviz.schemas.trial import OverallStatus, Phase, PrimaryPurpose, StudyType
 from ctviz.spec.chart import CHART_DESCRIPTIONS, CHARTS_BY_KIND, NETWORK_CHARTS
 
 ROLE = """\
@@ -52,7 +52,14 @@ All filters are optional and combined with AND.
   Values: {statuses}.
 - `start_year_from`, `start_year_to`: an inclusive range of start years. "since 2015" ->
   start_year_from 2015; "in 2020" -> both 2020; "between 2016 and 2019" -> 2016 and 2019;
-  "in the last N years" -> start_year_from {year} - N + 1 and no end."""
+  "in the last N years" -> start_year_from {year} - N + 1 and no end.
+- `study_types`: only when the user names a study type ("interventional trials",
+  "observational studies", "expanded access"). Values: {study_types}. "Trials" or
+  "clinical trials" alone is not a study type.
+- `exclude_withdrawn`: true only when the user asks to leave out withdrawn studies
+  ("exclude withdrawn", "not withdrawn"); otherwise false.
+- `primary_purposes`: only when the user names a primary purpose ("treatment studies",
+  "prevention trials"). Values: {primary_purposes}."""
 
 RULES = """\
 1. Copy drug, condition, sponsor and country names verbatim from the question, with the
@@ -101,7 +108,11 @@ def build_system_prompt(today: date) -> str:
         "## Chart types (`chart_hint`)\n" + render_charts(),
         "## Filters (per cohort)\n"
         + FILTERS.format(
-            phases=render_values(Phase), statuses=render_values(OverallStatus), year=year
+            phases=render_values(Phase),
+            statuses=render_values(OverallStatus),
+            study_types=render_values(StudyType),
+            primary_purposes=render_values(PrimaryPurpose),
+            year=year,
         ),
         "## Rules\n" + RULES,
     ]

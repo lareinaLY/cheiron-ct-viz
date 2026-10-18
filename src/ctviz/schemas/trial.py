@@ -65,6 +65,25 @@ class StudyType(StrEnum):
     OBSERVATIONAL = "OBSERVATIONAL"
 
 
+class PrimaryPurpose(StrEnum):
+    """Primary purpose from `protocolSection.designModule.designInfo.primaryPurpose`.
+
+    Values from GET /studies/enums (type PrimaryPurpose, 2026-10-18). Only interventional
+    studies have one; ECT is Educational/Counseling/Training.
+    """
+
+    TREATMENT = "TREATMENT"
+    PREVENTION = "PREVENTION"
+    DIAGNOSTIC = "DIAGNOSTIC"
+    ECT = "ECT"
+    SUPPORTIVE_CARE = "SUPPORTIVE_CARE"
+    SCREENING = "SCREENING"
+    HEALTH_SERVICES_RESEARCH = "HEALTH_SERVICES_RESEARCH"
+    BASIC_SCIENCE = "BASIC_SCIENCE"
+    DEVICE_FEASIBILITY = "DEVICE_FEASIBILITY"
+    OTHER = "OTHER"
+
+
 class AgencyClass(StrEnum):
     """Sponsor or collaborator class. `UNKNOWN` is a real API value, not "missing"."""
 

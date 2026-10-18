@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ctviz.errors import PlanErrorReason, PlanValidationError
 from ctviz.schemas.plan import MAX_START_YEAR, MAX_TOP_N, MIN_START_YEAR, QueryPlan
+from ctviz.schemas.trial import OverallStatus
 from ctviz.spec.chart import check_chart_hint
 
 
@@ -17,7 +18,8 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
     networks have none); a start
     year outside MIN_START_YEAR..MAX_START_YEAR, or a cohort whose start_year_from is
     after its start_year_to; two cohorts with the same label or the
-    same filters (results are keyed by label, and identical cohorts compare nothing).
+    same filters (results are keyed by label, and identical cohorts compare nothing); a
+    cohort with status WITHDRAWN and exclude_withdrawn (it matches nothing).
     """
     if plan.dimension is None and plan.relation is None:
         raise PlanValidationError(
@@ -40,7 +42,23 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
     check_top_n(plan)
     check_year_ranges(plan)
     check_distinct_cohorts(plan)
+    check_withdrawn_filters(plan)
     return plan
+
+
+def check_withdrawn_filters(plan: QueryPlan) -> None:
+    """Raise PlanValidationError when a cohort both asks for and excludes withdrawn studies.
+
+    The API would answer with zero matches, which would read as "none exist".
+    """
+    for cohort in plan.cohorts:
+        filters = cohort.filters
+        if filters.exclude_withdrawn and OverallStatus.WITHDRAWN in filters.statuses:
+            raise PlanValidationError(
+                PlanErrorReason.CONTRADICTORY_FILTERS,
+                f"Cohort '{cohort.label}' lists status WITHDRAWN and sets exclude_withdrawn; "
+                "together they match nothing.",
+            )
 
 
 def check_top_n(plan: QueryPlan) -> None:

@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ctviz.schemas.trial import OverallStatus, Phase
+from ctviz.schemas.trial import OverallStatus, Phase, PrimaryPurpose, StudyType
 
 
 class Dimension(StrEnum):
@@ -114,6 +114,9 @@ class Filters(BaseModel):
     statuses: list[OverallStatus] = Field(default_factory=list)
     start_year_from: int | None = None
     start_year_to: int | None = None
+    study_types: list[StudyType] = Field(default_factory=list)
+    exclude_withdrawn: bool = False
+    primary_purposes: list[PrimaryPurpose] = Field(default_factory=list)
 
     @field_validator("drug", "condition", "sponsor", "country")
     @classmethod
@@ -132,6 +135,18 @@ class Filters(BaseModel):
     def unique_statuses(cls, statuses: list[OverallStatus]) -> list[OverallStatus]:
         """Deduplicate statuses; more entries than statuses exist is an error."""
         return check_unique_enum_list(statuses, OverallStatus)
+
+    @field_validator("study_types")
+    @classmethod
+    def unique_study_types(cls, study_types: list[StudyType]) -> list[StudyType]:
+        """Deduplicate study types; more entries than study types exist is an error."""
+        return check_unique_enum_list(study_types, StudyType)
+
+    @field_validator("primary_purposes")
+    @classmethod
+    def unique_primary_purposes(cls, purposes: list[PrimaryPurpose]) -> list[PrimaryPurpose]:
+        """Deduplicate primary purposes; more entries than purposes exist is an error."""
+        return check_unique_enum_list(purposes, PrimaryPurpose)
 
 
 class Cohort(BaseModel):

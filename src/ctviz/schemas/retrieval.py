@@ -25,6 +25,11 @@ class FetchResult(BaseModel):
     reconciled: bool
     duplicates_dropped: int = Field(default=0, description="Repeated NCT IDs across pages.")
     pages: int
+    page_cap_hit: bool = Field(
+        default=False,
+        description="True when pagination stopped at the page cap while the API still "
+        "returned a nextPageToken.",
+    )
     cached_at: datetime | None = Field(
         default=None, description="When the cached pages were stored; None if fetched live."
     )

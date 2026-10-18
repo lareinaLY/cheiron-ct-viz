@@ -267,3 +267,33 @@
     cohorts:
       - {drug: osimertinib, start_year_from: 2015, start_year_to: null}
     dimension: start_year
+
+- id: scope_interventional_exclude_withdrawn
+  class: distribution
+  question: Phase breakdown of interventional pembrolizumab trials, excluding withdrawn ones
+  note: >-
+    Study-scope filters (domain review #3) are set only from explicit wording; every other
+    case expects them absent ("trials" alone is not a study type).
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: pembrolizumab, study_types: [INTERVENTIONAL], exclude_withdrawn: true}
+    dimension: phase
+
+- id: scope_treatment_purpose
+  class: trend
+  question: How many treatment studies of nivolumab started each year since 2018?
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: nivolumab, primary_purposes: [TREATMENT], start_year_from: 2018}
+    dimension: start_year
+
+- id: scope_observational
+  class: geographic
+  question: In which countries are observational semaglutide studies run?
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: semaglutide, study_types: [OBSERVATIONAL]}
+    dimension: country

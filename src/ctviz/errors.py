@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ctviz.schemas.llm import LlmCall
+
+
+class InternalInvariantError(RuntimeError):
+    """Code reached a state its own logic rules out; a bug, never a data problem.
+
+    Replaces `assert`, which `python -O` removes. Answered as a 500 internal_error.
+    """
 
 
 class PlanErrorReason(StrEnum):
@@ -16,6 +27,7 @@ class PlanErrorReason(StrEnum):
     TOP_N_REQUIRES_DIMENSION = "top_n_requires_dimension"
     INVALID_YEAR_RANGE = "invalid_year_range"
     DUPLICATE_COHORT = "duplicate_cohort"
+    CONTRADICTORY_FILTERS = "contradictory_filters"
 
 
 class PlanValidationError(ValueError):
@@ -61,9 +73,13 @@ class LlmInfrastructureError(PlannerError):
     may well succeed elsewhere. Every other LLM failure (a rejected request, a refusal,
     an answer that breaks the schema) is a plain PlannerError and is not retried on
     another provider.
+
+    `error_class` names the underlying exception (e.g. the SDK's RateLimitError) for the
+    call record; `prior_calls` are the provider's own retry records and `latency_ms` the
+    duration of its last attempt, both set by the provider when it measured them.
     """
 
-    def __init__(self, provider: str, problem: str) -> None:
+    def __init__(self, provider: str, problem: str, error_class: str | None = None) -> None:
         super().__init__(
             PlannerErrorCode.LLM_UNAVAILABLE,
             f"The LLM planner request to {provider} failed: {problem}",
@@ -71,6 +87,9 @@ class LlmInfrastructureError(PlannerError):
         )
         self.provider = provider
         self.problem = problem
+        self.error_class = error_class or type(self).__name__
+        self.prior_calls: list[LlmCall] = []
+        self.latency_ms: float | None = None
 
 
 # A raw value in an error message is cut to this many characters: a list-valued title or a

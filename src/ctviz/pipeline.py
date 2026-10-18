@@ -49,6 +49,7 @@ from ctviz.retrieval_route import (
     retrieve_cohort,
 )
 from ctviz.schemas.aggregate import CountedBucket, CountedCohort, Graph, GroupedCohorts
+from ctviz.schemas.llm import LlmUsage
 from ctviz.schemas.plan import Cohort, Dimension, Filters, QueryPlan, RankingDirection
 from ctviz.schemas.response import (
     CohortStats,
@@ -172,6 +173,8 @@ async def execute(
     network_limits: NetworkLimits | None = None,
     data_quality_thresholds: DataQualityThresholds | None = None,
     count_route: CountRoutePolicy | None = None,
+    request_id: str | None = None,
+    llm_usage: LlmUsage | None = None,
 ) -> VisualizationResponse:
     """Answer the planner's plan with live data.
 
@@ -189,7 +192,8 @@ async def execute(
     when its sample records contradict their buckets it is fetched after all
     (timed as "retrieve_fallback").
     `network_limits`, `data_quality_thresholds` and `count_route` default to the
-    configured defaults.
+    configured defaults. `request_id` and `llm_usage` (the planner's LLM calls) are
+    copied into meta; without them meta.llm lists no calls.
     """
     plan, question = interpretation.plan, interpretation.question
     limits = network_limits or NetworkLimits()
@@ -286,6 +290,8 @@ async def execute(
 
     timer.timings["total"] = round((time.perf_counter() - started) * 1000, 1)
     response.meta.timing_ms = timer.timings
+    response.meta.request_id = request_id
+    response.meta.llm = llm_usage or LlmUsage()
     response.meta.data_quality = (
         DataQuality.PARTIAL if any(data.truncated for data in cohorts) else data_quality
     )
@@ -730,6 +736,15 @@ def retrieval_warnings(data: CohortData, cohort_count: int) -> list[Notice]:
                 NoticeCode.RECORD_CAP,
                 f"Only the first {retrieved} of {fetch.total_count} matching trials were "
                 f"retrieved (record cap); counts cover {fetch.coverage:.1%} of matches.",
+            )
+        )
+    if fetch.page_cap_hit:
+        messages.append(
+            (
+                NoticeCode.PAGINATION_CAP,
+                f"Pagination stopped after {fetch.pages} pages (the page cap) although the API "
+                f"kept returning a next-page token; {retrieved} of {fetch.total_count} "
+                "matching trials were retrieved and counted.",
             )
         )
     if not fetch.reconciled:

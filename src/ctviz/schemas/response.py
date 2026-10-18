@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, JsonValue
 
 from ctviz.schemas.citation import Citation
+from ctviz.schemas.llm import LlmUsage, ResponseMode
 from ctviz.schemas.plan import (
     ChartType,
     Cohort,
@@ -22,7 +23,7 @@ from ctviz.schemas.plan import (
 class CountUnit(StrEnum):
     """What one unit of `count` means."""
 
-    REGISTERED_STUDIES = "registered studies (interventional and observational, any status)"
+    REGISTERED_STUDIES = "registered studies"
 
 
 class DataQuality(StrEnum):
@@ -54,18 +55,6 @@ class RetrievalRoute(StrEnum):
     FETCH = "fetch"
     COUNT_PER_BUCKET = "count_per_bucket"
     MIXED = "mixed"
-
-
-class ResponseMode(StrEnum):
-    """How an LLM provider is asked for structured output.
-
-    - json_schema_strict: the provider enforces the JSON schema while decoding.
-    - json_object: the provider only guarantees valid JSON; the schema is embedded in
-      the system prompt and the answer is validated afterwards.
-    """
-
-    JSON_SCHEMA_STRICT = "json_schema_strict"
-    JSON_OBJECT = "json_object"
 
 
 class NodeType(StrEnum):
@@ -119,6 +108,7 @@ class NoticeCode(StrEnum):
     # Data quality and retrieval.
     DEGRADED_DATA = "degraded_data"
     RECORD_CAP = "record_cap"
+    PAGINATION_CAP = "pagination_cap"
     NOT_RECONCILED = "not_reconciled"
     DUPLICATES_DROPPED = "duplicates_dropped"
     SKIPPED_RECORDS = "skipped_records"
@@ -177,6 +167,7 @@ DEFAULT_SEVERITY: dict[NoticeCode, NoticeSeverity] = {
     **dict.fromkeys(
         (
             NoticeCode.RECORD_CAP,
+            NoticeCode.PAGINATION_CAP,
             NoticeCode.NOT_RECONCILED,
             NoticeCode.SKIPPED_RECORDS,
             NoticeCode.UNRECOGNIZED_VALUES,
@@ -612,6 +603,12 @@ class Meta(BaseModel):
         "of any study type (interventional, observational, expanded access) and any overall "
         "status, including withdrawn studies, unless a filter narrows it."
     )
+    count_scope: str = Field(
+        description="Which studies the counts cover, built from the executed filters: "
+        "study types, primary purposes and status, e.g. 'interventional studies, excluding "
+        "withdrawn' or 'any study type, any status'; per cohort ('<label>: ...; ...') when "
+        "the cohorts differ."
+    )
     filters_applied: list[Cohort]
     match_mode: MatchMode
     search_semantics: dict[str, str] = Field(
@@ -664,6 +661,14 @@ class Meta(BaseModel):
         description="What qualifies the counts. A degraded_data error is always first.",
     )
     timing_ms: dict[str, float] = Field(default_factory=dict)
+    request_id: str | None = Field(
+        default=None, description="The X-Request-ID of the /query request; None outside HTTP."
+    )
+    llm: LlmUsage = Field(
+        default_factory=LlmUsage,
+        description="Every LLM call made for this request, with totals; no calls when the "
+        "plan came from structured fields only.",
+    )
 
 
 class VisualizationResponse(BaseModel):

@@ -26,6 +26,8 @@ ESSIE_SYNTAX_CHARACTERS = frozenset('"()[]')
 # Essie operators are case-sensitive: only the uppercase words act as operators.
 ESSIE_OPERATOR = re.compile(r"(?<!\S)(AND|OR|NOT)(?!\S)")
 
+EXCLUDE_WITHDRAWN_CLAUSE = "NOT AREA[OverallStatus]WITHDRAWN"
+
 # Only date and numeric fields can be sorted on (NCTId cannot break ties), at most 2 keys.
 RETRIEVAL_SORT_FIELD = "StudyFirstPostDate"
 RETRIEVAL_SORT_DIRECTION = "desc"
@@ -68,6 +70,19 @@ SEMANTICS: dict[str, str] = {
         "trials (e.g. Phase 1/Phase 2) are included."
     ),
     "statuses": "filter.overallStatus: overall status equals one of the requested values.",
+    "study_types": (
+        "AREA[StudyType] matches studies of any of the requested study types "
+        "(interventional, observational, expanded access)."
+    ),
+    "primary_purposes": (
+        "AREA[DesignPrimaryPurpose] matches studies whose primary purpose is any of the "
+        "requested ones; only interventional studies record a primary purpose, so "
+        "observational and expanded-access studies never match."
+    ),
+    "exclude_withdrawn": (
+        "NOT AREA[OverallStatus]WITHDRAWN leaves out studies withdrawn before enrolling "
+        "their first participant."
+    ),
     "start_year": (
         "AREA[StartDate] inclusive year range; month-only dates count as the first of the "
         "month, and trials with no start date are excluded."
@@ -83,6 +98,9 @@ def build_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     - condition / sponsor / country -> `query.cond` / `query.spons` / `query.locn`, raw.
     - phases -> `AREA[Phase]X` or `AREA[Phase](X OR Y)`; statuses -> `filter.overallStatus=A|B`.
     - start years -> `AREA[StartDate]RANGE[<from>-01-01,<to>-12-31]`, MIN/MAX when open.
+    - study types -> `AREA[StudyType]X` or `AREA[StudyType](X OR Y)`; primary purposes ->
+      `AREA[DesignPrimaryPurpose]...` likewise; exclude_withdrawn ->
+      `NOT AREA[OverallStatus]WITHDRAWN` (verified live to partition the registry).
     All `filter.advanced` clauses are joined with AND. Raises InvalidFilterError for blank
     values, Essie syntax in free text, and double quotes or operator words in a quoted
     drug name.
@@ -105,6 +123,14 @@ def build_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
         clauses.append(phase_clause([phase.value for phase in filters.phases]))
     if filters.start_year_from is not None or filters.start_year_to is not None:
         clauses.append(start_year_clause(filters.start_year_from, filters.start_year_to))
+    if filters.study_types:
+        clauses.append(any_of_clause("StudyType", [t.value for t in filters.study_types]))
+    if filters.primary_purposes:
+        clauses.append(
+            any_of_clause("DesignPrimaryPurpose", [p.value for p in filters.primary_purposes])
+        )
+    if filters.exclude_withdrawn:
+        clauses.append(EXCLUDE_WITHDRAWN_CLAUSE)
     if clauses:
         params["filter.advanced"] = " AND ".join(clauses)
     return params
@@ -138,7 +164,16 @@ def search_semantics(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     semantics: dict[str, str] = {}
     if filters.drug is not None:
         semantics["drug"] = SEMANTICS[f"drug_{match_mode}"]
-    for field in ("condition", "sponsor", "country", "phases", "statuses"):
+    for field in (
+        "condition",
+        "sponsor",
+        "country",
+        "phases",
+        "statuses",
+        "study_types",
+        "primary_purposes",
+        "exclude_withdrawn",
+    ):
         if getattr(filters, field):
             semantics[field] = SEMANTICS[field]
     if filters.start_year_from is not None or filters.start_year_to is not None:
@@ -225,9 +260,14 @@ def intervention_clause(drug: str) -> str:
 
 def phase_clause(phases: list[str]) -> str:
     """AREA[Phase] clause; several phases are OR-combined (any listed phase matches)."""
-    if len(phases) == 1:
-        return f"AREA[Phase]{phases[0]}"
-    return f"AREA[Phase]({' OR '.join(phases)})"
+    return any_of_clause("Phase", phases)
+
+
+def any_of_clause(area: str, values: list[str]) -> str:
+    """AREA[<area>] clause matching any of `values` (enum codes, never free text)."""
+    if len(values) == 1:
+        return f"AREA[{area}]{values[0]}"
+    return f"AREA[{area}]({' OR '.join(values)})"
 
 
 def start_year_clause(start: int | None, end: int | None) -> str:

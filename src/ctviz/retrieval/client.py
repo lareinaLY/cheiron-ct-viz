@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random as random_module
 import time
 from collections.abc import Awaitable, Callable
@@ -20,8 +21,14 @@ from typing import Any, Self
 import httpx
 
 from ctviz.config import Settings
-from ctviz.errors import ApiRequestError, RateLimitError, UpstreamError
-from ctviz.retrieval.cache import ResponseCache, cache_key
+from ctviz.errors import (
+    ApiRequestError,
+    InternalInvariantError,
+    RateLimitError,
+    RetrievalError,
+    UpstreamError,
+)
+from ctviz.retrieval.cache import ResponseCache, cache_key, get_cached
 from ctviz.retrieval.fields import STUDY_FIELDS
 from ctviz.schemas.retrieval import FetchResult, StudySample
 
@@ -32,6 +39,15 @@ type Sleep = Callable[[float], Awaitable[None]]
 
 API_MAX_PAGE_SIZE = 1000
 ENUMS_PATH = "/studies/enums"
+# Pages allowed beyond those the record cap needs, for empty pages the API returns with a
+# token (seen once, docs/review_findings.md L4); a server that never stops sending
+# tokens would otherwise be paged forever.
+EXTRA_PAGES = 2
+
+
+def max_pages(max_records: int, page_size: int) -> int:
+    """Pages a full fetch may request: enough for the record cap, plus EXTRA_PAGES."""
+    return math.ceil(max_records / page_size) + EXTRA_PAGES
 
 
 class TokenBucket:
@@ -186,12 +202,24 @@ class CtGovClient:
         Used once at startup to detect enum drift (`retrieval.enums`).
         """
         key = cache_key(f"{self._settings.ctgov_base_url}{ENUMS_PATH}", {})
-        hit = self._cache.get(key)
+        hit = await get_cached(self._cache, key)
         if hit is not None:
             return hit.payload
         payload = await self._request(ENUMS_PATH, {}, expected=list)
         self._cache.set(key, payload)
         return payload
+
+    async def probe_version(self) -> None:
+        """One paced GET /version without retries; raises on any failure.
+
+        For the startup self-check, which wants a quick yes or no rather than the
+        minutes the retrying path can take.
+        """
+        await self._limiter.acquire()
+        response = await self._http.get("/version")
+        if response.status_code != 200:
+            raise UpstreamError(f"/version: HTTP {response.status_code}", response.status_code)
+        parse_json(response)
 
     async def data_timestamp(self) -> datetime | None:
         """The API's dataTimestamp from /version, reused for `version_ttl_seconds`.
@@ -218,11 +246,15 @@ class CtGovClient:
     async def _fetch_pages(
         self, frozen: dict[str, str], *, read_cache: bool, stop_above_total: int | None
     ) -> FetchResult:
-        """Walk nextPageToken until the last page or the record cap.
+        """Walk nextPageToken until the last page, the record cap or the page cap.
 
-        Raises _TotalAbove after page 1 when its totalCount exceeds `stop_above_total`.
+        The page cap (`max_pages`) stops a server that keeps sending tokens; the result
+        then has `page_cap_hit` set and the pipeline warns. Raises _TotalAbove after
+        page 1 when its totalCount exceeds `stop_above_total`.
         """
         max_records = self._settings.max_records
+        page_limit = max_pages(max_records, self.page_size)
+        page_cap_hit = False
         studies: list[Any] = []
         seen: set[str] = set()
         duplicates = 0
@@ -261,8 +293,19 @@ class CtGovClient:
             token = page.get("nextPageToken")
             if len(studies) >= max_records or not token:
                 break
+            if pages >= page_limit:
+                page_cap_hit = True
+                logger.warning(
+                    "Pagination stopped at the page cap (%d pages) with %d of %d studies; "
+                    "the API kept returning nextPageToken",
+                    pages,
+                    len(studies),
+                    total_count,
+                )
+                break
 
-        assert total_count is not None
+        if total_count is None:
+            raise InternalInvariantError("pagination ended without reading a first page")
         hit_cap = len(studies) >= max_records
         studies = studies[:max_records]
         truncated = hit_cap and total_count > len(studies)
@@ -274,6 +317,7 @@ class CtGovClient:
             reconciled=truncated or len(studies) == total_count,
             duplicates_dropped=duplicates,
             pages=pages,
+            page_cap_hit=page_cap_hit,
             cached_at=cached_at,
         )
 
@@ -287,7 +331,7 @@ class CtGovClient:
         """
         key = cache_key(f"{self._settings.ctgov_base_url}/studies", params)
         if read_cache:
-            hit = self._cache.get(key)
+            hit = await get_cached(self._cache, key)
             if hit is not None:
                 return hit.payload, hit.stored_at
         if cache_only:
@@ -336,7 +380,7 @@ class CtGovClient:
             delay = self._backoff_seconds(attempt)
             logger.warning("%s on %s; retry %d in %.2fs", failure, path, attempt + 1, delay)
             await self._sleep(delay)
-        raise AssertionError("unreachable: the retry loop always returns or raises")
+        raise InternalInvariantError("the retry loop ended without returning or raising")
 
     def _backoff_seconds(self, attempt: int) -> float:
         """Exponential backoff with additive jitter: base * 2^attempt + U(0, base)."""
@@ -390,3 +434,23 @@ def parse_json[T: (dict[str, Any], list[Any])](
         kind = "object" if expected is dict else "list"
         raise UpstreamError(f"{response.url}: expected a JSON {kind}, got {type(payload).__name__}")
     return payload
+
+
+async def check_api_reachable(client: CtGovClient) -> bool:
+    """Startup self-check: one GET /version; logs a warning and returns False on failure.
+
+    Advisory only and run as a background task: an unreachable API at startup is worth
+    one log line, never a refusal to start (the API may be back by the first request).
+    """
+    try:
+        await client.probe_version()
+    except (RetrievalError, httpx.HTTPError) as error:
+        logger.warning(
+            "Startup self-check: ClinicalTrials.gov is unreachable (%s: %s); /query will "
+            "fail until it is back",
+            type(error).__name__,
+            error,
+        )
+        return False
+    logger.info("Startup self-check: ClinicalTrials.gov /version answered")
+    return True

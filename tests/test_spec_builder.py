@@ -256,10 +256,9 @@ class TestStructure:
 
     def test_meta_states_count_unit_and_interpretation(self) -> None:
         meta = bar_phase().meta
-        # Supersedes "trials": the unit counts every registered study type and status.
-        assert (
-            meta.count_unit == "registered studies (interventional and observational, any status)"
-        )
+        # The unit is stable; which study types and statuses it covers is count_scope.
+        assert meta.count_unit == "registered studies"
+        assert meta.count_scope == "any study type, any status"
         assert meta.interpretation.question == "pembrolizumab trials by phase"
         assert meta.interpretation.planned_by == "structured_fields"
         assert meta.data_timestamp == DATA_TIMESTAMP

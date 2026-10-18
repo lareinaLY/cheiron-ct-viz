@@ -26,7 +26,7 @@ from ctviz.schemas.plan import (
     QueryPlan,
     Relation,
 )
-from ctviz.schemas.trial import OverallStatus, Phase
+from ctviz.schemas.trial import OverallStatus, Phase, PrimaryPurpose, StudyType
 
 
 class QueryRequest(BaseModel):
@@ -68,6 +68,20 @@ class QueryRequest(BaseModel):
     )
     start_year_from: int | None = Field(default=None, ge=MIN_START_YEAR, le=MAX_START_YEAR)
     start_year_to: int | None = Field(default=None, ge=MIN_START_YEAR, le=MAX_START_YEAR)
+    study_types: list[StudyType] = Field(
+        default_factory=list,
+        max_length=len(StudyType),
+        description="Any of these study types (OR); repeats are removed.",
+    )
+    exclude_withdrawn: bool = Field(
+        default=False, description="Leave out studies withdrawn before enrolling anyone."
+    )
+    primary_purposes: list[PrimaryPurpose] = Field(
+        default_factory=list,
+        max_length=len(PrimaryPurpose),
+        description="Any of these primary purposes (OR); only interventional studies have "
+        "one. Repeats are removed.",
+    )
     dimension: Dimension | None = None
     relation: Relation | None = None
     chart_hint: ChartType | None = None
@@ -82,7 +96,7 @@ class QueryRequest(BaseModel):
     )
     match_mode: MatchMode = "intervention_name"
 
-    @field_validator("phases", "statuses")
+    @field_validator("phases", "statuses", "study_types", "primary_purposes")
     @classmethod
     def without_repeats[T](cls, values: list[T]) -> list[T]:
         """An OR list with a repeat means the same; keep the first occurrence."""
@@ -118,6 +132,9 @@ class QueryRequest(BaseModel):
             statuses=self.statuses,
             start_year_from=self.start_year_from,
             start_year_to=self.start_year_to,
+            study_types=self.study_types,
+            exclude_withdrawn=self.exclude_withdrawn,
+            primary_purposes=self.primary_purposes,
         )
 
     def to_plan(self) -> QueryPlan:
@@ -134,8 +151,23 @@ class QueryRequest(BaseModel):
         )
 
 
-def cohort_label(filters: Filters) -> str:
-    """A readable, deterministic label, e.g. 'non-small cell lung cancer, recruiting'."""
+STUDY_TYPE_LABELS: dict[StudyType, str] = {
+    StudyType.INTERVENTIONAL: "interventional",
+    StudyType.OBSERVATIONAL: "observational",
+    StudyType.EXPANDED_ACCESS: "expanded access",
+}
+PRIMARY_PURPOSE_LABELS: dict[PrimaryPurpose, str] = {
+    **{p: p.value.replace("_", " ").lower() for p in PrimaryPurpose},
+    PrimaryPurpose.ECT: "educational/counseling/training",
+}
+
+
+def cohort_label(filters: Filters, *, with_study_types: bool = True) -> str:
+    """A readable, deterministic label, e.g. 'non-small cell lung cancer, recruiting'.
+
+    `with_study_types=False` leaves the study types out, for a title that names them in
+    its subject ("Interventional studies by phase for ...").
+    """
     parts = [value.strip() for value in (filters.drug, filters.condition) if value]
     if filters.sponsor:
         sponsor = filters.sponsor.strip()
@@ -149,10 +181,17 @@ def cohort_label(filters: Filters) -> str:
     if filters.phases:
         parts.append(" or ".join(PHASE_LABELS[phase] for phase in filters.phases))
     if filters.statuses:
-        parts.append(" or ".join(s.value.replace("_", " ").lower() for s in filters.statuses))
+        parts.append(statuses_label(filters))
+    types = study_types_label(filters)
+    if types and with_study_types:
+        parts.append(types)
+    if filters.primary_purposes:
+        parts.append(primary_purposes_label(filters))
     years = year_range_label(filters.start_year_from, filters.start_year_to)
     if years:
         parts.append(years)
+    if filters.exclude_withdrawn:
+        parts.append("excluding withdrawn")
     return ", ".join(parts) or "all trials"
 
 
@@ -165,3 +204,49 @@ def year_range_label(start: int | None, end: int | None) -> str | None:
     if end is not None:
         return f"started {end} or earlier"
     return None
+
+
+def count_scope(cohorts: list[Cohort]) -> str:
+    """Which studies the counts cover, from the executed filters (meta.count_scope).
+
+    One phrase when every cohort has the same scope, e.g. "interventional studies,
+    excluding withdrawn" or "any study type, any status"; otherwise one per cohort,
+    "<label>: <scope>", joined with "; ".
+    """
+    scopes = [cohort_scope(cohort.filters) for cohort in cohorts]
+    if len(set(scopes)) == 1:
+        return scopes[0]
+    return "; ".join(f"{c.label}: {scope}" for c, scope in zip(cohorts, scopes, strict=True))
+
+
+def cohort_scope(filters: Filters) -> str:
+    """Study type, primary purpose and status scope of one cohort's filters."""
+    parts = [f"{types} studies" if (types := study_types_label(filters)) else "any study type"]
+    if filters.primary_purposes:
+        parts.append(primary_purposes_label(filters))
+    if filters.statuses:
+        parts.append(f"status {statuses_label(filters)}")
+    elif filters.exclude_withdrawn:
+        parts.append("excluding withdrawn")
+    else:
+        parts.append("any status")
+    return ", ".join(parts)
+
+
+def study_types_label(filters: Filters) -> str | None:
+    """'interventional', 'interventional or observational', or None without a filter."""
+    if not filters.study_types:
+        return None
+    return " or ".join(STUDY_TYPE_LABELS[t] for t in filters.study_types)
+
+
+def primary_purposes_label(filters: Filters) -> str:
+    """'primary purpose treatment or prevention'."""
+    return "primary purpose " + " or ".join(
+        PRIMARY_PURPOSE_LABELS[p] for p in filters.primary_purposes
+    )
+
+
+def statuses_label(filters: Filters) -> str:
+    """'recruiting or not yet recruiting'."""
+    return " or ".join(s.value.replace("_", " ").lower() for s in filters.statuses)

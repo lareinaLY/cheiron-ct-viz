@@ -306,7 +306,10 @@
               "phases": [],
               "statuses": [],
               "start_year_from": 2014,
-              "start_year_to": null
+              "start_year_to": null,
+              "study_types": [],
+              "exclude_withdrawn": false,
+              "primary_purposes": []
             }
           }
         ],
@@ -332,7 +335,8 @@
       "unhandled_terms": [],
       "planning_ms": null
     },
-    "count_unit": "registered studies (interventional and observational, any status)",
+    "count_unit": "registered studies",
+    "count_scope": "any study type, any status",
     "filters_applied": [
       {
         "label": "pembrolizumab, started 2014 or later",
@@ -344,7 +348,10 @@
           "phases": [],
           "statuses": [],
           "start_year_from": 2014,
-          "start_year_to": null
+          "start_year_to": null,
+          "study_types": [],
+          "exclude_withdrawn": false,
+          "primary_purposes": []
         }
       }
     ],
@@ -424,6 +431,15 @@
         "message": "1 trial has start dates in the future (estimated); buckets 2027… are projections, not activity."
       }
     ],
-    "timing_ms": {}
+    "timing_ms": {},
+    "request_id": null,
+    "llm": {
+      "calls": [],
+      "total_latency_ms": 0.0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_estimated_cost_usd": 0.0,
+      "skipped_providers": []
+    }
   }
 }

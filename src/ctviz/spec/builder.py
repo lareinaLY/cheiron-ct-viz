@@ -14,6 +14,7 @@ from ctviz.aggregate.registry import DIMENSIONS, RELATIONS, DimensionKind
 from ctviz.schemas.aggregate import Graph, GroupedCohorts
 from ctviz.schemas.citation import CitationRole
 from ctviz.schemas.plan import ChartType, Filters, QueryPlan
+from ctviz.schemas.request import cohort_label, count_scope, study_types_label
 from ctviz.schemas.response import (
     Channel,
     CohortPairOverlap,
@@ -135,6 +136,7 @@ def build_response(
     meta = Meta(
         interpretation=resolve_interpretation(plan, question, interpretation),
         count_unit=CountUnit.REGISTERED_STUDIES,
+        count_scope=count_scope(plan.cohorts),
         filters_applied=plan.cohorts,
         match_mode=plan.match_mode,
         search_semantics=search_semantics,
@@ -376,7 +378,14 @@ def chart_title(plan: QueryPlan) -> str:
         return RELATIONS[plan.relation].title.format(cohort=labels[0])
     if plan.dimension is None:
         raise ValueError("A validated plan has a dimension or a relation.")
-    subject = f"{TITLE_SUBJECT} by {DIMENSIONS[plan.dimension].title_label}"
+    shared_types = shared_study_types_label(plan)
+    if shared_types is not None:
+        # The subject names the study types, so the labels need not repeat them.
+        subject = f"{capitalize(shared_types)} {TITLE_SUBJECT.lower()}"
+        labels = [cohort_label(c.filters, with_study_types=False) for c in plan.cohorts]
+    else:
+        subject = TITLE_SUBJECT
+    subject = f"{subject} by {DIMENSIONS[plan.dimension].title_label}"
     title = (
         f"{subject} for {labels[0]}" if len(labels) == 1 else f"{subject}: {' vs '.join(labels)}"
     )
@@ -385,6 +394,14 @@ def chart_title(plan: QueryPlan) -> str:
     if plan.bottom_n is not None:
         title += f" (bottom {plan.bottom_n})"
     return title
+
+
+def shared_study_types_label(plan: QueryPlan) -> str | None:
+    """The study-type label all cohorts share ('interventional'), else None."""
+    labels = {study_types_label(cohort.filters) for cohort in plan.cohorts}
+    if len(labels) != 1:
+        return None
+    return labels.pop()
 
 
 def grouped_visualization(plan: QueryPlan, result: GroupedCohorts) -> Visualization:

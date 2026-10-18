@@ -26,7 +26,7 @@ def load_raw(path: Path) -> dict[str, Any]:
 
 
 def test_examples_exist() -> None:
-    assert len(RESPONSE_PATHS) == 9
+    assert len(RESPONSE_PATHS) == 11
 
 
 @pytest.mark.parametrize("path", RESPONSE_PATHS, ids=lambda path: path.name)

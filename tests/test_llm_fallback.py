@@ -149,14 +149,19 @@ class TestFallbackChain:
         secondary = FakeProvider("secondary", INVALID, VALID)
         caplog.set_level(logging.INFO, logger="ctviz.planner")
         await run_plan(FallbackChain([primary, secondary]))
-        lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("llm_call")]
+        # One JSON line per call; a draft rejected by validation is "validation_retry".
+        lines = [
+            json.loads(r.getMessage())
+            for r in caplog.records
+            if r.getMessage().startswith('{"event": "llm_call"')
+        ]
         assert len(lines) == 4
-        assert "provider=primary" in lines[0] and "outcome=fallback" in lines[0]
-        assert "provider=secondary" in lines[1] and "outcome=retry" in lines[1]
-        assert "input_tokens=100" in lines[1] and "output_tokens=20" in lines[1]
-        assert "provider=primary" in lines[2] and "outcome=fallback" in lines[2]
-        assert "provider=secondary" in lines[3] and "outcome=ok" in lines[3]
-        assert all("latency_ms=" in line and "model=" in line for line in lines)
+        assert (lines[0]["provider"], lines[0]["outcome"]) == ("primary", "fallback")
+        assert (lines[1]["provider"], lines[1]["outcome"]) == ("secondary", "validation_retry")
+        assert (lines[1]["input_tokens"], lines[1]["output_tokens"]) == (100, 20)
+        assert (lines[2]["provider"], lines[2]["outcome"]) == ("primary", "fallback")
+        assert (lines[3]["provider"], lines[3]["outcome"]) == ("secondary", "ok")
+        assert all("latency_ms" in line and "model_requested" in line for line in lines)
 
 
 def settings(**fields: Any) -> Settings:

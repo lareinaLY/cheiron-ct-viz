@@ -1,4 +1,4 @@
-"""FastAPI app: POST /query, GET /health and the demo UI at GET /.
+"""FastAPI app: POST /query, GET /health, GET /health/llm and the demo UI at GET /.
 
 Run: uv run uvicorn ctviz.api.app:app --reload
 Every failure is returned as an ErrorResponse (code, message, suggestions) instead of a
@@ -11,14 +11,15 @@ import asyncio
 import contextlib
 import logging
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date
 from importlib.resources import files
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request, Security
+from fastapi import Depends, FastAPI, Request, Response, Security
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import APIKeyQuery, HTTPAuthorizationCredentials, HTTPBearer
 
@@ -35,11 +36,13 @@ from ctviz.errors import (
     UpstreamDataFormatError,
     UpstreamError,
 )
-from ctviz.planner.llm import LlmClient, build_llm
+from ctviz.planner.llm import FallbackChain, LlmCallLog, LlmClient, build_llm
 from ctviz.planner.plan import plan
+from ctviz.request_context import REQUEST_ID, new_request_id
 from ctviz.retrieval.cache import build_cache
-from ctviz.retrieval.client import CtGovClient
+from ctviz.retrieval.client import CtGovClient, check_api_reachable
 from ctviz.retrieval.enums import check_enum_drift
+from ctviz.schemas.llm import LlmHealth
 from ctviz.schemas.plan import (
     MAX_START_YEAR,
     MAX_TOP_N,
@@ -52,6 +55,12 @@ from ctviz.schemas.request import QueryRequest
 from ctviz.schemas.response import ErrorResponse, VisualizationResponse
 
 logger = logging.getLogger(__name__)
+
+# Responses smaller than this are sent uncompressed; a chart response with citations is
+# tens to hundreds of KB of repetitive JSON and compresses about tenfold.
+GZIP_MINIMUM_BYTES = 1024
+
+type CallNext = Callable[[Request], Awaitable[Response]]
 
 # auto_error=False: a missing credential is only an error when DEMO_TOKEN is set.
 BEARER = HTTPBearer(auto_error=False)
@@ -93,6 +102,9 @@ PLAN_SUGGESTIONS: dict[PlanErrorReason, list[str]] = {
         "Make `start_year_from` <= `start_year_to`.",
     ],
     PlanErrorReason.DUPLICATE_COHORT: ["Give each cohort different filters."],
+    PlanErrorReason.CONTRADICTORY_FILTERS: [
+        "Remove WITHDRAWN from `statuses`, or set `exclude_withdrawn` to false.",
+    ],
 }
 
 # An LLM provider failure is upstream (502); every other planner error is about the question.
@@ -124,8 +136,10 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
     `llm` defaults to the one configured in settings, built at startup so a malformed
     key stops the server with a clear message (None without an API key: then only
     structured fields are planned). Tests pass a fake.
-    The enum drift check (`settings.enum_drift_check`) runs as a background task, so a
-    slow or failing /studies/enums never delays startup; it is cancelled at shutdown.
+    The enum drift check (`settings.enum_drift_check`) and the /version self-check
+    (`settings.startup_self_check`) run as background tasks, so a slow or failing API
+    never delays startup; they are cancelled at shutdown. Responses of at least
+    GZIP_MINIMUM_BYTES are gzipped for clients that accept it.
     /query runs at most `max_concurrent_queries` at once and is abandoned after
     `request_deadline_seconds` (the wait for a slot included); with `demo_token` set it
     needs that token.
@@ -157,9 +171,15 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
                 if settings.enum_drift_check
                 else None
             )
+            app.state.self_check_task = (
+                asyncio.create_task(check_api_reachable(client), name="startup-self-check")
+                if settings.runs_startup_self_check()
+                else None
+            )
             try:
                 yield
             finally:
+                await cancel_task(app.state.self_check_task)
                 await cancel_task(app.state.enum_drift_task)
 
     app = FastAPI(
@@ -167,12 +187,47 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         summary="Clinical-trial questions to cited visualization specs (ClinicalTrials.gov v2).",
         lifespan=lifespan,
     )
+    app.add_middleware(GZipMiddleware, minimum_size=GZIP_MINIMUM_BYTES)
     register_error_handlers(app)
+
+    @app.middleware("http")
+    async def request_id(request: Request, call_next: CallNext) -> Response:
+        """Give every /query request an ID: X-Request-ID, meta.request_id, LLM call records.
+
+        A middleware rather than the handler, so error responses carry the ID too.
+        """
+        if request.url.path != "/query":
+            return await call_next(request)
+        identifier = new_request_id()
+        token = REQUEST_ID.set(identifier)
+        try:
+            response = await call_next(request)
+        finally:
+            REQUEST_ID.reset(token)
+        response.headers["X-Request-ID"] = identifier
+        return response
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         """Liveness probe; does not call ClinicalTrials.gov."""
         return {"status": "ok"}
+
+    @app.get("/health/llm")
+    async def health_llm(
+        llm: Annotated[LlmClient | None, Depends(get_llm)],
+    ) -> JSONResponse:
+        """Probe each configured LLM provider once with a tiny schema; never cached.
+
+        Each probe is a real (billed, tiny) call, so this is on demand only: an external
+        scheduler (cron, uptime monitor) would call it daily to notice a revoked key or a
+        retired model before users do. A provider whose circuit breaker is open is
+        reported as skipped without a call.
+        """
+        if isinstance(llm, FallbackChain):
+            body = LlmHealth(configured=True, providers=await llm.health())
+        else:
+            body = LlmHealth(configured=llm is not None, providers=[])
+        return JSONResponse(body.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
 
     @app.get("/", include_in_schema=False)
     async def demo_ui() -> HTMLResponse:
@@ -194,6 +249,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         `query` alone is enough when the LLM planner is configured; structured fields
         override what the LLM reads from it.
         """
+        call_log = LlmCallLog()
         try:
             async with asyncio.timeout(settings.request_deadline_seconds), slots:
                 interpretation = await plan(
@@ -201,6 +257,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
                     llm,
                     today=date.today(),
                     default_top_n_for_ranking=settings.default_top_n_for_ranking,
+                    call_log=call_log,
                 )
                 return await pipeline.execute(
                     interpretation,
@@ -208,6 +265,8 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
                     network_limits=settings.network_limits(),
                     data_quality_thresholds=settings.data_quality_thresholds(),
                     count_route=settings.count_route_policy(),
+                    request_id=REQUEST_ID.get(),
+                    llm_usage=call_log.usage(),
                 )
         except TimeoutError as error:
             raise RequestTimeoutError(settings.request_deadline_seconds) from error

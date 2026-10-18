@@ -197,10 +197,6 @@ const EXAMPLES = [
   "Which sponsors work on which drugs in pembrolizumab trials?",
   "What is the average survival benefit of pembrolizumab?",
 ];
-const COUNT_UNIT_WORDS = {
-  "registered studies (interventional and observational, any status)":
-    "registered studies, including observational and withdrawn",
-};
 
 const $ = (id) => document.getElementById(id);
 let chart = null;
@@ -375,8 +371,8 @@ function renderBanners(warnings) {
 
 function renderFacts(meta) {
   const facts = [];
-  const unit = COUNT_UNIT_WORDS[meta.count_unit] || meta.count_unit;
-  facts.push(`Counting: ${unit}`);
+  // count_scope is built server-side from the executed filters; shown as written.
+  facts.push(meta.count_scope ? `Counting: ${meta.count_unit} — ${meta.count_scope}` : `Counting: ${meta.count_unit}`);
   for (const cohort of meta.cohorts || []) {
     const name = meta.cohorts.length > 1 ? `${cohort.label}: ` : "";
     if (cohort.retrieval_route === "count_per_bucket") {
@@ -642,7 +638,7 @@ function renderDeveloper(body, transport) {
   if (body && typeof body === "object" && "code" in body) rows.push(["error code", body.code]);
   const meta = body && body.meta;
   if (meta) {
-    for (const name of ["count_unit", "retrieval_route", "data_quality", "match_mode", "buckets_overlap", "total_matched", "records_retrieved", "coverage", "estimated_count", "unknown_date_type_count", "data_timestamp"]) {
+    for (const name of ["count_unit", "count_scope", "retrieval_route", "data_quality", "match_mode", "buckets_overlap", "total_matched", "records_retrieved", "coverage", "estimated_count", "unknown_date_type_count", "data_timestamp"]) {
       rows.push([`meta.${name}`, meta[name] === null ? "null" : String(meta[name])]);
     }
     rows.push(["meta.interpretation.planned_by", meta.interpretation ? meta.interpretation.planned_by : ""]);

@@ -1330,7 +1330,10 @@
               "phases": [],
               "statuses": [],
               "start_year_from": null,
-              "start_year_to": null
+              "start_year_to": null,
+              "study_types": [],
+              "exclude_withdrawn": false,
+              "primary_purposes": []
             }
           }
         ],
@@ -1356,7 +1359,8 @@
       "unhandled_terms": [],
       "planning_ms": null
     },
-    "count_unit": "registered studies (interventional and observational, any status)",
+    "count_unit": "registered studies",
+    "count_scope": "any study type, any status",
     "filters_applied": [
       {
         "label": "pembrolizumab",
@@ -1368,7 +1372,10 @@
           "phases": [],
           "statuses": [],
           "start_year_from": null,
-          "start_year_to": null
+          "start_year_to": null,
+          "study_types": [],
+          "exclude_withdrawn": false,
+          "primary_purposes": []
         }
       }
     ],
@@ -1474,6 +1481,15 @@
       }
     ],
     "warnings": [],
-    "timing_ms": {}
+    "timing_ms": {},
+    "request_id": null,
+    "llm": {
+      "calls": [],
+      "total_latency_ms": 0.0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_estimated_cost_usd": 0.0,
+      "skipped_providers": []
+    }
   }
 }
