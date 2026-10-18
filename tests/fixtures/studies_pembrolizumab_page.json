@@ -1,0 +1,1239 @@
+{
+  "_request": {
+    "url": "https://clinicaltrials.gov/api/v2/studies",
+    "params": {
+      "query.intr": "pembrolizumab",
+      "pageSize": 5,
+      "countTotal": "true",
+      "fields": "NCTId|BriefTitle|OverallStatus|StudyType|Phase|StartDate|StartDateType|Condition|InterventionName|InterventionType|InterventionOtherName|LeadSponsorName|LeadSponsorClass|CollaboratorName|CollaboratorClass|LocationCountry|EnrollmentCount|EnrollmentType|ConditionMeshTerm|InterventionMeshTerm"
+    }
+  },
+  "_captured_on": "2026-10-17",
+  "response": {
+    "totalCount": 2981,
+    "studies": [
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT04993677",
+            "briefTitle": "A Study of SEA-CD40 Given With Other Drugs in Cancers"
+          },
+          "statusModule": {
+            "overallStatus": "COMPLETED",
+            "startDateStruct": {
+              "date": "2021-10-06",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Seagen Inc.",
+              "class": "INDUSTRY"
+            },
+            "collaborators": [
+              {
+                "name": "Merck Sharp & Dohme LLC",
+                "class": "INDUSTRY"
+              }
+            ]
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Melanoma",
+              "Carcinoma, Non-Small- Cell Lung"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 77,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "SEA-CD40"
+              },
+              {
+                "type": "DRUG",
+                "name": "pembrolizumab (KEYTRUDA®)"
+              },
+              {
+                "type": "DRUG",
+                "name": "pemetrexed",
+                "otherNames": [
+                  "Alimta"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "carboplatin",
+                "otherNames": [
+                  "Paraplatin"
+                ]
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Sweden"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Melanoma"
+              },
+              {
+                "term": "Carcinoma, Non-Small-Cell Lung"
+              },
+              {
+                "term": "Uveal Melanoma"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "pembrolizumab"
+              },
+              {
+                "term": "Pemetrexed"
+              },
+              {
+                "term": "Carboplatin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT03631407",
+            "briefTitle": "Safety and Efficacy of Vicriviroc (MK-7690) in Combination With Pembrolizumab (MK-3475) in Participants With Advanced/Metastatic Microsatellite Stable (MSS) Colorectal Cancer (CRC) (MK-7690-046)"
+          },
+          "statusModule": {
+            "overallStatus": "COMPLETED",
+            "startDateStruct": {
+              "date": "2018-09-24",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Merck Sharp & Dohme LLC",
+              "class": "INDUSTRY"
+            }
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Colorectal Neoplasms"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 41,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "Vicriviroc",
+                "otherNames": [
+                  "MK-7690"
+                ]
+              },
+              {
+                "type": "BIOLOGICAL",
+                "name": "Pembrolizumab",
+                "otherNames": [
+                  "KEYTRUDA®",
+                  "MK-3475"
+                ]
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Colorectal Neoplasms"
+              },
+              {
+                "term": "Parkinson Disease 4, Autosomal Dominant Lewy Body"
+              },
+              {
+                "term": "Spinocerebellar Degenerations"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "vicriviroc"
+              },
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT03834519",
+            "briefTitle": "Study of Pembrolizumab (MK-3475) Plus Olaparib Versus Abiraterone Acetate or Enzalutamide in Metastatic Castration-resistant Prostate Cancer (mCRPC) (MK-7339-010/KEYLYNK-010)"
+          },
+          "statusModule": {
+            "overallStatus": "COMPLETED",
+            "startDateStruct": {
+              "date": "2019-05-02",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Merck Sharp & Dohme LLC",
+              "class": "INDUSTRY"
+            }
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Prostatic Neoplasms"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE3"
+            ],
+            "enrollmentInfo": {
+              "count": 793,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "BIOLOGICAL",
+                "name": "Pembrolizumab",
+                "otherNames": [
+                  "MK-3475",
+                  "KEYTRUDA®"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Olaparib",
+                "otherNames": [
+                  "MK-7339",
+                  "AZD-2281",
+                  "LYNPARZA®"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Abiraterone acetate",
+                "otherNames": [
+                  "ZYTIGA®",
+                  "CB-7630",
+                  "JNJ-212082"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Prednisone"
+              },
+              {
+                "type": "DRUG",
+                "name": "Enzalutamide",
+                "otherNames": [
+                  "XTANDI®",
+                  "MDV-3100",
+                  "ASP-9785"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Prednisolone"
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Argentina"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Austria"
+              },
+              {
+                "country": "Austria"
+              },
+              {
+                "country": "Austria"
+              },
+              {
+                "country": "Austria"
+              },
+              {
+                "country": "Brazil"
+              },
+              {
+                "country": "Brazil"
+              },
+              {
+                "country": "Brazil"
+              },
+              {
+                "country": "Brazil"
+              },
+              {
+                "country": "Brazil"
+              },
+              {
+                "country": "Brazil"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Canada"
+              },
+              {
+                "country": "Chile"
+              },
+              {
+                "country": "Chile"
+              },
+              {
+                "country": "Chile"
+              },
+              {
+                "country": "Chile"
+              },
+              {
+                "country": "Chile"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Germany"
+              },
+              {
+                "country": "Ireland"
+              },
+              {
+                "country": "Ireland"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Israel"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Japan"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "Netherlands"
+              },
+              {
+                "country": "New Zealand"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "Russia"
+              },
+              {
+                "country": "South Korea"
+              },
+              {
+                "country": "South Korea"
+              },
+              {
+                "country": "South Korea"
+              },
+              {
+                "country": "South Korea"
+              },
+              {
+                "country": "South Korea"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Spain"
+              },
+              {
+                "country": "Taiwan"
+              },
+              {
+                "country": "Taiwan"
+              },
+              {
+                "country": "Taiwan"
+              },
+              {
+                "country": "Taiwan"
+              },
+              {
+                "country": "Taiwan"
+              },
+              {
+                "country": "United Kingdom"
+              },
+              {
+                "country": "United Kingdom"
+              },
+              {
+                "country": "United Kingdom"
+              },
+              {
+                "country": "United Kingdom"
+              },
+              {
+                "country": "United Kingdom"
+              },
+              {
+                "country": "United Kingdom"
+              },
+              {
+                "country": "United Kingdom"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Prostatic Neoplasms"
+              },
+              {
+                "term": "Parkinson Disease 4, Autosomal Dominant Lewy Body"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "pembrolizumab"
+              },
+              {
+                "term": "olaparib"
+              },
+              {
+                "term": "Abiraterone Acetate"
+              },
+              {
+                "term": "Prednisone"
+              },
+              {
+                "term": "enzalutamide"
+              },
+              {
+                "term": "Prednisolone"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT06939036",
+            "briefTitle": "Study of 225Ac-SS0110 in Subjects With ES-SCLC or MCC (SANTANA-225 )"
+          },
+          "statusModule": {
+            "overallStatus": "TERMINATED",
+            "startDateStruct": {
+              "date": "2025-07-01",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Ariceum Therapeutics GmbH",
+              "class": "INDUSTRY"
+            }
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Small Cell Lung Cancer Extensive Stage",
+              "Merkel Cell Carcinoma"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1",
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 2,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "225Ac-SSO110 + SoC"
+              },
+              {
+                "type": "DRUG",
+                "name": "Atezolizumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Durvalumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Avelumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Pembrolizumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Retifanlimab"
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "Australia"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Carcinoma, Merkel Cell"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "atezolizumab"
+              },
+              {
+                "term": "durvalumab"
+              },
+              {
+                "term": "avelumab"
+              },
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT02318771",
+            "briefTitle": "Radiation Therapy and MK-3475 for Patients With Recurrent/Metastatic Head and Neck Cancer, Renal Cell Cancer, Melanoma, and Lung Cancer"
+          },
+          "statusModule": {
+            "overallStatus": "COMPLETED",
+            "startDateStruct": {
+              "date": "2015-02-05",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University",
+              "class": "OTHER"
+            },
+            "collaborators": [
+              {
+                "name": "Merck Sharp & Dohme LLC",
+                "class": "INDUSTRY"
+              }
+            ]
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Head and Neck Squamous Cell Carcinoma",
+              "Metastatic Renal Cell Cancer",
+              "Recurrent Head and Neck Carcinoma",
+              "Recurrent Lung Carcinoma",
+              "Recurrent Renal Cell Carcinoma",
+              "Recurrent Skin Carcinoma",
+              "Stage III Renal Cell Cancer",
+              "Stage IV Lung Cancer",
+              "Stage IV Skin Melanoma"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1"
+            ],
+            "enrollmentInfo": {
+              "count": 41,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "RADIATION",
+                "name": "Radiation Therapy (RT)",
+                "otherNames": [
+                  "Radiation",
+                  "Radiotherapy"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "MK-3475",
+                "otherNames": [
+                  "Pembrolizumab",
+                  "Keytruda",
+                  "lambrolizumab"
+                ]
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Squamous Cell Carcinoma of Head and Neck"
+              },
+              {
+                "term": "Carcinoma, Renal Cell"
+              },
+              {
+                "term": "Lung Neoplasms"
+              },
+              {
+                "term": "Melanoma"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Radiotherapy"
+              },
+              {
+                "term": "Radiation"
+              },
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "nextPageToken": "ZVNj7o2Elu8o3lpzXcinvarumpOQJJxqbPWn0A"
+  }
+}

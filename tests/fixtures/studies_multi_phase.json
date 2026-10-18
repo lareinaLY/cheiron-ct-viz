@@ -1,0 +1,278 @@
+{
+  "_request": {
+    "url": "https://clinicaltrials.gov/api/v2/studies",
+    "params": {
+      "query.intr": "pembrolizumab",
+      "filter.advanced": "AREA[Phase]PHASE1 AND AREA[Phase]PHASE2",
+      "pageSize": 3,
+      "fields": "NCTId|BriefTitle|OverallStatus|StudyType|Phase|StartDate|StartDateType|Condition|InterventionName|InterventionType|InterventionOtherName|LeadSponsorName|LeadSponsorClass|CollaboratorName|CollaboratorClass|LocationCountry|EnrollmentCount|EnrollmentType|ConditionMeshTerm|InterventionMeshTerm"
+    }
+  },
+  "_captured_on": "2026-10-17",
+  "response": {
+    "studies": [
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT06939036",
+            "briefTitle": "Study of 225Ac-SS0110 in Subjects With ES-SCLC or MCC (SANTANA-225 )"
+          },
+          "statusModule": {
+            "overallStatus": "TERMINATED",
+            "startDateStruct": {
+              "date": "2025-07-01",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Ariceum Therapeutics GmbH",
+              "class": "INDUSTRY"
+            }
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Small Cell Lung Cancer Extensive Stage",
+              "Merkel Cell Carcinoma"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1",
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 2,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "225Ac-SSO110 + SoC"
+              },
+              {
+                "type": "DRUG",
+                "name": "Atezolizumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Durvalumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Avelumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Pembrolizumab"
+              },
+              {
+                "type": "DRUG",
+                "name": "Retifanlimab"
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "United States"
+              },
+              {
+                "country": "Australia"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Carcinoma, Merkel Cell"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "atezolizumab"
+              },
+              {
+                "term": "durvalumab"
+              },
+              {
+                "term": "avelumab"
+              },
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT07843550",
+            "briefTitle": "A Phase 1/2 Trial Of Larotrectinib And Pembrolizumab In Patients With Solid Tumors Previously Treated With Immune Checkpoint Inhibitor Monotherapy"
+          },
+          "statusModule": {
+            "overallStatus": "NOT_YET_RECRUITING",
+            "startDateStruct": {
+              "date": "2027-03-01",
+              "type": "ESTIMATED"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "M.D. Anderson Cancer Center",
+              "class": "OTHER"
+            }
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Solid Tumor"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1",
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 22,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "Larotrectinib",
+                "otherNames": [
+                  "Vitrakvi"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Pembrolizumab",
+                "otherNames": [
+                  "Keytruda"
+                ]
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "United States"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "larotrectinib"
+              },
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT05973903",
+            "briefTitle": "Lenvatinib, Pembrolizumab, and Tumor Treating Fields (TTFields) for Second-line Treatment of Glioblastoma"
+          },
+          "statusModule": {
+            "overallStatus": "WITHDRAWN",
+            "startDateStruct": {
+              "date": "2024-06-01",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "Tel Aviv Medical Center",
+              "class": "OTHER"
+            }
+          },
+          "conditionsModule": {
+            "conditions": [
+              "GBM"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1",
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 0,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "Lenvatinib",
+                "otherNames": [
+                  "LENVIMA®, KISPLYX®"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Pembrolizumab",
+                "otherNames": [
+                  "Keytruda"
+                ]
+              },
+              {
+                "type": "DEVICE",
+                "name": "Tumor Treating Fields (TTFields)"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "lenvatinib"
+              },
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "nextPageToken": "ZVNj7o2Elu8o3lpzXcinvarumpOQJJxsYPmm2Pg"
+  }
+}

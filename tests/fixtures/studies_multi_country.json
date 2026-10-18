@@ -1,0 +1,125 @@
+{
+  "_request": {
+    "url": "https://clinicaltrials.gov/api/v2/studies",
+    "params": {
+      "filter.ids": "NCT02129556",
+      "fields": "NCTId|BriefTitle|OverallStatus|StudyType|Phase|StartDate|StartDateType|Condition|InterventionName|InterventionType|InterventionOtherName|LeadSponsorName|LeadSponsorClass|CollaboratorName|CollaboratorClass|LocationCountry|EnrollmentCount|EnrollmentType|ConditionMeshTerm|InterventionMeshTerm",
+      "pageSize": 1
+    }
+  },
+  "_captured_on": "2026-10-17",
+  "response": {
+    "studies": [
+      {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT02129556",
+            "briefTitle": "Anti-PD-1 Monoclonal Antibody in Advanced, Trastuzumab-resistant, HER2-positive Breast Cancer"
+          },
+          "statusModule": {
+            "overallStatus": "COMPLETED",
+            "startDateStruct": {
+              "date": "2014-12"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "leadSponsor": {
+              "name": "ETOP IBCSG Partners Foundation",
+              "class": "NETWORK"
+            },
+            "collaborators": [
+              {
+                "name": "Breast International Group",
+                "class": "OTHER"
+              }
+            ]
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Metastatic Breast Cancer"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1",
+              "PHASE2"
+            ],
+            "enrollmentInfo": {
+              "count": 58,
+              "type": "ACTUAL"
+            }
+          },
+          "armsInterventionsModule": {
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "MK-3475",
+                "otherNames": [
+                  "Pembrolizumab"
+                ]
+              }
+            ]
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Australia"
+              },
+              {
+                "country": "Austria"
+              },
+              {
+                "country": "Belgium"
+              },
+              {
+                "country": "Belgium"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "France"
+              },
+              {
+                "country": "Italy"
+              },
+              {
+                "country": "Italy"
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "term": "Breast Neoplasms"
+              },
+              {
+                "term": "Neoplasm Metastasis"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "term": "pembrolizumab"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "nextPageToken": "ZVNj7o2Elu8o3lpzXcinvarumpOQJJxtZ_Kj1fwW"
+  }
+}
