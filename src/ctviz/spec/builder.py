@@ -64,6 +64,8 @@ def build_response(
     - Grouped results become `data` (one Datum per cohort and bucket, in the shared key
       order) with Vega-Lite-style encoding; several cohorts are colored by `cohort`.
     - Graphs become Cytoscape-style `nodes`/`edges` elements.
+    - When the record cap cut a cohort's fetch, the title ends with
+      " (partial: first N of M matches)".
     - Meta carries the count unit, retrieval totals summed over cohorts, per-cohort
       stats, and every assumption and warning (aggregate ones after the caller's).
     - A network response larger than `max_response_bytes` keeps every edge but cuts each
@@ -92,6 +94,7 @@ def build_response(
             [cohort.result.unknown_date_type_count for cohort in result.cohorts]
         )
 
+    visualization.title += partial_title_suffix(cohort_stats)
     total_matched = sum(stats.total_matched for stats in cohort_stats) if cohort_stats else None
     records_retrieved = sum(stats.records_retrieved for stats in cohort_stats)
     meta = Meta(
@@ -151,6 +154,24 @@ def fit_network_budget(
     if reduced > max_response_bytes:
         message += " The response is still over budget."
     response.meta.warnings.append(message)
+
+
+def partial_title_suffix(cohort_stats: Sequence[CohortStats]) -> str:
+    """' (partial: first 10,000 of 16,913 matches)' when the record cap cut a fetch, else ''.
+
+    A chart over part of the matches must say so where readers look first; with several
+    cohorts, only the truncated ones are named.
+    """
+    truncated = [stats for stats in cohort_stats if stats.truncated]
+    if not truncated:
+        return ""
+    parts = [
+        f"first {stats.records_retrieved:,} of {stats.total_matched:,} matches"
+        for stats in truncated
+    ]
+    if len(cohort_stats) > 1:
+        parts = [f"{stats.label} {part}" for stats, part in zip(truncated, parts, strict=True)]
+    return f" (partial: {'; '.join(parts)})"
 
 
 def chart_title(plan: QueryPlan) -> str:

@@ -20,6 +20,11 @@ ESSIE_SYNTAX_CHARACTERS = frozenset('"()[]')
 # Essie operators are case-sensitive: only the uppercase words act as operators.
 ESSIE_OPERATOR = re.compile(r"(?<!\S)(AND|OR|NOT)(?!\S)")
 
+# Only date and numeric fields can be sorted on (NCTId cannot break ties), at most 2 keys.
+RETRIEVAL_SORT_FIELD = "StudyFirstPostDate"
+RETRIEVAL_SORT_DIRECTION = "desc"
+RETRIEVAL_SORT = f"{RETRIEVAL_SORT_FIELD}:{RETRIEVAL_SORT_DIRECTION}"
+
 FREE_TEXT_PARAMS: dict[str, str] = {
     "condition": "query.cond",
     "sponsor": "query.spons",
@@ -70,7 +75,8 @@ def build_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     - phases -> `AREA[Phase]X` or `AREA[Phase](X OR Y)`; statuses -> `filter.overallStatus=A|B`.
     - start years -> `AREA[StartDate]RANGE[<from>-01-01,<to>-12-31]`, MIN/MAX when open.
     All `filter.advanced` clauses are joined with AND. Raises InvalidFilterError for blank
-    values, Essie syntax in free text, and double quotes in a quoted drug name.
+    values, Essie syntax in free text, and double quotes or operator words in a quoted
+    drug name.
     """
     params: dict[str, str] = {}
     clauses: list[str] = []
@@ -93,6 +99,17 @@ def build_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     if clauses:
         params["filter.advanced"] = " AND ".join(clauses)
     return params
+
+
+def study_query_params(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
+    """The /studies params for one cohort: its filters plus the pinned retrieval order.
+
+    The API's default order is repeatable but undocumented ("not sorted by default for a
+    performance reason"), so a fetch cut by the record cap would be an unexplainable
+    subset. Sorting by first-post date makes it "the most recently registered trials",
+    which stays stable between runs because that date never changes (docs/api_findings.md §6).
+    """
+    return {**build_params(filters, match_mode), "sort": RETRIEVAL_SORT}
 
 
 def search_semantics(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
@@ -127,6 +144,28 @@ def free_text_value(field: str, value: str) -> str:
             f"contains search syntax characters {' '.join(found)}; remove them so the value "
             "is searched as plain terms",
         )
+    reject_operators(field, value, trimmed)
+    return trimmed
+
+
+def quotable_value(field: str, value: str) -> str:
+    """A value safe to wrap in double quotes; an embedded quote cannot be escaped.
+
+    Parentheses stay allowed: quoted, they are literal, and real intervention names
+    contain them ("pembrolizumab (KEYTRUDA®)"). An operator word is rejected even though
+    it would be inert inside the quotes: no intervention name contains one, and a value
+    like 'pembrolizumab) OR (nivolumab' is an attempt to search for two drugs that would
+    silently match neither.
+    """
+    trimmed = non_blank(field, value)
+    if '"' in trimmed:
+        raise InvalidFilterError(field, value, 'double quotes (") cannot be searched')
+    reject_operators(field, value, trimmed)
+    return trimmed
+
+
+def reject_operators(field: str, value: str, trimmed: str) -> None:
+    """Raise InvalidFilterError if the value contains an uppercase AND, OR or NOT word."""
     operator = ESSIE_OPERATOR.search(trimmed)
     if operator:
         raise InvalidFilterError(
@@ -135,15 +174,6 @@ def free_text_value(field: str, value: str) -> str:
             f"contains the search operator {operator.group(1)}; use one value per filter "
             "or lowercase the word",
         )
-    return trimmed
-
-
-def quotable_value(field: str, value: str) -> str:
-    """A value safe to wrap in double quotes; an embedded quote cannot be escaped."""
-    trimmed = non_blank(field, value)
-    if '"' in trimmed:
-        raise InvalidFilterError(field, value, 'double quotes (") cannot be searched')
-    return trimmed
 
 
 def phase_clause(phases: list[str]) -> str:

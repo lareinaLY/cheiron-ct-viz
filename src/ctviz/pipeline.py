@@ -30,7 +30,12 @@ from ctviz.errors import (
 from ctviz.normalize import normalize_study, unrecognized_warnings
 from ctviz.planner import validate_plan
 from ctviz.retrieval.client import CtGovClient
-from ctviz.retrieval.query_builder import build_params, search_semantics
+from ctviz.retrieval.query_builder import (
+    RETRIEVAL_SORT_DIRECTION,
+    RETRIEVAL_SORT_FIELD,
+    search_semantics,
+    study_query_params,
+)
 from ctviz.schemas.aggregate import Graph, GroupedCohorts
 from ctviz.schemas.plan import Cohort, QueryPlan
 from ctviz.schemas.response import (
@@ -121,7 +126,9 @@ async def execute(
     normalize is skipped and reported, never fatal by itself; a record with an
     unrecognized value is kept. When a cohort's share of skipped records reaches the
     refuse threshold, UpstreamDataFormatError is raised instead of returning a chart;
-    at the degraded threshold the response is marked `data_quality="degraded"`.
+    at the degraded threshold the response is marked `data_quality="degraded"`. A fetch
+    cut by the record cap marks it `data_quality="partial"` (over degraded, whose warning
+    stays first) and the spec stage says so in the title.
     `network_limits` and `data_quality_thresholds` default to the configured defaults.
     """
     plan, question = interpretation.plan, interpretation.question
@@ -132,7 +139,7 @@ async def execute(
 
     with timer.stage("validate"):
         validate_plan(plan)
-        cohort_params = [build_params(c.filters, plan.match_mode) for c in plan.cohorts]
+        cohort_params = [study_query_params(c.filters, plan.match_mode) for c in plan.cohorts]
 
     with timer.stage("retrieve"):
         fetches = [await client.fetch_all(params) for params in cohort_params]
@@ -174,7 +181,9 @@ async def execute(
 
     timer.timings["total"] = round((time.perf_counter() - started) * 1000, 1)
     response.meta.timing_ms = timer.timings
-    response.meta.data_quality = data_quality
+    response.meta.data_quality = (
+        DataQuality.PARTIAL if any(data.fetch.truncated for data in cohorts) else data_quality
+    )
     return response
 
 
@@ -421,8 +430,17 @@ def retrieval_warnings(data: CohortData, cohort_count: int) -> list[str]:
 
 
 def retrieval_assumptions(data: CohortData, cohort_count: int) -> list[str]:
-    """State when results came from the local cache instead of a live fetch."""
-    if data.fetch.cached_at is None:
-        return []
-    stored = data.fetch.cached_at.strftime("%Y-%m-%d %H:%M UTC")
-    return [prefixed(data, cohort_count, f"Served from the local cache stored at {stored}.")]
+    """State which records a truncated fetch holds, and when results came from the cache."""
+    messages: list[str] = []
+    if data.fetch.truncated:
+        messages.append(
+            f"The retrieved trials are the first {data.retrieved:,} of "
+            f"{data.fetch.total_count:,} matches ordered by {RETRIEVAL_SORT_FIELD} "
+            f"{RETRIEVAL_SORT_DIRECTION} (the most recently registered), not a random sample; "
+            "trials sharing the cutoff date are picked in the API's unspecified tie order; "
+            "counts for the remaining matches are unknown and may be distributed differently."
+        )
+    if data.fetch.cached_at is not None:
+        stored = data.fetch.cached_at.strftime("%Y-%m-%d %H:%M UTC")
+        messages.append(f"Served from the local cache stored at {stored}.")
+    return [prefixed(data, cohort_count, message) for message in messages]

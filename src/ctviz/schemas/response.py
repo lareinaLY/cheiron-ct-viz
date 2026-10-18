@@ -24,10 +24,14 @@ class DataQuality(StrEnum):
     - normal: few or no retrieved records were skipped as unreadable.
     - degraded: enough records were skipped (DEGRADED_SKIP_RATIO, MIN_SKIPPED_FOR_DEGRADED)
       that counts and rankings may be off; a prominent warning says by how much.
+    - partial: the record cap stopped at least one cohort's fetch, so counts cover only
+      the API's first pages; the title says so. It takes precedence over degraded, whose
+      warning still comes first in meta.warnings.
     """
 
     NORMAL = "normal"
     DEGRADED = "degraded"
+    PARTIAL = "partial"
 
 
 class ResponseMode(StrEnum):

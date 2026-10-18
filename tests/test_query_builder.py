@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ctviz.errors import InvalidFilterError
-from ctviz.retrieval.query_builder import build_params, search_semantics
+from ctviz.retrieval.query_builder import build_params, search_semantics, study_query_params
 from ctviz.schemas.plan import Filters
 from ctviz.schemas.trial import OverallStatus, Phase
 
@@ -27,6 +27,17 @@ class TestDrug:
     def test_double_quote_in_intervention_name_rejected(self) -> None:
         with pytest.raises(InvalidFilterError, match="drug"):
             build_params(Filters(drug='foo "bar"'), "intervention_name")
+
+    @pytest.mark.parametrize(
+        "value", ["pembrolizumab) OR (nivolumab", "pembrolizumab AND nivolumab", "NOT placebo"]
+    )
+    def test_operator_in_intervention_name_rejected(self, value: str) -> None:
+        with pytest.raises(InvalidFilterError, match="operator"):
+            build_params(Filters(drug=value), "intervention_name")
+
+    def test_lowercase_operator_word_in_intervention_name_allowed(self) -> None:
+        params = build_params(Filters(drug="salt and pepper"), "intervention_name")
+        assert params == {"filter.advanced": 'AREA[InterventionName]"salt and pepper"'}
 
     def test_value_is_trimmed(self) -> None:
         params = build_params(Filters(drug="  pembrolizumab "), "intervention_name")
@@ -156,3 +167,31 @@ class TestSearchSemantics:
     def test_start_year_semantics_mention_missing_dates_excluded(self) -> None:
         semantics = search_semantics(Filters(start_year_from=2015), "intervention_name")
         assert "no start date" in semantics["start_year"]
+
+
+class TestStudyQueryParams:
+    """Every /studies query pins its order, so a capped fetch is a describable subset."""
+
+    @pytest.mark.parametrize(
+        ("filters", "match_mode"),
+        [
+            (Filters(), "intervention_name"),
+            (Filters(drug="pembrolizumab"), "intervention_name"),
+            (Filters(drug="pembrolizumab"), "broad"),
+            (Filters(condition="breast cancer", phases=[Phase.PHASE3]), "intervention_name"),
+        ],
+        ids=["no-filters", "drug", "broad-drug", "condition-and-phase"],
+    )
+    def test_always_sorts_by_first_post_date_descending(
+        self, filters: Filters, match_mode: str
+    ) -> None:
+        params = study_query_params(filters, match_mode)  # type: ignore[arg-type]
+        assert params["sort"] == "StudyFirstPostDate:desc"
+        assert {k: v for k, v in params.items() if k != "sort"} == build_params(
+            filters,
+            match_mode,  # type: ignore[arg-type]
+        )
+
+    def test_filter_errors_still_raise(self) -> None:
+        with pytest.raises(InvalidFilterError, match="condition"):
+            study_query_params(Filters(condition="cancer OR diabetes"), "intervention_name")
