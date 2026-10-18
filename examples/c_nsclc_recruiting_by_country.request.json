@@ -1,0 +1,1 @@
+{"query": "Which countries have the most recruiting non-small cell lung cancer trials?", "condition": "non-small cell lung cancer", "dimension": "country", "statuses": ["RECRUITING"], "top_n": 15}
