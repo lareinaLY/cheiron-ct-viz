@@ -8,6 +8,7 @@ never produces data values (invariant 1): a draft only names filters and a group
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import date
 from typing import Any
@@ -24,13 +25,15 @@ from ctviz.errors import (
     PlanValidationError,
 )
 from ctviz.planner.llm import LlmCallLog, LlmClient, answer_call, error_class, record_call
-from ctviz.planner.prompt import build_messages
+from ctviz.planner.prompt import build_messages, build_system_prompt
 from ctviz.planner.validation import validate_plan
 from ctviz.retrieval.query_builder import build_params
 from ctviz.schemas.llm import LlmCallOutcome
 from ctviz.schemas.plan import Cohort, Filters, LlmPlanDraft, QueryPlan, RankingDirection
 from ctviz.schemas.request import QueryRequest, cohort_label
 from ctviz.schemas.response import FieldOverride, Interpretation
+
+logger = logging.getLogger(__name__)
 
 # One draft plus one retry with the validation error; more rarely helps and doubles cost.
 MAX_ATTEMPTS = 2
@@ -114,7 +117,7 @@ async def plan_by_llm(
         answer = await llm.structured_plan(messages, LlmPlanDraft)
         draft = answer.value
         try:
-            raise_if_unanswerable(draft)
+            raise_if_unanswerable(draft, today)
         except PlannerError:
             # Declining or asking back is a valid answer, not a failed call.
             call_log.add_answer(answer, record_call(answer_call(answer, LlmCallOutcome.OK)))
@@ -163,13 +166,57 @@ async def plan_by_llm(
     )
 
 
-def raise_if_unanswerable(draft: LlmPlanDraft) -> None:
-    """Turn the LLM's 'cannot answer' or 'which reading?' into a structured error."""
+# The LLM's unsupported_reason is free text shown to the user, so a prompt-injection
+# question can make it repeat the system prompt (live adversarial test, 2026-10-18).
+MAX_UNSUPPORTED_REASON_LENGTH = 240
+PROMPT_ECHO_WINDOW = 30
+REDACTED_UNSUPPORTED_REASON = (
+    "The question asks for something this service does not do (it only builds charts "
+    "from ClinicalTrials.gov registry data)."
+)
+
+
+def normalized(text: str) -> str:
+    """Lowercase with whitespace runs collapsed to one space, for echo detection."""
+    return " ".join(text.lower().split())
+
+
+def echoes_prompt(reason: str, system_prompt: str) -> bool:
+    """True when any PROMPT_ECHO_WINDOW-character run of `reason` occurs in the prompt."""
+    text, prompt = normalized(reason), normalized(system_prompt)
+    return any(
+        text[start : start + PROMPT_ECHO_WINDOW] in prompt
+        for start in range(len(text) - PROMPT_ECHO_WINDOW + 1)
+    )
+
+
+def redact_unsupported_reason(reason: str, system_prompt: str) -> str:
+    """The reason safe to show: a fixed sentence if it quotes the prompt, else at most 240 chars.
+
+    The echo check runs on the whole reason, so prompt text after the cut is caught too.
+    """
+    if echoes_prompt(reason, system_prompt):
+        return REDACTED_UNSUPPORTED_REASON
+    if len(reason) <= MAX_UNSUPPORTED_REASON_LENGTH:
+        return reason
+    return reason[: MAX_UNSUPPORTED_REASON_LENGTH - 1] + "…"
+
+
+def raise_if_unanswerable(draft: LlmPlanDraft, today: date) -> None:
+    """Turn the LLM's 'cannot answer' or 'which reading?' into a structured error.
+
+    `today` rebuilds the system prompt the draft was made with, to redact echoes of it.
+    """
     if draft.unsupported_reason:
+        reason = redact_unsupported_reason(draft.unsupported_reason, build_system_prompt(today))
+        if reason == REDACTED_UNSUPPORTED_REASON:
+            logger.warning(
+                "LLM unsupported_reason quoted the system prompt and was replaced "
+                "(code=unsupported_reason_redacted)"
+            )
         raise PlannerError(
             PlannerErrorCode.UNSUPPORTED_QUESTION,
-            "This question cannot be answered from ClinicalTrials.gov trial counts: "
-            f"{draft.unsupported_reason}",
+            f"This question cannot be answered from ClinicalTrials.gov trial counts: {reason}",
             [
                 "Ask for numbers of trials grouped by one of: "
                 + ", ".join(spec.label for spec in DIMENSIONS.values())
