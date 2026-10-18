@@ -189,6 +189,9 @@ count route, over API-counted buckets with their sample records):
   per-cohort counts). With `top_n`, it keeps the N known keys with the most trials plus
   Unknown, and records the omitted keys and, per cohort, the trials that appear only in
   omitted buckets (for a counted cohort, the summed counts of its omitted buckets).
+  With two or more cohorts, all fetched, it also sets `cohorts_overlap`: shared NCT IDs per
+  pair of cohorts and the distinct trials in more than one cohort (0 when none); null for
+  a single cohort or when any cohort was counted per bucket (only samples are known).
 
 Values outside a known enum go to an `Unrecognized` bucket (`is_unrecognized`), sorted
 after known values and before Unknown, and never removed by `top_n`; a date in an
@@ -228,7 +231,8 @@ checked against golden snapshots in `tests/golden/`.
   "mixed"), retrieval totals (`coverage` is the share of matches the counts cover,
   weighted by cohort) plus per-cohort `cohorts` stats (route, `count_requests`,
   `count_remainder`),
-  `data_quality` ("normal", "degraded" or "partial"), `top_n`, `network` (exclusions,
+  `data_quality` ("normal", "degraded" or "partial"), `top_n`, `cohorts_overlap`
+  (trials counted in several cohorts, with an assumption line when nonzero), `network` (exclusions,
   unmatched terms, caps and citation reduction; networks only),
   `data_timestamp`, `timing_ms`, and every assumption and warning (invariants 3, 5).
 
