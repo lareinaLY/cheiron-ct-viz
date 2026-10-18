@@ -1,4 +1,4 @@
-"""FastAPI app: POST /query and GET /health.
+"""FastAPI app: POST /query, GET /health and the demo UI at GET /.
 
 Run: uv run uvicorn ctviz.api.app:app --reload
 Every failure is returned as an ErrorResponse (code, message, suggestions) instead of a
@@ -13,11 +13,12 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
+from importlib.resources import files
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from ctviz import pipeline
 from ctviz.config import Settings
@@ -131,6 +132,15 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
     async def health() -> dict[str, str]:
         """Liveness probe; does not call ClinicalTrials.gov."""
         return {"status": "ok"}
+
+    @app.get("/", include_in_schema=False)
+    async def demo_ui() -> HTMLResponse:
+        """The single-file demo UI (src/ctviz/demo/index.html), which calls /query.
+
+        Read on every request and served with no-store, so an edited page is never stale.
+        """
+        html = files("ctviz").joinpath("demo", "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @app.post("/query", responses=ERROR_RESPONSES)
     async def query(

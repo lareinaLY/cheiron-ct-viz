@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ctviz demo</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+  /* A schema-conformance demo: it renders VisualizationResponse exactly as README §3
+     describes and never computes, renames or hides a value. */
+  :root {
+    --paper: #FAFAF8;
+    --ink: #1A1A18;
+    --ink-muted: #5E5E59;
+    --rule: #E2E2DE;
+    --accent: #2F5D8A;
+    --unknown: #A8A8A3;
+    --red: #9B2C2C;
+    --amber: #9A6700;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .layout { display: flex; min-height: 100vh; }
+  .inputs {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 360px;
+    padding: 24px 20px;
+    border-right: 1px solid var(--rule);
+  }
+  .output { flex: 1 1 auto; min-width: 0; padding: 24px 32px 48px; }
+  @media (max-width: 800px) {
+    .layout { display: block; }
+    .inputs { max-width: none; border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px; }
+    .output { padding: 16px; }
+  }
+  label { display: block; font-size: 13px; color: var(--ink-muted); margin: 12px 0 4px; }
+  textarea, input, select {
+    width: 100%;
+    font: inherit;
+    color: var(--ink);
+    background: #FFFFFF;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 6px 8px;
+  }
+  textarea { min-height: 88px; resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button {
+    margin-top: 16px;
+    font: inherit;
+    font-weight: 600;
+    color: #FFFFFF;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  button.secondary { color: var(--accent); background: transparent; font-weight: 400; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .section-label { font-size: 13px; color: var(--ink-muted); margin: 0 0 4px; }
+  details > summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+  .dev { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .status { font-size: 13px; color: var(--ink-muted); margin-top: 8px; min-height: 20px; }
+
+  h1 { font-size: 19px; font-weight: 600; line-height: 1.35; margin: 0 0 16px; }
+  .empty { color: var(--ink-muted); }
+  .facts {
+    display: flex; flex-wrap: wrap; gap: 4px 24px;
+    font-size: 13px; padding: 8px 0; margin-bottom: 24px;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  }
+  .fact .k { color: var(--ink-muted); margin-right: 4px; }
+  .warnings { margin-bottom: 24px; }
+  .warning { padding: 6px 0 6px 12px; border-left: 2px solid var(--rule); margin-bottom: 4px; }
+  .warning.red { border-left-color: var(--red); color: var(--red); font-weight: 600; }
+  .warning.amber { border-left-color: var(--amber); color: var(--amber); }
+  #chart { width: 100%; height: 420px; }
+  .flag-key { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; }
+  .flag-key span { margin-right: 16px; }
+  .citations { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .citations h2, .assumptions h2, .notes h2, .error h2 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+  .citations ol { margin: 0; padding-left: 24px; }
+  .citations li { margin-bottom: 2px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  a { color: var(--accent); }
+  .path { color: var(--ink-muted); font-size: 13px; margin: 0 8px; }
+  .assumptions { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .assumptions ul, .notes ul, .error ul { margin: 0; padding-left: 20px; }
+  .assumptions li { margin-bottom: 4px; }
+  .notes { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--rule); font-size: 13px; }
+  .notes h2 { font-size: 13px; }
+  .error { padding: 12px 0 12px 12px; border-left: 2px solid var(--red); margin-bottom: 24px; }
+  .error .code { color: var(--red); font-weight: 600; }
+  .raw { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .raw pre { font-size: 12px; overflow: auto; max-height: 480px; background: #FFFFFF; border: 1px solid var(--rule); padding: 8px; }
+  [hidden] { display: none !important; }
+  @media print {
+    .inputs, .raw, button { display: none !important; }
+    .output { padding: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="inputs">
+    <form id="query-form">
+      <label for="query">Question</label>
+      <textarea id="query" placeholder="Compare phases for trials involving pembrolizumab vs nivolumab"></textarea>
+
+      <p class="section-label" style="margin-top:16px">Optional structured fields (override the question)</p>
+      <label for="drug">drug</label><input id="drug">
+      <label for="condition">condition</label><input id="condition">
+      <div class="row2">
+        <div><label for="sponsor">sponsor</label><input id="sponsor"></div>
+        <div><label for="country">country</label><input id="country"></div>
+      </div>
+      <div class="row2">
+        <div>
+          <label for="dimension">dimension</label>
+          <select id="dimension">
+            <option value=""></option>
+            <option>phase</option><option>start_year</option><option>start_month</option>
+            <option>country</option><option>sponsor_class</option><option>lead_sponsor</option>
+            <option>intervention_type</option><option>overall_status</option><option>condition</option>
+            <option>intervention_mesh</option><option>enrollment_bucket</option>
+          </select>
+        </div>
+        <div>
+          <label for="relation">relation</label>
+          <select id="relation">
+            <option value=""></option>
+            <option>sponsor_drug</option><option>drug_drug_cooccurrence</option><option>condition_drug</option>
+          </select>
+        </div>
+      </div>
+      <label for="top_n">top_n</label><input id="top_n" inputmode="numeric">
+      <button type="submit" id="send">Send</button>
+      <div class="status" id="status"></div>
+    </form>
+
+    <details class="dev">
+      <summary>Developer: render a pasted response</summary>
+      <label for="paste">VisualizationResponse or ErrorResponse JSON</label>
+      <textarea id="paste" class="mono" style="min-height:140px"></textarea>
+      <button type="button" class="secondary" id="render-paste">Render JSON</button>
+    </details>
+  </aside>
+
+  <main class="output">
+    <h1 id="title"><span class="empty">Ask a question to see a chart.</span></h1>
+    <div id="error" class="error" hidden></div>
+    <div id="warnings" class="warnings" hidden></div>
+    <div id="facts" class="facts" hidden></div>
+    <div id="chart" hidden></div>
+    <div id="flag-key" class="flag-key" hidden></div>
+    <section id="citations" class="citations" hidden></section>
+    <section id="assumptions" class="assumptions" hidden></section>
+    <section id="notes" class="notes" hidden></section>
+    <details id="raw" class="raw" hidden>
+      <summary>Raw JSON</summary>
+      <pre id="raw-pre" class="mono"></pre>
+    </details>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+// Fixed visual conventions (visual direction); no data-derived values.
+const SINGLE_SERIES_COLOR = "#2F5D8A";
+const COHORT_PALETTE = ["#2F5D8A", "#9C5A3C", "#3D7A74", "#A88432", "#6E4C7E", "#5B6770"];
+const UNKNOWN_COLOR = "#A8A8A3";
+const EDGE_COLOR = "#B9B9B4";
+const HATCH = {
+  symbol: "rect", symbolSize: 1, dashArrayX: [1, 0], dashArrayY: [2, 3],
+  rotation: -Math.PI / 4, color: "rgba(255,255,255,0.75)",
+};
+const NODE_STYLES = {
+  drug: { icon: "circle", symbol: "circle", itemStyle: { color: "#2F5D8A", borderColor: "#2F5D8A" } },
+  drug_class: { icon: "emptyCircle", symbol: "circle", itemStyle: { color: "#FAFAF8", borderColor: "#2F5D8A", borderWidth: 1.5 } },
+  sponsor: { icon: "rect", symbol: "rect", itemStyle: { color: "#9C5A3C", borderColor: "#9C5A3C" } },
+  condition: { icon: "diamond", symbol: "diamond", itemStyle: { color: "#3D7A74", borderColor: "#3D7A74" } },
+};
+const NODE_TYPES = Object.keys(NODE_STYLES);
+const LABELLED_NODES = 15;
+const TEXT_STYLE = { fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", color: "#1A1A18" };
+
+const $ = (id) => document.getElementById(id);
+let chart = null;
+let notes = [];
+
+function note(message) {
+  if (!notes.includes(message)) notes.push(message);
+}
+
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [name, value] of Object.entries(attrs || {})) {
+    if (name === "class") node.className = value;
+    else node.setAttribute(name, value);
+  }
+  for (const child of children) {
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function show(id, visible) { $(id).hidden = !visible; }
+
+function clearOutput() {
+  notes = [];
+  if (chart) { chart.dispose(); chart = null; }
+  for (const id of ["error", "warnings", "facts", "chart", "flag-key", "citations", "assumptions", "notes", "raw"]) {
+    $(id).replaceChildren();
+    show(id, false);
+  }
+  $("raw").append(el("summary", {}, "Raw JSON"), el("pre", { id: "raw-pre", class: "mono" }));
+}
+
+// ---------- request ----------
+
+function buildRequest() {
+  const body = { query: $("query").value };
+  for (const name of ["drug", "condition", "sponsor", "country", "dimension", "relation"]) {
+    const value = $(name).value.trim();
+    if (value) body[name] = value;
+  }
+  const topN = $("top_n").value.trim();
+  // Sent as typed when not an integer, so the server's validation error is what the user sees.
+  if (topN) body.top_n = /^-?\d+$/.test(topN) ? Number(topN) : topN;
+  return body;
+}
+
+async function sendQuery(event) {
+  event.preventDefault();
+  const body = buildRequest();
+  $("send").disabled = true;
+  $("status").textContent = "Waiting for /query …";
+  try {
+    const response = await fetch("/query", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    $("status").textContent = `HTTP ${response.status}`;
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (_) { parsed = null; }
+    if (parsed === null) renderTransportError(`HTTP ${response.status}: the body is not JSON.`, text);
+    else renderAny(parsed, response.status);
+  } catch (error) {
+    $("status").textContent = "";
+    renderTransportError(`The request failed before a response arrived: ${error.message}`, "");
+  } finally {
+    $("send").disabled = false;
+  }
+}
+
+function renderPasted() {
+  let parsed;
+  try {
+    parsed = JSON.parse($("paste").value);
+  } catch (error) {
+    renderTransportError(`The pasted text is not valid JSON: ${error.message}`, $("paste").value);
+    return;
+  }
+  renderAny(parsed, null);
+}
+
+function renderAny(body, status) {
+  clearOutput();
+  setRaw(body);
+  if (body && typeof body === "object" && body.visualization && body.meta) {
+    renderResponse(body);
+  } else if (body && typeof body === "object" && "code" in body && "message" in body) {
+    renderError(body, status);
+  } else {
+    renderTransportError("The JSON is neither a VisualizationResponse nor an ErrorResponse.", JSON.stringify(body, null, 2));
+  }
+  renderNotes();
+}
+
+function setRaw(body) {
+  $("raw-pre").textContent = JSON.stringify(body, null, 2);
+  show("raw", true);
+}
+
+// ---------- errors ----------
+
+function renderError(body, status) {
+  $("title").replaceChildren(el("span", {}, "No chart: the request was not answered"));
+  const box = $("error");
+  box.append(
+    el("h2", {}, el("span", { class: "code mono" }, body.code), status ? `  ·  HTTP ${status}` : ""),
+    el("p", { style: "margin:0 0 8px" }, body.message),
+  );
+  const suggestions = Array.isArray(body.suggestions) ? body.suggestions : [];
+  if (suggestions.length) {
+    box.append(el("p", { class: "section-label" }, "Suggestions"),
+      el("ul", {}, ...suggestions.map((s) => el("li", {}, s))));
+  }
+  show("error", true);
+}
+
+function renderTransportError(message, text) {
+  clearOutput();
+  $("title").replaceChildren(el("span", {}, "No chart"));
+  $("error").append(el("h2", {}, el("span", { class: "code" }, "renderer")), el("p", { style: "margin:0" }, message));
+  show("error", true);
+  if (text) { $("raw-pre").textContent = text; show("raw", true); }
+}
+
+// ---------- response ----------
+
+function renderResponse(body) {
+  const { visualization: vis, meta } = body;
+  $("title").replaceChildren(el("span", {}, vis.title));
+  renderWarnings(meta.warnings || []);
+  renderFacts(meta);
+  show("chart", true);
+  chart = echarts.init($("chart"), null, { renderer: "canvas" });
+  if (vis.type === "network_graph") renderNetwork(vis);
+  else if (["bar_chart", "grouped_bar_chart", "histogram", "time_series"].includes(vis.type)) renderData(vis);
+  else note(`visualization.type "${vis.type}" is not one this renderer knows; nothing is drawn.`);
+  renderAssumptions(meta.assumptions || []);
+}
+
+function warningClass(text) {
+  // Warnings carry no kind field, so the banner level is read from the documented prefixes.
+  if (text.includes("DEGRADED DATA:")) return "warning red";
+  if (text.includes("Not applied:") || text.includes("(record cap)")) return "warning amber";
+  return "warning";
+}
+
+function renderWarnings(warnings) {
+  if (!warnings.length) return;
+  $("warnings").append(...warnings.map((w) => el("div", { class: warningClass(w) }, w)));
+  show("warnings", true);
+  note("Warnings have no machine-readable kind or severity; red/amber banners are chosen by matching the text \"DEGRADED DATA:\", \"Not applied:\" and \"(record cap)\".");
+}
+
+function fact(label, value) {
+  const shown = value === null || value === undefined ? "null" : String(value);
+  return el("span", { class: "fact" }, el("span", { class: "k" }, label), el("span", {}, shown));
+}
+
+function renderFacts(meta) {
+  const facts = [
+    fact("count_unit", meta.count_unit),
+    fact("data_quality", meta.data_quality),
+    fact("retrieval_route", meta.retrieval_route),
+  ];
+  for (const cohort of meta.cohorts || []) {
+    facts.push(fact(`${cohort.label} · total_matched`, cohort.total_matched));
+    facts.push(fact(`${cohort.label} · withdrawn`, cohort.withdrawn));
+  }
+  facts.push(fact("cohorts_overlap.total_shared", meta.cohorts_overlap ? meta.cohorts_overlap.total_shared : null));
+  facts.push(fact("data_timestamp", meta.data_timestamp));
+  facts.push(fact("timing_ms.total", meta.timing_ms ? meta.timing_ms.total : null));
+  $("facts").append(...facts);
+  show("facts", true);
+}
+
+function renderAssumptions(assumptions) {
+  if (!assumptions.length) return;
+  $("assumptions").append(el("h2", {}, "Assumptions"), el("ul", {}, ...assumptions.map((a) => el("li", {}, a))));
+  show("assumptions", true);
+}
+
+function renderNotes() {
+  if (!notes.length) return;
+  $("notes").append(el("h2", {}, "Renderer notes (schema gaps)"), el("ul", {}, ...notes.map((n) => el("li", {}, n))));
+  show("notes", true);
+}
+
+// ---------- citations ----------
+
+function renderCitations(heading, citations, total) {
+  const box = $("citations");
+  box.replaceChildren(
+    el("h2", {}, heading),
+    el("p", { class: "section-label" }, `showing ${citations.length} of ${total} citations (citation_count_total)`),
+  );
+  const list = el("ol", {});
+  for (const c of citations) {
+    const link = el("a", { class: "mono", href: c.url, target: "_blank", rel: "noopener" }, c.nct_id);
+    const item = el("li", {}, link, el("span", { class: "path mono" }, c.field_path), JSON.stringify(c.value));
+    if (c.role && c.role !== "primary") item.append(el("span", { class: "path" }, `(${c.role})`));
+    list.append(item);
+  }
+  if (citations.length) box.append(list);
+  box.append(el("button", { type: "button", class: "secondary" }, "Close"));
+  box.querySelector("button").addEventListener("click", () => show("citations", false));
+  show("citations", true);
+}
+
+// ---------- data charts ----------
+
+function domainFromChannel(channel, values, what) {
+  // README: `sort` gives the display order; without it the order is alphabetical.
+  const unique = [...new Set(values)];
+  if (!channel.sort) return unique.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const missing = unique.filter((v) => !channel.sort.includes(v));
+  if (missing.length) {
+    note(`${what} values not listed in encoding sort were appended at the end: ${missing.join(", ")}.`);
+  }
+  return [...channel.sort, ...missing];
+}
+
+function datumStyle(datum, color) {
+  if (datum.is_unknown || datum.is_unrecognized) return { color: UNKNOWN_COLOR, decal: HATCH };
+  if (datum.is_future) return { color: "rgba(0,0,0,0)", borderColor: color, borderType: "dashed", borderWidth: 1.5 };
+  if (datum.incomplete) return { color, opacity: 0.6 };
+  return { color };
+}
+
+function renderData(vis) {
+  const enc = vis.encoding || {};
+  if (!enc.x || !enc.y) {
+    note("encoding.x or encoding.y is missing; the chart cannot be placed without guessing.");
+    show("chart", false);
+    return;
+  }
+  const temporal = enc.x.type === "temporal";
+  const horizontal = vis.type === "bar_chart" || vis.type === "grouped_bar_chart";
+  const xField = enc.x.field;
+  const yField = enc.y.field;
+  const colorField = enc.color ? enc.color.field : null;
+
+  const categories = domainFromChannel(enc.x, vis.data.map((d) => String(d[xField])), "x");
+  const seriesNames = colorField
+    ? domainFromChannel(enc.color, vis.data.map((d) => String(d[colorField])), "color")
+    : [enc.y.title || yField];
+  if (seriesNames.length > COHORT_PALETTE.length) {
+    note(`${seriesNames.length} series exceed the ${COHORT_PALETTE.length}-colour palette; colours repeat.`);
+  }
+  if (temporal && !enc.x.sort) {
+    note("A temporal encoding.x has no sort/domain, so periods with zero studies in every cohort cannot be shown as zero without date arithmetic; only periods present in data are drawn.");
+  }
+  if (!temporal) {
+    note("Datum has no not-applicable flag, so not-applicable buckets (e.g. phase \"Not applicable (observational / expanded access)\") are drawn as ordinary data rather than grey.");
+  }
+
+  const lookup = new Map();
+  for (const d of vis.data) {
+    const key = `${colorField ? d[colorField] : ""}\u0000${d[xField]}`;
+    if (lookup.has(key)) note(`Two data items share series and x value "${d[xField]}"; only the first is drawn.`);
+    else lookup.set(key, d);
+  }
+
+  const series = seriesNames.map((name, index) => {
+    const color = colorField ? COHORT_PALETTE[index % COHORT_PALETTE.length] : SINGLE_SERIES_COLOR;
+    const data = categories.map((category) => {
+      const datum = lookup.get(`${colorField ? name : ""}\u0000${category}`);
+      // README: an absent datum means zero.
+      if (!datum) return { value: 0, datum: null, itemStyle: { color } };
+      return { value: datum[yField], datum, itemStyle: datumStyle(datum, color) };
+    });
+    return {
+      name, type: "bar", data, itemStyle: { color },
+      barMaxWidth: 28,
+      barCategoryGap: vis.type === "histogram" ? "8%" : "30%",
+      label: {
+        show: true, position: horizontal ? "right" : "top",
+        fontSize: 11, color: "#3A3A36", fontFamily: TEXT_STYLE.fontFamily,
+      },
+      emphasis: { focus: "none" },
+    };
+  });
+
+  const categoryAxis = {
+    type: "category", data: categories, name: enc.x.title || "",
+    nameLocation: horizontal ? "start" : "middle", nameGap: horizontal ? 8 : 32,
+    axisLine: { lineStyle: { color: "#BDBDB8" } }, axisTick: { show: false },
+    axisLabel: { color: "#1A1A18", fontSize: 12, width: 220, overflow: "break", interval: 0, rotate: !horizontal && categories.length > 14 ? 45 : 0 },
+    inverse: horizontal,
+  };
+  const valueAxis = {
+    type: "value", name: enc.y.title || "", nameLocation: "end",
+    splitLine: { lineStyle: { color: "#ECECE8" } }, axisLabel: { color: "#5E5E59", fontSize: 11 },
+  };
+  const rows = horizontal ? categories.length * Math.max(1, seriesNames.length) : 0;
+  $("chart").style.height = `${horizontal ? Math.max(260, rows * 24 + 100) : 420}px`;
+  chart.resize();
+
+  chart.setOption({
+    textStyle: TEXT_STYLE,
+    animation: false,
+    grid: { left: 8, right: 56, top: colorField ? 40 : 24, bottom: 8, containLabel: true },
+    legend: colorField ? { top: 0, left: 0, icon: "rect", itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 12 } } : undefined,
+    xAxis: horizontal ? valueAxis : categoryAxis,
+    yAxis: horizontal ? categoryAxis : valueAxis,
+    tooltip: { trigger: "item", formatter: (p) => dataTooltip(p, temporal, colorField) },
+    series,
+  });
+
+  chart.on("click", (params) => {
+    const datum = params.data && params.data.datum;
+    const where = colorField ? `${params.seriesName} · ${params.name}` : params.name;
+    if (!datum) renderCitations(`${where}: no datum (absent means zero)`, [], 0);
+    else renderCitations(where, datum.citations || [], datum.citation_count_total);
+  });
+
+  renderFlagKey(vis.data);
+}
+
+function dataTooltip(params, temporal, colorField) {
+  const datum = params.data.datum;
+  const head = colorField ? `${escapeHtml(params.seriesName)} · ${escapeHtml(params.name)}` : escapeHtml(params.name);
+  if (!datum) return `${head}<br>count: 0 (no datum; absent means zero)`;
+  const lines = [head, `count: ${datum.count}`, `citation_count_total: ${datum.citation_count_total}`];
+  // README: estimated_count and unknown_date_type_count are temporal-chart fields.
+  if (temporal) {
+    lines.push(`estimated_count: ${datum.estimated_count === null ? "null (not determined)" : datum.estimated_count}`);
+    lines.push(`unknown_date_type_count: ${datum.unknown_date_type_count === null ? "null (not determined)" : datum.unknown_date_type_count}`);
+  }
+  for (const flag of ["is_unknown", "is_unrecognized", "is_future", "incomplete"]) {
+    if (datum[flag]) lines.push(flag);
+  }
+  return lines.join("<br>");
+}
+
+function renderFlagKey(data) {
+  const key = [];
+  if (data.some((d) => d.is_unknown || d.is_unrecognized)) key.push("grey hatched: is_unknown / is_unrecognized");
+  if (data.some((d) => d.is_future)) key.push("dashed outline: is_future (planned start dates, a projection)");
+  if (data.some((d) => d.incomplete)) key.push("faded: incomplete (period in progress)");
+  if (!key.length) return;
+  $("flag-key").append(...key.map((k) => el("span", {}, k)));
+  show("flag-key", true);
+}
+
+// ---------- network ----------
+
+function renderNetwork(vis) {
+  const nodes = vis.nodes.map((n) => n.data);
+  const edges = vis.edges.map((e) => e.data);
+  const maxSize = Math.max(1, ...nodes.map((n) => n.size));
+  const maxWeight = Math.max(1, ...edges.map((e) => e.weight));
+  const labelled = new Set([...nodes].sort((a, b) => b.size - a.size).slice(0, LABELLED_NODES).map((n) => n.id));
+  const labels = new Map(nodes.map((n) => [n.id, n.label]));
+  for (const n of nodes) {
+    if (!NODE_STYLES[n.type]) note(`Node type "${n.type}" has no style; drawn as a drug node.`);
+  }
+
+  $("chart").style.height = "640px";
+  chart.resize();
+  chart.setOption({
+    textStyle: TEXT_STYLE,
+    animation: false,
+    legend: {
+      top: 0, left: 0, itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 12 },
+      data: NODE_TYPES.map((t) => ({ name: t, icon: NODE_STYLES[t].icon, itemStyle: { color: NODE_STYLES[t].itemStyle.borderColor } })),
+    },
+    tooltip: {
+      trigger: "item",
+      formatter: (p) => p.dataType === "edge"
+        ? `${escapeHtml(labels.get(p.data.edge.source))} — ${escapeHtml(labels.get(p.data.edge.target))}<br>weight: ${p.data.edge.weight}<br>citation_count_total: ${p.data.edge.citation_count_total}`
+        : `${escapeHtml(p.data.node.label)}<br>type: ${escapeHtml(p.data.node.type)}<br>size: ${p.data.node.size}<br>citation_count_total: ${p.data.node.citation_count_total}`,
+    },
+    series: [{
+      type: "graph",
+      layout: "force",
+      top: 40,
+      // Pan only: wheel zoom would capture page scrolling over the chart.
+      roam: "move",
+      draggable: true,
+      force: { repulsion: 700, edgeLength: [80, 260], gravity: 0.05, layoutAnimation: false },
+      categories: NODE_TYPES.map((t) => ({ name: t, symbol: NODE_STYLES[t].symbol, itemStyle: NODE_STYLES[t].itemStyle })),
+      data: nodes.map((n) => {
+        const style = NODE_STYLES[n.type] || NODE_STYLES.drug;
+        return {
+          id: n.id, name: n.id, node: n,
+          category: NODE_STYLES[n.type] ? NODE_TYPES.indexOf(n.type) : 0,
+          symbol: style.symbol,
+          // Area-proportional marks: radius on a square-root scale of the trial count.
+          symbolSize: 6 + 40 * Math.sqrt(n.size / maxSize),
+          itemStyle: style.itemStyle,
+          label: { show: labelled.has(n.id), formatter: () => n.label, position: "right", fontSize: 11, color: "#1A1A18" },
+        };
+      }),
+      links: edges.map((e) => ({
+        source: e.source, target: e.target, edge: e,
+        lineStyle: { width: 0.5 + 5.5 * (e.weight / maxWeight), color: EDGE_COLOR, opacity: 0.7, curveness: 0 },
+      })),
+      edgeSymbol: ["none", "none"],
+      emphasis: { focus: "adjacency", label: { show: true, formatter: (p) => (p.data.node ? p.data.node.label : "") } },
+    }],
+  });
+
+  chart.on("click", (params) => {
+    if (params.dataType === "edge") {
+      const e = params.data.edge;
+      renderCitations(`${labels.get(e.source)} — ${labels.get(e.target)}`, e.citations || [], e.citation_count_total);
+    } else if (params.dataType === "node") {
+      const n = params.data.node;
+      renderCitations(`${n.label} (${n.type})`, n.citations || [], n.citation_count_total);
+    }
+  });
+}
+
+$("query-form").addEventListener("submit", sendQuery);
+$("render-paste").addEventListener("click", renderPasted);
+window.addEventListener("resize", () => chart && chart.resize());
+</script>
+</body>
+</html>
