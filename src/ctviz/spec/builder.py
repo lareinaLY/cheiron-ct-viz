@@ -24,6 +24,7 @@ from ctviz.schemas.response import (
     Interpretation,
     Meta,
     NodeElement,
+    RetrievalRoute,
     Visualization,
     VisualizationResponse,
 )
@@ -47,6 +48,7 @@ def build_response(
     *,
     question: str,
     cohort_stats: Sequence[CohortStats],
+    retrieval_route: RetrievalRoute = RetrievalRoute.FETCH,
     search_semantics: dict[str, str],
     data_timestamp: datetime | None,
     timing_ms: dict[str, float],
@@ -66,8 +68,9 @@ def build_response(
     - Graphs become Cytoscape-style `nodes`/`edges` elements.
     - When the record cap cut a cohort's fetch, the title ends with
       " (partial: first N of M matches)".
-    - Meta carries the count unit, retrieval totals summed over cohorts, per-cohort
-      stats, and every assumption and warning (aggregate ones after the caller's).
+    - Meta carries the count unit, the retrieval route, retrieval totals summed over
+      cohorts (coverage weighted by each cohort's matches), per-cohort stats, and every
+      assumption and warning (aggregate ones after the caller's).
     - A network response larger than `max_response_bytes` keeps every edge but cuts each
       edge's citations to `reduced_edge_citation_cap` (see `fit_network_budget`).
     """
@@ -89,14 +92,17 @@ def build_response(
         result_warnings = cohort_warnings(result)
         buckets_overlap = any(cohort.result.buckets_overlap for cohort in result.cohorts)
         top_n = result.top_n
-        estimated_count = sum(cohort.result.estimated_count for cohort in result.cohorts)
-        unknown_date_type_count = summed_or_none(
+        estimated_count = summed_if_known(
+            [cohort.result.estimated_count for cohort in result.cohorts]
+        )
+        unknown_date_type_count = summed_if_known(
             [cohort.result.unknown_date_type_count for cohort in result.cohorts]
         )
 
     visualization.title += partial_title_suffix(cohort_stats)
     total_matched = sum(stats.total_matched for stats in cohort_stats) if cohort_stats else None
     records_retrieved = sum(stats.records_retrieved for stats in cohort_stats)
+    covered = sum((stats.coverage or 0.0) * stats.total_matched for stats in cohort_stats)
     meta = Meta(
         interpretation=resolve_interpretation(plan, question, interpretation),
         count_unit=CountUnit.TRIALS,
@@ -107,7 +113,8 @@ def build_response(
         total_matched=total_matched,
         records_retrieved=records_retrieved,
         truncated=any(stats.truncated for stats in cohort_stats),
-        coverage=records_retrieved / total_matched if total_matched else None,
+        coverage=covered / total_matched if total_matched else None,
+        retrieval_route=retrieval_route,
         cohorts=list(cohort_stats),
         top_n=top_n,
         estimated_count=estimated_count,
@@ -269,10 +276,14 @@ def cohort_warnings(result: GroupedCohorts) -> list[str]:
     ]
 
 
-def summed_or_none(counts: list[int | None]) -> int | None:
-    """Sum of counts that apply; None when none of them apply."""
-    applicable = [count for count in counts if count is not None]
-    return sum(applicable) if applicable else None
+def summed_if_known(counts: list[int | None]) -> int | None:
+    """Sum over cohorts; None when any cohort's count does not apply or is not determined.
+
+    A sum over only some cohorts would present a partial count as the total.
+    """
+    if any(count is None for count in counts):
+        return None
+    return sum(count for count in counts if count is not None)
 
 
 def unique(items: Iterable[str]) -> list[str]:

@@ -46,6 +46,11 @@ class BucketTally:
         self.unknown_date_type_count += int(value.unknown_date_type)
         self.citations.extend(value.citations)
 
+    @classmethod
+    def first_of(cls, value: DimensionValue) -> BucketTally:
+        """An empty tally for the bucket `value` belongs to."""
+        return cls(value.key, value.label, value.is_unknown, value.is_unrecognized, value.rank)
+
 
 def group_by(
     records: Sequence[TrialRecord],
@@ -91,9 +96,7 @@ def group_by(
         for value in values:
             tally = tallies.get(value.key)
             if tally is None:
-                tally = BucketTally(
-                    value.key, value.label, value.is_unknown, value.is_unrecognized, value.rank
-                )
+                tally = BucketTally.first_of(value)
                 tallies[value.key] = tally
             tally.add(value)
 
@@ -169,6 +172,7 @@ def to_bucket(
         is_unrecognized=tally.is_unrecognized,
         citations=tally.citations[:citation_cap],
         citation_count_total=len(tally.citations),
+        rank=tally.rank,
     )
 
 
@@ -193,10 +197,11 @@ def bucket_warnings(
             f"{unknown} of {total} trials have no {spec.label}; "
             f"they are counted in the '{UNKNOWN_BUCKET_KEY}' bucket."
         )
-    estimated = sum(b.estimated_count for b in buckets)
+    # None (not determined on the count route) is stated as an assumption, not warned on.
+    estimated = sum(b.estimated_count or 0 for b in buckets)
     if estimated:
         warnings.append(f"{estimated} trials are counted using an estimated {spec.label}.")
-    untyped = sum(b.unknown_date_type_count for b in buckets)
+    untyped = sum(b.unknown_date_type_count or 0 for b in buckets)
     if untyped:
         warnings.append(
             f"{untyped} trials have a {spec.label} with no ACTUAL/ESTIMATED type (legacy "

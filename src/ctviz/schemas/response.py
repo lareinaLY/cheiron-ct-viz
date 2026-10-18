@@ -34,6 +34,21 @@ class DataQuality(StrEnum):
     PARTIAL = "partial"
 
 
+class RetrievalRoute(StrEnum):
+    """How the counts were obtained from ClinicalTrials.gov.
+
+    - fetch: every matching record was fetched (up to the record cap) and counted locally.
+    - count_per_bucket: the cohort matched more trials than the record cap and the
+      dimension's buckets can be expressed as API filters, so the API counted each bucket
+      exactly (one countTotal request per bucket); citations are a sample of each bucket.
+    - mixed: cohorts of one comparison used different routes (meta.cohorts says which).
+    """
+
+    FETCH = "fetch"
+    COUNT_PER_BUCKET = "count_per_bucket"
+    MIXED = "mixed"
+
+
 class ResponseMode(StrEnum):
     """How an LLM provider is asked for structured output.
 
@@ -81,12 +96,15 @@ class Datum(BaseModel):
     label: str
     cohort: str | None = None
     count: int
-    estimated_count: int = Field(
-        default=0, description="Trials counted here via an estimated date."
-    )
-    unknown_date_type_count: int = Field(
+    estimated_count: int | None = Field(
         default=0,
-        description="Trials counted here via a date with no ACTUAL/ESTIMATED type (legacy).",
+        description="Trials counted here via an estimated date; null when not determined "
+        "(count_per_bucket route on a temporal dimension).",
+    )
+    unknown_date_type_count: int | None = Field(
+        default=0,
+        description="Trials counted here via a date with no ACTUAL/ESTIMATED type (legacy); "
+        "null when not determined (count_per_bucket route on a temporal dimension).",
     )
     incomplete: bool = Field(
         default=False, description="Period still in progress (e.g. this year)."
@@ -289,9 +307,26 @@ class CohortStats(BaseModel):
     records_retrieved: int
     records_skipped: int = Field(description="Retrieved records the normalizer rejected.")
     truncated: bool = Field(description="True when the record cap stopped the fetch early.")
-    coverage: float | None = Field(description="records_retrieved / total_matched.")
+    coverage: float | None = Field(
+        description="Share of total_matched the counts cover: records_retrieved / "
+        "total_matched on the fetch route, 1.0 on the count_per_bucket route."
+    )
     reconciled: bool = Field(
-        description="records_retrieved equals total_matched, or the fetch was truncated."
+        description="Fetch route: records_retrieved equals total_matched, or the fetch was "
+        "truncated. count_per_bucket route: the bucket counts sum to total_matched."
+    )
+    retrieval_route: RetrievalRoute = RetrievalRoute.FETCH
+    count_requests: int | None = Field(
+        default=None,
+        description="Requests the count_per_bucket route made for this cohort (cohort total, "
+        "date range, one per bucket), also when it fell back to fetching; null when it was "
+        "not attempted.",
+    )
+    count_remainder: int | None = Field(
+        default=None,
+        description="total_matched minus the sum of the bucket counts; 0 when the counts "
+        "reconcile. A nonzero value made the cohort fall back to fetching. Null when no "
+        "bucket was counted.",
     )
 
 
@@ -322,9 +357,15 @@ class Meta(BaseModel):
     country_granularity: Literal["country_as_reported"] = "country_as_reported"
     buckets_overlap: bool
     total_matched: int | None = Field(description="totalCount reported by the API.")
-    records_retrieved: int
+    records_retrieved: int = Field(
+        description="Records read: every fetched record on the fetch route, the citation "
+        "samples on the count_per_bucket route."
+    )
     truncated: bool
-    coverage: float | None = Field(description="records_retrieved / total_matched.")
+    coverage: float | None = Field(
+        description="Share of total_matched the counts cover, over all cohorts."
+    )
+    retrieval_route: RetrievalRoute = RetrievalRoute.FETCH
     cohorts: list[CohortStats] = Field(default_factory=list)
     data_quality: DataQuality = Field(
         default=DataQuality.NORMAL,
@@ -335,11 +376,14 @@ class Meta(BaseModel):
         default=None, description="Exclusions and readability caps; networks only."
     )
     estimated_count: int | None = Field(
-        description="Trials counted via an estimated value, summed over cohorts; None for networks."
+        description="Trials counted via an estimated value, summed over cohorts; None for "
+        "networks, and when a cohort's count was not determined (count_per_bucket route on a "
+        "temporal dimension)."
     )
     unknown_date_type_count: int | None = Field(
         description="Trials placed by a date with no ACTUAL/ESTIMATED type, summed over "
-        "cohorts; None unless the dimension is temporal."
+        "cohorts; None unless the dimension is temporal, and when a cohort's count was not "
+        "determined (count_per_bucket route)."
     )
     data_timestamp: datetime | None = Field(description="API dataTimestamp from /version.")
     assumptions: list[str] = Field(default_factory=list)

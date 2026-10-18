@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from ctviz.schemas.citation import Citation
 from ctviz.schemas.plan import Dimension, Relation
 from ctviz.schemas.response import NetworkEdge, NetworkNode, NetworkSummary, TopNSummary
+from ctviz.schemas.trial import TrialRecord
 
 
 class Bucket(BaseModel):
@@ -19,9 +20,15 @@ class Bucket(BaseModel):
     key: str
     label: str
     count: int
-    estimated_count: int = Field(default=0, description="Trials here whose date is ESTIMATED.")
-    unknown_date_type_count: int = Field(
-        default=0, description="Trials here whose date has no ACTUAL/ESTIMATED type."
+    estimated_count: int | None = Field(
+        default=0,
+        description="Trials here whose date is ESTIMATED; None when not determined "
+        "(an API-counted temporal bucket).",
+    )
+    unknown_date_type_count: int | None = Field(
+        default=0,
+        description="Trials here whose date has no ACTUAL/ESTIMATED type; None when not "
+        "determined.",
     )
     incomplete: bool = Field(default=False, description="Period still in progress at as_of.")
     is_future: bool = Field(default=False, description="Period starts after as_of (projection).")
@@ -31,6 +38,9 @@ class Bucket(BaseModel):
     )
     citations: list[Citation] = Field(default_factory=list)
     citation_count_total: int = Field(description="True number of citations before the cap.")
+    rank: tuple[int, ...] = Field(
+        default=(), description="Sort rank for BY_RANK dimensions (e.g. phase order)."
+    )
 
 
 class GroupResult(BaseModel):
@@ -44,7 +54,10 @@ class GroupResult(BaseModel):
     dimension: Dimension
     buckets: list[Bucket]
     buckets_overlap: bool
-    estimated_count: int = Field(default=0, description="Trials counted via an estimated value.")
+    estimated_count: int | None = Field(
+        default=0,
+        description="Trials counted via an estimated value; None when not determined.",
+    )
     unknown_date_type_count: int | None = Field(
         default=None,
         description="Temporal dimensions only: trials placed by a date with no "
@@ -67,6 +80,29 @@ class Graph(BaseModel):
     summary: NetworkSummary | None = None
     assumptions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class CountedBucket(BaseModel):
+    """One bucket counted by the API: its exact count and the sample records it returned.
+
+    `count` is the API's totalCount for the bucket's filter; `records` are the normalized
+    sample studies (the first page), used only for citations, labels and ordering.
+    """
+
+    key: str
+    count: int = Field(ge=0)
+    records: list[TrialRecord] = Field(default_factory=list)
+
+
+class CountedCohort(BaseModel):
+    """A cohort answered by the count-per-bucket route, ready for aggregation.
+
+    `total_count` is the cohort's totalCount; the bucket counts (including the Unknown
+    bucket) sum to it, which the pipeline checks before aggregating.
+    """
+
+    total_count: int = Field(ge=0)
+    buckets: list[CountedBucket]
 
 
 class CohortGroup(BaseModel):

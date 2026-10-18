@@ -154,6 +154,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
             client=client,
             network_limits=settings.network_limits(),
             data_quality_thresholds=settings.data_quality_thresholds(),
+            count_route=settings.count_route_policy(),
         )
 
     return app

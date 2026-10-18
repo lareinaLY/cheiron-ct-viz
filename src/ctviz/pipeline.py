@@ -2,9 +2,9 @@
 
 The planner runs before it (see `api.app`) and hands over an `Interpretation`. Each
 stage is called once per request and timed. Facts that the chart alone cannot show
-(how the plan was made, explicit overrides, truncation, reconciliation, duplicates,
-skipped and unrecognized records, data quality, cache use) become meta warnings or
-assumptions here (invariants 3 and 6).
+(how the plan was made, explicit overrides, the retrieval route, truncation,
+reconciliation, duplicates, skipped and unrecognized records, data quality, cache use)
+become meta warnings or assumptions here (invariants 3 and 6).
 """
 
 from __future__ import annotations
@@ -19,8 +19,9 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
-from ctviz.aggregate import build_network, group_cohorts
-from ctviz.config import DataQualityThresholds, NetworkLimits
+from ctviz.aggregate import build_network, counted_sample_problems, group_cohorts
+from ctviz.aggregate.registry import DIMENSIONS
+from ctviz.config import CountRoutePolicy, DataQualityThresholds, NetworkLimits
 from ctviz.errors import (
     RateLimitError,
     SourceRecordError,
@@ -36,15 +37,23 @@ from ctviz.retrieval.query_builder import (
     search_semantics,
     study_query_params,
 )
-from ctviz.schemas.aggregate import Graph, GroupedCohorts
-from ctviz.schemas.plan import Cohort, QueryPlan
+from ctviz.retrieval_route import (
+    CohortRetrieval,
+    CountAttempt,
+    count_threshold,
+    fallback,
+    retrieve_cohort,
+)
+from ctviz.schemas.aggregate import CountedBucket, CountedCohort, Graph, GroupedCohorts
+from ctviz.schemas.plan import Cohort, Dimension, QueryPlan
 from ctviz.schemas.response import (
     CohortStats,
     DataQuality,
     Interpretation,
+    RetrievalRoute,
     VisualizationResponse,
 )
-from ctviz.schemas.retrieval import FetchResult
+from ctviz.schemas.retrieval import CountResult, FetchResult
 from ctviz.schemas.trial import TrialRecord
 from ctviz.spec import build_response
 
@@ -77,17 +86,42 @@ class StageTimer:
 
 @dataclass
 class CohortData:
-    """One cohort's fetch and the records that survived normalization."""
+    """One cohort's retrieval and the records that survived normalization.
+
+    On the fetch route `records` are every fetched trial; on the count_per_bucket route
+    `counted` holds the API's bucket counts and `records` are their citation samples.
+    """
 
     cohort: Cohort
-    fetch: FetchResult
+    retrieval: CohortRetrieval
     records: list[TrialRecord]
     skipped: list[SourceRecordError]
+    counted: CountedCohort | None = None
+
+    @property
+    def fetch(self) -> FetchResult | None:
+        """The fetch-route result; None on the count_per_bucket route."""
+        return self.retrieval.fetch
+
+    @property
+    def route(self) -> RetrievalRoute:
+        """The route whose counts this cohort reports."""
+        return RetrievalRoute.FETCH if self.counted is None else RetrievalRoute.COUNT_PER_BUCKET
+
+    @property
+    def total_count(self) -> int:
+        """totalCount the API reported for the cohort."""
+        return self.retrieval.total_count
+
+    @property
+    def truncated(self) -> bool:
+        """True when the record cap cut the fetch."""
+        return self.fetch is not None and self.fetch.truncated
 
     @property
     def retrieved(self) -> int:
-        """Records the API returned for this cohort (after deduplication)."""
-        return len(self.fetch.studies)
+        """Records read for this cohort: fetched (deduplicated) records, or citation samples."""
+        return len(self.records) + len(self.skipped)
 
 
 async def run(
@@ -98,6 +132,7 @@ async def run(
     as_of: date | None = None,
     network_limits: NetworkLimits | None = None,
     data_quality_thresholds: DataQualityThresholds | None = None,
+    count_route: CountRoutePolicy | None = None,
 ) -> VisualizationResponse:
     """Answer a plan supplied directly by code (no planner; planned_by "structured_fields")."""
     interpretation = Interpretation(question=question, plan=plan, planned_by="structured_fields")
@@ -107,6 +142,7 @@ async def run(
         as_of=as_of,
         network_limits=network_limits,
         data_quality_thresholds=data_quality_thresholds,
+        count_route=count_route,
     )
 
 
@@ -117,6 +153,7 @@ async def execute(
     as_of: date | None = None,
     network_limits: NetworkLimits | None = None,
     data_quality_thresholds: DataQualityThresholds | None = None,
+    count_route: CountRoutePolicy | None = None,
 ) -> VisualizationResponse:
     """Answer the planner's plan with live data.
 
@@ -129,11 +166,17 @@ async def execute(
     at the degraded threshold the response is marked `data_quality="degraded"`. A fetch
     cut by the record cap marks it `data_quality="partial"` (over degraded, whose warning
     stays first) and the spec stage says so in the title.
-    `network_limits` and `data_quality_thresholds` default to the configured defaults.
+    A cohort matching more trials than the record cap, grouped by an API-countable
+    dimension, is counted exactly per bucket instead (`retrieval_route.retrieve_cohort`);
+    when its sample records contradict their buckets it is fetched after all
+    (timed as "retrieve_fallback").
+    `network_limits`, `data_quality_thresholds` and `count_route` default to the
+    configured defaults.
     """
     plan, question = interpretation.plan, interpretation.question
     limits = network_limits or NetworkLimits()
     thresholds = data_quality_thresholds or DataQualityThresholds()
+    policy = count_route or CountRoutePolicy()
     timer = StageTimer()
     started = time.perf_counter()
 
@@ -142,15 +185,30 @@ async def execute(
         cohort_params = [study_query_params(c.filters, plan.match_mode) for c in plan.cohorts]
 
     with timer.stage("retrieve"):
-        fetches = [await client.fetch_all(params) for params in cohort_params]
+        retrievals = [
+            await retrieve_cohort(params, plan.dimension, client, policy)
+            for params in cohort_params
+        ]
         data_timestamp, timestamp_problem = await fetch_data_timestamp(client)
 
     with timer.stage("normalize"):
         cohorts = [
-            CohortData(cohort, fetch, *normalize_all(fetch.studies))
-            for cohort, fetch in zip(plan.cohorts, fetches, strict=True)
+            normalize_cohort(cohort, retrieval, plan.dimension)
+            for cohort, retrieval in zip(plan.cohorts, retrievals, strict=True)
         ]
-        data_quality = assess_data_quality(cohorts, thresholds)
+
+    rejected = [index for index, data in enumerate(cohorts) if sample_problems(data, plan)]
+    if rejected:
+        with timer.stage("retrieve_fallback"):
+            for index in rejected:
+                cohorts[index] = await refetch_cohort(
+                    cohorts[index],
+                    cohort_params[index],
+                    client,
+                    sample_problems(cohorts[index], plan),
+                )
+
+    data_quality = assess_data_quality(cohorts, thresholds)
 
     with timer.stage("aggregate"):
         result = aggregate(plan, cohorts, as_of, limits)
@@ -161,6 +219,7 @@ async def execute(
             result,
             question=question,
             cohort_stats=[cohort_stats(data) for data in cohorts],
+            retrieval_route=combined_route(cohorts),
             search_semantics=merged_search_semantics(plan),
             data_timestamp=data_timestamp,
             timing_ms={},
@@ -172,7 +231,11 @@ async def execute(
             assumptions=[
                 *planning_assumptions(interpretation),
                 *ranking_assumptions(interpretation, result),
-                *(a for data in cohorts for a in retrieval_assumptions(data, len(cohorts))),
+                *(
+                    a
+                    for data in cohorts
+                    for a in retrieval_assumptions(data, plan, len(cohorts), client, policy)
+                ),
             ],
             interpretation=interpretation,
             max_response_bytes=limits.max_response_bytes,
@@ -182,9 +245,66 @@ async def execute(
     timer.timings["total"] = round((time.perf_counter() - started) * 1000, 1)
     response.meta.timing_ms = timer.timings
     response.meta.data_quality = (
-        DataQuality.PARTIAL if any(data.fetch.truncated for data in cohorts) else data_quality
+        DataQuality.PARTIAL if any(data.truncated for data in cohorts) else data_quality
     )
     return response
+
+
+def normalize_cohort(
+    cohort: Cohort, retrieval: CohortRetrieval, dimension: Dimension | None
+) -> CohortData:
+    """Normalize a cohort's fetched records, or each counted bucket's sample records."""
+    if retrieval.count is None:
+        assert retrieval.fetch is not None
+        return CohortData(cohort, retrieval, *normalize_all(retrieval.fetch.studies))
+    assert dimension is not None
+    buckets: list[CountedBucket] = []
+    records: list[TrialRecord] = []
+    skipped: list[SourceRecordError] = []
+    for bucket in retrieval.count.buckets:
+        bucket_records, bucket_skipped = normalize_all(bucket.studies)
+        buckets.append(
+            CountedBucket(key=bucket.key, count=bucket.total_count, records=bucket_records)
+        )
+        records.extend(bucket_records)
+        skipped.extend(bucket_skipped)
+    counted = CountedCohort(total_count=retrieval.total_count, buckets=buckets)
+    return CohortData(cohort, retrieval, records, skipped, counted)
+
+
+def sample_problems(data: CohortData, plan: QueryPlan) -> list[str]:
+    """Why a counted cohort's samples contradict their buckets; [] on the fetch route."""
+    if data.counted is None or plan.dimension is None:
+        return []
+    return counted_sample_problems(data.counted, plan.dimension)
+
+
+async def refetch_cohort(
+    data: CohortData, params: dict[str, str], client: CtGovClient, problems: list[str]
+) -> CohortData:
+    """Fetch a counted cohort after all, because its samples contradict their buckets.
+
+    A sample record outside its bucket means the bucket filter does not select what the
+    normalizer calls that bucket, so the counts cannot be trusted.
+    """
+    shown = "; ".join(problems[:3])
+    more = f" (and {len(problems) - 3} more)" if len(problems) > 3 else ""
+    attempt = data.retrieval.attempt or CountAttempt(requests=0)
+    retrieval = await fallback(
+        client,
+        params,
+        data.total_count,
+        attempt,
+        f"sample records contradict their bucket filters: {shown}{more}",
+    )
+    assert retrieval.fetch is not None
+    return CohortData(data.cohort, retrieval, *normalize_all(retrieval.fetch.studies))
+
+
+def combined_route(cohorts: Sequence[CohortData]) -> RetrievalRoute:
+    """The route of every cohort, or "mixed" when they differ."""
+    routes = {data.route for data in cohorts}
+    return routes.pop() if len(routes) == 1 else RetrievalRoute.MIXED
 
 
 def planning_assumptions(interpretation: Interpretation) -> list[str]:
@@ -362,7 +482,10 @@ def aggregate(
     if plan.dimension is None:
         raise ValueError("A validated plan has a dimension or a relation.")
     return group_cohorts(
-        [(data.cohort.label, data.records) for data in cohorts],
+        [
+            (data.cohort.label, data.records if data.counted is None else data.counted)
+            for data in cohorts
+        ],
         plan.dimension,
         top_n=plan.top_n,
         as_of=as_of,
@@ -370,15 +493,24 @@ def aggregate(
 
 
 def cohort_stats(data: CohortData) -> CohortStats:
-    """Retrieval accounting for one cohort."""
+    """Retrieval accounting for one cohort.
+
+    On the count_per_bucket route the counts cover every match (coverage 1.0) and are
+    reconciled because the bucket counts summed to totalCount before they were used.
+    """
+    attempt = data.retrieval.attempt
+    fetch = data.fetch
     return CohortStats(
         label=data.cohort.label,
-        total_matched=data.fetch.total_count,
+        total_matched=data.total_count,
         records_retrieved=data.retrieved,
         records_skipped=len(data.skipped),
-        truncated=data.fetch.truncated,
-        coverage=data.fetch.coverage,
-        reconciled=data.fetch.reconciled,
+        truncated=data.truncated,
+        coverage=(1.0 if data.total_count else None) if fetch is None else fetch.coverage,
+        reconciled=True if fetch is None else fetch.reconciled,
+        retrieval_route=data.route,
+        count_requests=attempt.requests if attempt is not None else None,
+        count_remainder=attempt.remainder if attempt is not None else None,
     )
 
 
@@ -396,13 +528,23 @@ def prefixed(data: CohortData, cohort_count: int, message: str) -> str:
 
 
 def retrieval_warnings(data: CohortData, cohort_count: int) -> list[str]:
-    """Empty results, truncation, reconciliation failures, duplicates, skipped records and
-    unrecognized values."""
-    fetch = data.fetch
+    """Empty results, a rejected count route, truncation, reconciliation failures,
+    duplicates, skipped records and unrecognized values."""
     retrieved = data.retrieved
     messages: list[str] = []
-    if fetch.total_count == 0:
+    if data.total_count == 0:
         messages.append("No trials matched these filters.")
+    attempt = data.retrieval.attempt
+    if attempt is not None and attempt.fallback_reason is not None:
+        messages.append(
+            "Exact per-bucket counting (retrieval_route count_per_bucket) was not used: "
+            f"{attempt.fallback_reason}; the records were fetched instead."
+        )
+    fetch = data.fetch
+    if fetch is None:
+        messages.extend(counted_sample_warnings(data))
+        messages.extend(unrecognized_warnings(data.records))
+        return [prefixed(data, cohort_count, message) for message in messages]
     if fetch.truncated and fetch.coverage is not None:
         messages.append(
             f"Only the first {retrieved} of {fetch.total_count} matching trials were "
@@ -429,18 +571,91 @@ def retrieval_warnings(data: CohortData, cohort_count: int) -> list[str]:
     return [prefixed(data, cohort_count, message) for message in messages]
 
 
-def retrieval_assumptions(data: CohortData, cohort_count: int) -> list[str]:
-    """State which records a truncated fetch holds, and when results came from the cache."""
+def counted_sample_warnings(data: CohortData) -> list[str]:
+    """Unreadable sample records on the count route: still counted, only not cited."""
+    if not data.skipped:
+        return []
+    return [
+        f"{len(data.skipped)} of {data.retrieved} sampled citation records could not be read; "
+        "the API's bucket counts still include them, but they are not cited.",
+        *(f"Skipped {error}" for error in data.skipped),
+    ]
+
+
+def retrieval_assumptions(
+    data: CohortData,
+    plan: QueryPlan,
+    cohort_count: int,
+    client: CtGovClient,
+    policy: CountRoutePolicy,
+) -> list[str]:
+    """State the retrieval route, which records a truncated fetch holds, why it was not
+    counted per bucket, and when results came from the cache."""
+    if data.retrieval.count is not None:
+        messages = counted_assumptions(data, data.retrieval.count, plan, client, policy)
+        return [prefixed(data, cohort_count, message) for message in messages]
+    fetch = data.fetch
+    assert fetch is not None
     messages: list[str] = []
-    if data.fetch.truncated:
+    if fetch.truncated:
         messages.append(
             f"The retrieved trials are the first {data.retrieved:,} of "
-            f"{data.fetch.total_count:,} matches ordered by {RETRIEVAL_SORT_FIELD} "
+            f"{fetch.total_count:,} matches ordered by {RETRIEVAL_SORT_FIELD} "
             f"{RETRIEVAL_SORT_DIRECTION} (the most recently registered), not a random sample; "
             "trials sharing the cutoff date are picked in the API's unspecified tie order; "
             "counts for the remaining matches are unknown and may be distributed differently."
         )
-    if data.fetch.cached_at is not None:
-        stored = data.fetch.cached_at.strftime("%Y-%m-%d %H:%M UTC")
+        if plan.relation is not None:
+            messages.append(
+                "Networks are built from fetched records, so the record cap applies to them."
+            )
+        elif plan.dimension is not None and DIMENSIONS[plan.dimension].api_count is None:
+            messages.append(
+                f"The {DIMENSIONS[plan.dimension].label} cannot be counted per bucket by the API "
+                "(its values are not expressible as a fixed set of API filters), so the record "
+                "cap applies."
+            )
+    if fetch.cached_at is not None:
+        stored = fetch.cached_at.strftime("%Y-%m-%d %H:%M UTC")
         messages.append(f"Served from the local cache stored at {stored}.")
     return [prefixed(data, cohort_count, message) for message in messages]
+
+
+def counted_assumptions(
+    data: CohortData,
+    count: CountResult,
+    plan: QueryPlan,
+    client: CtGovClient,
+    policy: CountRoutePolicy,
+) -> list[str]:
+    """Explain the count_per_bucket route: why it was taken, why it is exact, and that
+    citations are a sample of each bucket."""
+    assert plan.dimension is not None
+    spec = DIMENSIONS[plan.dimension]
+    threshold = count_threshold(policy, client)
+    limit = (
+        f"the record cap ({threshold:,})"
+        if policy.above_total is None
+        else f"the count-route threshold ({threshold:,})"
+    )
+    example = count.buckets[0]
+    attempt = data.retrieval.attempt
+    requests = attempt.requests if attempt is not None else len(count.buckets)
+    messages = [
+        f"Counts are exact (retrieval_route count_per_bucket): the cohort matched "
+        f"{data.total_count:,} trials, more than {limit}, so instead of fetching records the "
+        f"API counted each {spec.label} bucket with its own filter ({requests} requests; e.g. "
+        f"'{example.key}' = {example.filter_clause}), and the bucket counts add up to the "
+        f"API's total of {data.total_count:,}. Citations are a sample: up to the "
+        f"{policy.citation_sample_size} most recently registered trials "
+        f"({RETRIEVAL_SORT_FIELD} {RETRIEVAL_SORT_DIRECTION}) of each bucket; each bucket's "
+        "citation_count_total is its full count."
+    ]
+    cached = [bucket for bucket in count.buckets if bucket.cached_at is not None]
+    if cached:
+        oldest = min(bucket.cached_at for bucket in cached if bucket.cached_at is not None)
+        messages.append(
+            f"{len(cached)} of {len(count.buckets)} bucket counts were served from the local "
+            f"cache (oldest stored at {oldest.strftime('%Y-%m-%d %H:%M UTC')})."
+        )
+    return messages

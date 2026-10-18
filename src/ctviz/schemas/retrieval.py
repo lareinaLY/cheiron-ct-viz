@@ -30,6 +30,41 @@ class FetchResult(BaseModel):
     )
 
 
+class StudySample(BaseModel):
+    """The first page of a /studies query: its totalCount and up to `pageSize` studies.
+
+    Used by the count-per-bucket route, where totalCount is the answer and the studies
+    are only citations. `studies` are raw decoded JSON, as in FetchResult.
+    """
+
+    total_count: int
+    studies: list[Any]
+    cached_at: datetime | None = None
+
+
+class BucketCount(BaseModel):
+    """The API's exact count for one bucket filter, plus the sample studies it returned."""
+
+    key: str
+    filter_clause: str = Field(description="The bucket's filter.advanced clause.")
+    total_count: int
+    studies: list[Any]
+    cached_at: datetime | None = Field(
+        default=None, description="When the cached response was stored; None if fetched live."
+    )
+
+
+class CountResult(BaseModel):
+    """Every bucket of one cohort counted by the API (the count-per-bucket route)."""
+
+    buckets: list[BucketCount]
+
+    @property
+    def counted_total(self) -> int:
+        """Sum of the bucket counts; equals the cohort's totalCount when they reconcile."""
+        return sum(bucket.total_count for bucket in self.buckets)
+
+
 class EnumDrift(BaseModel):
     """Differences between GET /studies/enums and the enums this code knows.
 

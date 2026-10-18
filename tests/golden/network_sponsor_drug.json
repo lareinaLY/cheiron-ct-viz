@@ -1429,6 +1429,7 @@
     "records_retrieved": 5,
     "truncated": false,
     "coverage": 1.0,
+    "retrieval_route": "fetch",
     "cohorts": [
       {
         "label": "pembrolizumab",
@@ -1437,7 +1438,10 @@
         "records_skipped": 0,
         "truncated": false,
         "coverage": 1.0,
-        "reconciled": true
+        "reconciled": true,
+        "retrieval_route": "fetch",
+        "count_requests": null,
+        "count_remainder": null
       }
     ],
     "data_quality": "normal",

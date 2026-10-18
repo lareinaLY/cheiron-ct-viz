@@ -18,6 +18,10 @@ DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP = 2
 DEFAULT_DEGRADED_SKIP_RATIO = 0.05
 DEFAULT_REFUSE_SKIP_RATIO = 0.5
 DEFAULT_MIN_SKIPPED_FOR_DEGRADED = 20
+DEFAULT_CITATION_SAMPLE_SIZE = 10
+# About 72 s of pacing at 1.2 s per request: enough for every enum dimension (phase 9,
+# status 15, sponsor class 10 buckets) and for start years spanning up to about 55 years.
+DEFAULT_MAX_COUNT_REQUESTS = 60
 
 
 class NetworkLimits(BaseModel):
@@ -54,6 +58,23 @@ class DataQualityThresholds(BaseModel):
                 f"DEGRADED_SKIP_RATIO ({self.degraded_skip_ratio})"
             )
         return self
+
+
+class CountRoutePolicy(BaseModel):
+    """When the pipeline counts per bucket through the API instead of fetching records.
+
+    A cohort is counted per bucket when its dimension is API-countable and it matches
+    more than `above_total` trials (None: more than the client's record cap, i.e. when a
+    fetch would be truncated), unless that would take more than `max_bucket_requests`
+    bucket requests. Each bucket request returns `citation_sample_size` studies as its
+    citations.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    citation_sample_size: int = Field(default=DEFAULT_CITATION_SAMPLE_SIZE, gt=0, le=1000)
+    max_bucket_requests: int = Field(default=DEFAULT_MAX_COUNT_REQUESTS, gt=0)
+    above_total: int | None = Field(default=None, ge=0)
 
 
 class Settings(BaseSettings):
@@ -165,6 +186,21 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("MIN_SKIPPED_FOR_DEGRADED", "CTVIZ_MIN_SKIPPED_FOR_DEGRADED"),
         description="Fewer skipped records than this never degrade or refuse a result.",
     )
+    citation_sample_size: int = Field(
+        default=DEFAULT_CITATION_SAMPLE_SIZE,
+        gt=0,
+        le=1000,
+        validation_alias=AliasChoices("CITATION_SAMPLE_SIZE", "CTVIZ_CITATION_SAMPLE_SIZE"),
+        description="Studies requested per bucket on the count_per_bucket route; they are "
+        "the bucket's citations.",
+    )
+    max_count_requests: int = Field(
+        default=DEFAULT_MAX_COUNT_REQUESTS,
+        gt=0,
+        validation_alias=AliasChoices("MAX_COUNT_REQUESTS", "CTVIZ_MAX_COUNT_REQUESTS"),
+        description="Above this many bucket requests, a large cohort is fetched (and "
+        "truncated) instead of counted per bucket.",
+    )
     enum_drift_check: bool = Field(
         default=True,
         description="At startup, compare GET /studies/enums with our enums and log new values.",
@@ -176,6 +212,13 @@ class Settings(BaseSettings):
             degraded_skip_ratio=self.degraded_skip_ratio,
             refuse_skip_ratio=self.refuse_skip_ratio,
             min_skipped_for_degraded=self.min_skipped_for_degraded,
+        )
+
+    def count_route_policy(self) -> CountRoutePolicy:
+        """When to count per bucket, as one value for the pipeline."""
+        return CountRoutePolicy(
+            citation_sample_size=self.citation_sample_size,
+            max_bucket_requests=self.max_count_requests,
         )
 
     def network_limits(self) -> NetworkLimits:

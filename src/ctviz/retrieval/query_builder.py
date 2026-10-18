@@ -121,6 +121,18 @@ def study_query_params(filters: Filters, match_mode: MatchMode) -> dict[str, str
     return {**build_params(filters, match_mode), "sort": RETRIEVAL_SORT}
 
 
+def with_bucket_filter(params: dict[str, str], clause: str) -> dict[str, str]:
+    """The cohort's params narrowed to one bucket: its clause AND-joined in parentheses.
+
+    The parentheses keep a bucket clause's own AND NOT terms together (e.g. "Phase 2 and
+    no other phase") whatever the cohort's clauses are.
+    """
+    existing = params.get("filter.advanced")
+    bucket = f"({clause})"
+    joined = bucket if existing is None else f"{existing} AND {bucket}"
+    return {**params, "filter.advanced": joined}
+
+
 def search_semantics(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     """Describe, per filter in use, what the API actually matches (for meta)."""
     semantics: dict[str, str] = {}

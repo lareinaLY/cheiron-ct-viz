@@ -23,7 +23,7 @@ from ctviz.config import Settings
 from ctviz.errors import ApiRequestError, RateLimitError, UpstreamError
 from ctviz.retrieval.cache import ResponseCache, cache_key
 from ctviz.retrieval.fields import STUDY_FIELDS
-from ctviz.schemas.retrieval import FetchResult
+from ctviz.schemas.retrieval import FetchResult, StudySample
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,14 @@ class TokenBucket:
 
 class _CacheGap(Exception):
     """A later page missed the cache after page 1 hit it; the fetch must restart live."""
+
+
+class _TotalAbove(Exception):
+    """Page 1 reported more matches than the caller wants fetched; carries that page."""
+
+    def __init__(self, sample: StudySample) -> None:
+        super().__init__(f"totalCount {sample.total_count}")
+        self.sample = sample
 
 
 class CtGovClient:
@@ -109,6 +117,28 @@ class CtGovClient:
         """Page size actually sent: never above the API maximum or the record cap."""
         return min(self._settings.page_size, API_MAX_PAGE_SIZE, self._settings.max_records)
 
+    @property
+    def max_records(self) -> int:
+        """The record cap of a full fetch; beyond it a fetch is truncated."""
+        return self._settings.max_records
+
+    async def sample(self, params: dict[str, str], size: int) -> StudySample:
+        """One /studies page: the query's totalCount and its first `size` studies.
+
+        Projects with STUDY_FIELDS like a full fetch, so the studies can be normalized
+        and cited. Used where the count is the answer (the count-per-bucket route).
+        """
+        page_params = {
+            **params,
+            "fields": "|".join(STUDY_FIELDS),
+            "countTotal": "true",
+            "pageSize": str(min(size, API_MAX_PAGE_SIZE)),
+        }
+        page, stored_at = await self._get_page(page_params, read_cache=True, cache_only=False)
+        return StudySample(
+            total_count=first_page_total(page), studies=page_studies(page), cached_at=stored_at
+        )
+
     async def fetch_all(self, params: dict[str, str]) -> FetchResult:
         """Fetch every page of a /studies query, up to `max_records`.
 
@@ -116,6 +146,24 @@ class CtGovClient:
         (only pageToken changes). Studies are deduplicated by NCT ID. The result is
         flagged, not rejected, when the count does not reconcile with totalCount.
         """
+        return await self._fetch(params, stop_above_total=None)
+
+    async def fetch_unless_above(
+        self, params: dict[str, str], max_total: int
+    ) -> FetchResult | StudySample:
+        """Like `fetch_all`, unless page 1 reports more than `max_total` matches.
+
+        Then it stops after page 1 and returns it as a StudySample, so the caller can count
+        per bucket instead; the decision costs no extra request. Otherwise it sends
+        exactly the requests `fetch_all` sends.
+        """
+        try:
+            return await self._fetch(params, stop_above_total=max_total)
+        except _TotalAbove as above:
+            return above.sample
+
+    async def _fetch(self, params: dict[str, str], *, stop_above_total: int | None) -> FetchResult:
+        """Fetch with frozen params, restarting live once if the cache held only part."""
         frozen = {
             **params,
             "fields": "|".join(STUDY_FIELDS),
@@ -123,10 +171,14 @@ class CtGovClient:
             "pageSize": str(self.page_size),
         }
         try:
-            return await self._fetch_pages(frozen, read_cache=True)
+            return await self._fetch_pages(
+                frozen, read_cache=True, stop_above_total=stop_above_total
+            )
         except _CacheGap:
             logger.info("Cache held only part of a paginated result; refetching live")
-            return await self._fetch_pages(frozen, read_cache=False)
+            return await self._fetch_pages(
+                frozen, read_cache=False, stop_above_total=stop_above_total
+            )
 
     async def fetch_enums(self) -> list[Any]:
         """GET /studies/enums (a JSON list), through the response cache.
@@ -163,8 +215,13 @@ class CtGovClient:
         self._data_timestamp = (now, timestamp)
         return timestamp
 
-    async def _fetch_pages(self, frozen: dict[str, str], *, read_cache: bool) -> FetchResult:
-        """Walk nextPageToken until the last page or the record cap."""
+    async def _fetch_pages(
+        self, frozen: dict[str, str], *, read_cache: bool, stop_above_total: int | None
+    ) -> FetchResult:
+        """Walk nextPageToken until the last page or the record cap.
+
+        Raises _TotalAbove after page 1 when its totalCount exceeds `stop_above_total`.
+        """
         max_records = self._settings.max_records
         studies: list[Any] = []
         seen: set[str] = set()
@@ -182,6 +239,14 @@ class CtGovClient:
             if pages == 0:
                 cached_at = stored_at
                 total_count = first_page_total(page)
+                if stop_above_total is not None and total_count > stop_above_total:
+                    raise _TotalAbove(
+                        StudySample(
+                            total_count=total_count,
+                            studies=page_studies(page),
+                            cached_at=stored_at,
+                        )
+                    )
             pages += 1
 
             for study in page_studies(page):
