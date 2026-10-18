@@ -94,22 +94,41 @@ chart selection cannot disagree (invariant 7).
   requests with a one-token bucket (1 request / 1.2 s), retries 429, 5xx and network
   errors with exponential backoff plus jitter, and fails fast on other 4xx with the
   API's error text. A full fetch stops at `max_records` (10,000). It returns a
-  `FetchResult` (`schemas/retrieval.py`): studies deduplicated by NCT ID, `total_count`,
-  `truncated`, `coverage`, and `reconciled`. A count that does not match totalCount is
+  `FetchResult` (`schemas/retrieval.py`): studies as plain decoded JSON (never parsed into
+  a model, so one malformed study reaches normalize instead of failing the fetch; a
+  `studies` value that is not a list is an `UpstreamError`), deduplicated by NCT ID,
+  `total_count`, `truncated`, `coverage`, and `reconciled`. A count that does not match totalCount is
   flagged and reported in meta, not raised (invariant 6). `/version`'s dataTimestamp is
-  reused for an hour.
+  reused for an hour; a missing or malformed one is logged and returned as None (not
+  reused). When /version gives no valid timestamp, or fails after its retries (5xx,
+  network error, 429, non-object body), the pipeline sets `meta.data_timestamp` to null
+  with a warning naming the cause; only a /studies failure fails the request.
+- `enums.py` runs the startup drift check: `CtGovClient.fetch_enums` (cached) gets
+  `/studies/enums`, `enum_drift` compares Phase, Status, StudyType, AgencyClass and
+  InterventionType with our enums, and `check_enum_drift` logs one WARNING line listing
+  new values (or enum types the API no longer lists). Any failure is logged and ignored.
 - `cache.py` stores successful GET bodies in SQLite under `.cache/`, keyed by URL plus
   sorted params, with a TTL (6 h by default; on in development, `NoCache` in tests).
   When page 1 comes from the cache, later pages must too; on a gap the fetch restarts
   live, because page tokens from different fetches cannot be mixed.
 
-**normalize** (`normalize/study.py`). `normalize_study` is a pure function from one raw
-study dict to a `TrialRecord` (`schemas/trial.py`). It derives the phase bucket and
+**normalize** (`normalize/`). `normalize_study` (`study.py`) is a pure function from one
+raw study (plain JSON) to a `TrialRecord` (`schemas/trial.py`). It derives the phase bucket and
 date precision, trims and deduplicates countries, and keeps intervention names
 verbatim. It also takes the study-level intervention MeSH list. Each record carries
 `source_paths`, plus the indices and raw values needed to cite the exact source value
-later. Uninterpretable values raise `SourceRecordError` rather than being guessed, so
-the caller can drop the record and report it.
+later. Every value is read through a typed path lookup (`StudyReader`); unknown sections
+and keys are ignored. Failures fall into two classes:
+- structural (not an object, no protocolSection or NCT ID, a value of the wrong JSON
+  type, a nameless intervention or MeSH entry): `SourceRecordError`, so the caller skips
+  the record and reports it (NCT ID, or "unknown");
+- value-domain (a string outside our enum for phase, status, study type, sponsor or
+  collaborator class, intervention type or enrollment type; a date in an unknown format;
+  an unknown date type): the record is kept, the field holds `UnrecognizedValue(raw)`
+  (dates: precision or type "unrecognized", raw string kept), and each occurrence is
+  listed in `TrialRecord.unrecognized_values`. `unrecognized_warnings`
+  (`unrecognized.py`) turns them into one meta warning per distinct value, with its
+  trial count, example NCT IDs and what happens to those trials.
 
 **aggregate** (`aggregate/`). These are pure functions over `TrialRecord`s:
 - `group_by` returns a `GroupResult`: buckets with counts, estimated and
@@ -132,6 +151,10 @@ the caller can drop the record and report it.
   `top_n`, it keeps the N known keys with the most trials plus Unknown, and records the
   omitted keys and, per cohort, the trials that appear only in omitted buckets.
 
+Values outside a known enum go to an `Unrecognized` bucket (`is_unrecognized`), sorted
+after known values and before Unknown, and never removed by `top_n`; a date in an
+unrecognized format has no period and goes to Unknown on temporal dimensions (citing
+the raw string), and an unrecognized date type counts as untyped.
 Missing values go to an explicit `Unknown` bucket (invariant 4). Every bucket, node
 and edge carries citations (invariant 2). Unknowns, estimated values, in-progress
 periods and overlap are all reported as warnings or assumptions (invariant 3).
@@ -158,10 +181,13 @@ checked against golden snapshots in `tests/golden/`.
   with no ACTUAL/ESTIMATED type), so a renderer can style recent or uncertain periods
   differently. The totals are in `meta.estimated_count` and `meta.unknown_date_type_count`
   (None when they do not apply).
+- Every datum carries `is_unknown` (missing) and `is_unrecognized` (a value the API sent
+  that we do not know), so a renderer can show both apart from real values.
 - `Meta` carries `interpretation` (the question, the executed plan, `planned_by` and,
   for LLM plans, the model, draft, overrides and rejected drafts),
   `count_unit`, `search_semantics`, retrieval totals plus per-cohort `cohorts` stats,
-  `top_n`, `network` (exclusions, caps and citation reduction; networks only),
+  `data_quality` ("normal" or "degraded"), `top_n`, `network` (exclusions, caps and
+  citation reduction; networks only),
   `data_timestamp`, `timing_ms`, and every assumption and warning (invariants 3, 5).
 
 **pipeline** (`pipeline.py`). `execute(interpretation, client)` calls the stages in order
@@ -171,17 +197,27 @@ How the plan was made (who read the question and through which provider, a provi
 fallback, each explicit override, each rejected draft, a ranking default for `top_n`
 with the number of omitted buckets) is stated in `meta.assumptions`. Filters are built during validation, so bad values fail before any
 network call. A study that raises `SourceRecordError` is skipped, counted in
-`cohorts[].records_skipped` and reported by NCT ID in `meta.warnings`, never fatal.
-Truncation, reconciliation failures, duplicates and cache use also go into meta.
+`cohorts[].records_skipped` and reported by NCT ID in `meta.warnings`. Each unrecognized
+value gets one warning. Truncation, reconciliation failures, duplicates and cache use
+also go into meta. After normalize, each cohort's skip ratio (skipped / retrieved) is
+logged (`normalize cohort= retrieved= skipped= skip_ratio= unrecognized= band=`) and
+classified with `DataQualityThresholds` (`DEGRADED_SKIP_RATIO` 0.05, `REFUSE_SKIP_RATIO`
+0.5, `MIN_SKIPPED_FOR_DEGRADED` 20): below either threshold, or with fewer than 20 skipped,
+the result is normal; at the degraded ratio `meta.data_quality` is "degraded" and a
+`DEGRADED DATA:` warning comes first; at the refuse ratio in any cohort,
+`UpstreamDataFormatError` is raised instead of returning a chart that could mislead.
 
 **api** (`api/`). `POST /query` takes `QueryRequest` (`schemas/request.py`): `query`,
 which alone is enough when the LLM planner is configured, plus optional structured
 fields that override the LLM's reading (without an LLM they map to one cohort and a
 dimension or relation). The app builds the LLM fallback chain at startup, so a
-malformed chain or API key stops the server with a clear message. Failures return
+malformed chain or API key stops the server with a clear message. It also starts the enum
+drift check as a background task (`CTVIZ_ENUM_DRIFT_CHECK`, on by default), so a slow or
+failing `/studies/enums` never delays startup; the task is cancelled at shutdown. Failures return
 `ErrorResponse` (`code`, `message`, `suggestions`): 422 for invalid requests, plans and
 filter values, and for unsupported, ambiguous or unplannable questions; 502 when the API
-or the LLM provider fails, or the API rejects the query; 503 when the API keeps
+or the LLM provider fails, the API rejects the query, or too many retrieved records are
+unreadable (`upstream_data_format_changed`); 503 when the API keeps
 rate-limiting. The network caps come from settings (`Settings.network_limits()`) and are
 passed to `pipeline.execute`. `GET /health` is a liveness probe. Run the app with
 `uv run uvicorn ctviz.api.app:app`. Example requests and real responses are in `examples/`.
@@ -210,8 +246,8 @@ other code should branch on dimension names.
 |---|---|
 | 1. LLM only produces a plan | `planner/` boundary; the LLM returns an `LlmPlanDraft` (filters and a grouping only); `QueryPlan` has no data fields (`extra="forbid"`); cohort labels are derived in code |
 | 2. Citations on every datum | `aggregate/registry.py` extractors and `cite`; `Bucket`, `NetworkNode`, `NetworkEdge` |
-| 3. Nothing silent | `GroupResult`/`Graph` `assumptions` and `warnings`, copied into `Meta`; `Meta.network` for network exclusions, caps and citation cuts |
-| 4. Missing is not zero | `UNKNOWN_BUCKET_KEY`, kept separate from the API's own `UNKNOWN` |
+| 3. Nothing silent | `GroupResult`/`Graph` `assumptions` and `warnings`, copied into `Meta`; `Meta.network` for network exclusions, caps and citation cuts; skipped records and unrecognized values in `pipeline.retrieval_warnings`; `Meta.data_quality` |
+| 4. Missing is not zero | `UNKNOWN_BUCKET_KEY`, kept separate from the API's own `UNKNOWN` and from `UNRECOGNIZED_BUCKET_KEY` (a present value outside our enums) |
 | 5. Count unit stated | `Meta.count_unit` |
 | 6. Count reconciles with totalCount | `CtGovClient.fetch_all` (`FetchResult.reconciled`), then `Meta.cohorts[]` and a meta warning |
-| 7. Structured errors over fabricated charts | `PlanValidationError`, `InvalidFilterError`, `SourceRecordError`, `ErrorResponse` |
+| 7. Structured errors over fabricated charts | `PlanValidationError`, `InvalidFilterError`, `SourceRecordError`, `UpstreamDataFormatError` (refuse threshold), `ErrorResponse` |

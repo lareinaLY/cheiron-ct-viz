@@ -28,6 +28,8 @@ These are choices a reasonable person could make differently. Each states our ch
 | Trials without intervention MeSH | `Unknown` bucket, with a meta warning giving the count | Fall back to the raw intervention name as the bucket key, which splits aliases into separate buckets |
 | "Fewest" questions ("which countries have the fewest trials") | Not a ranking: `ranking_intent` covers most/top/leading only, so the chart is untrimmed and sorted by count, with the smallest values last | Trim to the N smallest buckets, which needs a sort direction in the plan |
 | Year-only start date in monthly views | `Unknown` bucket for `start_month` (citing the raw year); counted normally for `start_year` | Place it in January (the API's indexing convention) |
+| Enum value we have never seen (e.g. a new phase) | Record kept; the field is `Unrecognized` (raw value cited) and the trial goes to an `Unrecognized` bucket, distinct from `Unknown`; one meta warning per distinct value | Skip the record (one new value would drop trials that are fine on every other dimension), or map it to the nearest known value |
+| Start date in an unrecognized format (e.g. `"soon"`) | Record kept; `Unknown` on start year and start month (citing the raw string), counted everywhere else, with a warning naming the value | A separate `Unrecognized` bucket on the time axis, which has no position for it either |
 
 ---
 
@@ -336,3 +338,22 @@ payloads small, about 1.7 KB per study with 20 fields.
 - Quoting a `query.*` value turns term search (with synonym expansion) into a phrase
   match: 8601 vs 8078 for NSCLC. `query.*` values are sent raw, and values containing
   Essie syntax are rejected.
+
+## 15. Record-level data quality baseline (verified 2026-10-18)
+
+Every full fetch so far normalized without a single unreadable record. This is the
+baseline the degradation thresholds (`DEGRADED_SKIP_RATIO`, `REFUSE_SKIP_RATIO`,
+`MIN_SKIPPED_FOR_DEGRADED`) are anchored on.
+
+| Query | Retrieved | Skipped (structural) | Unrecognized values |
+|---|---|---|---|
+| `AREA[InterventionName]"pembrolizumab"` | 2575 | 0 | 0 |
+| `query.cond=non-small cell lung cancer` + `filter.overallStatus=RECRUITING` | 1297 | 0 | 0 |
+
+- The same 0 skipped was seen in every example run on 2026-10-17 and 2026-10-18
+  (`examples/`, dataTimestamp `2026-10-16T09:00:05`), and again with the stricter
+  type-checking normalizer on 2026-10-18 (same dataTimestamp).
+- `GET /studies/enums` on 2026-10-18 matched our `Phase`, `Status`, `StudyType`,
+  `AgencyClass` and `InterventionType` enums exactly (startup drift check: no new values).
+- Each request logs this rate per cohort (`normalize cohort= retrieved= skipped=
+  skip_ratio= unrecognized= band=`), so a baseline-relative alert can be built on it.
