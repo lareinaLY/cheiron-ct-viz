@@ -7,6 +7,15 @@ from ctviz.errors import PlanErrorReason, PlanValidationError
 from ctviz.schemas.aggregate import Graph, GroupResult
 from ctviz.schemas.plan import ChartType, QueryPlan
 
+# What each chart shows; rendered into the planner prompt.
+CHART_DESCRIPTIONS: dict[ChartType, str] = {
+    ChartType.BAR_CHART: "One bar per value, for a single cohort.",
+    ChartType.GROUPED_BAR_CHART: "Bars per value with one color per cohort, for comparisons.",
+    ChartType.TIME_SERIES: "A line over start years or months.",
+    ChartType.NETWORK_GRAPH: "Nodes and weighted edges; the only chart for relations.",
+    ChartType.HISTOGRAM: "Bars over ordered size bins (enrollment).",
+}
+
 NETWORK_CHARTS = frozenset({ChartType.NETWORK_GRAPH})
 
 # Chart types that can faithfully show each kind of dimension.

@@ -79,7 +79,9 @@ class DimensionSpec:
 
     `label` names the dimension in warnings and assumptions; `title_label` names it in
     chart titles and axis titles, where temporal dimensions state their granularity
-    ("start year" rather than "start date").
+    ("start year" rather than "start date"). `description` tells the LLM planner what
+    the dimension means and which questions it answers; the planner prompt is rendered
+    from it, so prompt and registry cannot drift.
     `source_field` is a key of `TrialRecord.source_paths`; `leaf` is appended after the
     list index (e.g. ".name"). `extract` returns [] when the trial lacks the value,
     which puts it in the Unknown bucket. `time_unit` is the Vega-Lite time unit of a
@@ -93,6 +95,7 @@ class DimensionSpec:
     source_field: str
     extract: Callable[[TrialRecord, PathFor], list[DimensionValue]]
     order: BucketOrder
+    description: str
     leaf: str = ""
     period_key: Callable[[date], str] | None = None
     time_unit: Literal["year", "yearmonth"] | None = None
@@ -298,6 +301,11 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.PHASE: DimensionSpec(
         label="phase",
         title_label="phase",
+        description=(
+            "Trial phase (Early Phase 1, Phase 1 to 4, Not Applicable); multi-phase "
+            "trials such as 'Phase 1/Phase 2' form their own bucket. For 'by phase' or "
+            "'phase breakdown'."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="phases",
@@ -311,6 +319,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.START_YEAR: DimensionSpec(
         label="start date",
         title_label="start year",
+        description=(
+            "Year the trial started. For trends over time: 'per year', 'each year', 'over"
+            " time', 'since 2015'."
+        ),
         kind=DimensionKind.TEMPORAL,
         can_overlap=False,
         source_field="start_date",
@@ -322,6 +334,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.START_MONTH: DimensionSpec(
         label="start month",
         title_label="start month",
+        description=(
+            "Month the trial started. Only when the user asks for monthly granularity "
+            "('per month', 'each month')."
+        ),
         kind=DimensionKind.TEMPORAL,
         can_overlap=False,
         source_field="start_date",
@@ -333,6 +349,11 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.COUNTRY: DimensionSpec(
         label="location country",
         title_label="location country",
+        description=(
+            "Countries with at least one trial site; a trial with sites in several "
+            "countries counts in each. For 'which countries', 'where', geographic "
+            "distribution."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="countries",
@@ -345,6 +366,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.SPONSOR_CLASS: DimensionSpec(
         label="lead sponsor class",
         title_label="lead sponsor class",
+        description=(
+            "Type of lead sponsor: industry, NIH, other government, network, individual, "
+            "other (e.g. academic). For 'industry vs academic' or 'who funds'."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="lead_sponsor",
@@ -355,6 +380,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.LEAD_SPONSOR: DimensionSpec(
         label="lead sponsor",
         title_label="lead sponsor",
+        description=(
+            "Lead sponsor organization (a company, university or agency). For 'which "
+            "sponsors' or 'top companies'."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="lead_sponsor",
@@ -365,6 +394,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.INTERVENTION_TYPE: DimensionSpec(
         label="intervention type",
         title_label="intervention type",
+        description=(
+            "Intervention type as listed (drug, biological, device, procedure, radiation,"
+            " behavioral, ...); a trial with several types counts in each."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="interventions",
@@ -375,6 +408,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.OVERALL_STATUS: DimensionSpec(
         label="overall status",
         title_label="overall status",
+        description=(
+            "Overall recruitment status (recruiting, completed, terminated, withdrawn, "
+            "...). For 'by status'."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=False,
         source_field="overall_status",
@@ -384,6 +421,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.CONDITION: DimensionSpec(
         label="condition",
         title_label="condition",
+        description=(
+            "Conditions studied, as entered by the sponsor (not normalized). For 'which "
+            "diseases' or 'which conditions'."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="conditions",
@@ -394,6 +435,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.INTERVENTION_MESH: DimensionSpec(
         label="intervention MeSH term",
         title_label="intervention MeSH term",
+        description=(
+            "Interventions (drugs and other treatments) grouped by MeSH term; a trial "
+            "counts once per term. For 'which drugs' or 'most common treatments'."
+        ),
         kind=DimensionKind.CATEGORICAL,
         can_overlap=True,
         source_field="intervention_mesh_terms",
@@ -405,6 +450,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.ENROLLMENT_BUCKET: DimensionSpec(
         label="enrollment count",
         title_label="enrollment count",
+        description=(
+            "Enrollment size (actual or planned participants) in bins 0, 1-49, 50-99, "
+            "100-499, 500-999, 1000+. For 'trial sizes' or 'how many participants'."
+        ),
         kind=DimensionKind.BINNED,
         can_overlap=False,
         source_field="enrollment",
@@ -419,7 +468,8 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
 class RelationSpec:
     """Declaration of one relation: two dimensions whose values become linked nodes.
 
-    `label` names the relation in chart titles.
+    `label` names the relation in chart titles; `description` is rendered into the
+    planner prompt.
 
     When both sides are the same dimension, edges are the unordered pairs of distinct
     values within a trial; otherwise every left value links to every right value.
@@ -430,6 +480,7 @@ class RelationSpec:
     left_type: NodeType
     right: Dimension
     right_type: NodeType
+    description: str
     assumptions: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -441,6 +492,10 @@ class RelationSpec:
 RELATIONS: dict[Relation, RelationSpec] = {
     Relation.SPONSOR_DRUG: RelationSpec(
         label="lead sponsor-drug",
+        description=(
+            "Network linking lead sponsors to the drugs (intervention MeSH terms) in "
+            "their trials. For 'which sponsors work on which drugs'."
+        ),
         left=Dimension.LEAD_SPONSOR,
         left_type=NodeType.SPONSOR,
         right=Dimension.INTERVENTION_MESH,
@@ -452,6 +507,10 @@ RELATIONS: dict[Relation, RelationSpec] = {
     ),
     Relation.DRUG_DRUG_COOCCURRENCE: RelationSpec(
         label="drug co-occurrence",
+        description=(
+            "Network of drugs tested together in the same trial. For 'what is X combined "
+            "with' or 'drug combinations'."
+        ),
         left=Dimension.INTERVENTION_MESH,
         left_type=NodeType.DRUG,
         right=Dimension.INTERVENTION_MESH,
@@ -460,6 +519,10 @@ RELATIONS: dict[Relation, RelationSpec] = {
     ),
     Relation.CONDITION_DRUG: RelationSpec(
         label="condition-drug",
+        description=(
+            "Network linking conditions to the drugs studied for them. For 'which drugs "
+            "are tested for which conditions'."
+        ),
         left=Dimension.CONDITION,
         left_type=NodeType.CONDITION,
         right=Dimension.INTERVENTION_MESH,
