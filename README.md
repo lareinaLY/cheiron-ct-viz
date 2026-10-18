@@ -133,10 +133,19 @@ curl -s -X POST http://127.0.0.1:8000/query -H 'content-type: application/json' 
   -d '{"query": "Compare phases for trials involving pembrolizumab vs nivolumab"}'
 ```
 
+**Demo UI.** `open http://127.0.0.1:8000/` serves `src/ctviz/demo/index.html`: one static
+page (plain JS, ECharts 5.5.1 from a pinned CDN URL, no build step) that posts to `/query` and
+draws the response. It exists to show that the §3 schema can be rendered without guessing, so
+it follows §3 literally and computes nothing: no totals, percentages, renaming or date math.
+Warnings, assumptions and key `meta` facts are shown in full; clicking a bar, node or edge
+lists its citations. A collapsed "render a pasted response" field draws any saved response,
+e.g. those in `examples/`. Anything the page needs that the schema does not state appears
+under "Renderer notes" on the page.
+
 **Test:**
 
 ```bash
-uv run pytest                 # 761 offline tests (default: -m 'not live'), about 5 s
+uv run pytest                 # 762 offline tests (default: -m 'not live'), about 5 s
 uv run pytest -m live         # the 7 live tests (real ClinicalTrials.gov API; prompt-injection tests also need a key)
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run python scripts/eval_planner.py --models gpt-4.1-mini          # planner eval, needs a key
@@ -616,7 +625,7 @@ What was not fixed is in §8.
 tests passed at that commit), served `/health` and `/query`, and was also installed from
 `requirements.txt` into a fresh Python 3.12 venv.
 
-**Tests:** 768 total. 761 run offline in about 5 s against captured fixtures (`tests/fixtures/`),
+**Tests:** 769 total. 762 run offline in about 5 s against captured fixtures (`tests/fixtures/`),
 `respx` HTTP mocks and fake LLMs. 7 are marked `live`. Normalize, aggregate, the registries,
 chart selection and the validator were written test-first. `ruff check` and `ruff format` are
 clean. `bandit` reports only `assert` usage (B101, 6 low). `pip-audit` reports no known
@@ -826,7 +835,8 @@ In order:
 
 ```
 src/ctviz/
-  api/app.py              FastAPI app, /query, /health, error handlers
+  api/app.py              FastAPI app, /query, /health, the demo UI at /, error handlers
+  demo/index.html         single-file demo UI (§2): renders a response per §3, no logic
   planner/                prompt.py (rendered from registry), llm.py (fallback chain), plan.py (merge, retry), validation.py
   retrieval/              query_builder.py, client.py (paging, pacing, retries), counting.py, cache.py (SQLite), enums.py (drift check)
   retrieval_route.py      fetch vs count_per_bucket
