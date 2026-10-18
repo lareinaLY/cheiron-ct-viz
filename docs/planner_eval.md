@@ -328,6 +328,28 @@ The ranking cases were then re-run first: `geographic_ranking_without_number`,
 `--repeats 3`. They passed 27/27 runs on both models (`gpt-4.1-mini` mean 1.0 s,
 `gpt-5-mini` 4.8 s). The full run above was done afterwards on the same prompt.
 
+## Study-scope filters (2026-10-18)
+
+The prompt gained `study_types`, `exclude_withdrawn` and `primary_purposes` (set only from
+explicit wording such as "interventional trials", "excluding withdrawn", "treatment
+studies"), and the eval three cases: `scope_interventional_exclude_withdrawn`,
+`scope_treatment_purpose` and `scope_observational`. On that prompt (SHA-256
+`c178718c95b0…`, uncommitted working tree on `00aa6db`) all 28 seed questions were run
+once on `gpt-4.1-mini` (no repeats, no paraphrases, concurrency 1):
+
+| model | seed cases stable | per-run pass rate | mean latency | p50 | max | retries |
+|---|---|---|---|---|---|---|
+| `gpt-4.1-mini` | 27/28 (96%) | 27/28 | 1.1 s | 1.0 s | 2.1 s | 0 |
+
+- **The scope cases passed** (each 1/1), and no other case gained a scope filter: every case
+  scores invented filters as misses, so "trials" alone still sets no study type.
+- **The one miss is `chinese_question`**, as in the run above (0/3 on both models there): the
+  plan copied the drug name verbatim (`drug: 帕博利珠单抗`), which matches no registry record.
+  Rule 1 forbids translating names, so this is the expected failure the case documents, not a
+  regression of the scope change.
+- One repeat on one model is a smoke check that the new rules work and do not leak into
+  other questions; it is not comparable with the 3-repeat, two-model run above.
+
 ## Limitations
 
 - 25 seed questions detect systematic failures (a query class the planner cannot

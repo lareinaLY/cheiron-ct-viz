@@ -49,7 +49,8 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
   "meta": {
     "interpretation": {"question": "…", "planned_by": "llm",
                        "model_used": "gpt-4.1-mini-2025-04-14", "plan": {"…": "…"}},
-    "count_unit": "registered studies (interventional and observational, any status)",
+    "count_unit": "registered studies",
+    "count_scope": "any study type, any status",
     "retrieval_route": "fetch",
     "cohorts": [
       {"label": "pembrolizumab", "total_matched": 2642, "records_retrieved": 2642,
@@ -106,6 +107,10 @@ requirements.txt`, or use `uv pip install --python .venv -r requirements.txt`.
 | `DEMO_TOKEN` | empty | When set, `/query` requires `Authorization: Bearer <token>` or `?token=<token>` (401 `unauthorized` otherwise). Empty means no check. `/`, `/health` and `/docs` stay open. The demo UI has a token field kept in `sessionStorage` |
 | `REQUEST_DEADLINE_SECONDS` | `120` | A `/query` request (planning, execution and the wait for a slot) that takes longer is answered with 504 `request_timeout` |
 | `MAX_CONCURRENT_QUERIES` | `4` | `/query` requests executed at once; the others wait for a slot (within the deadline) |
+| `LLM_PRICES` | `{"gpt-4.1-mini": {"input_usd_per_million": 0.4, "output_usd_per_million": 1.6}}` | JSON price table for `meta.llm` cost estimates. A model not listed gets `estimated_cost_usd: null`, never a guess |
+| `LLM_PRICE_TABLE_AS_OF` | `2025-04` | When the prices in `LLM_PRICES` were taken (logged at startup). `estimated_cost_usd` uses this configured table, which may be out of date; override both variables to update it |
+| `CTVIZ_LLM_CIRCUIT_FAILURE_THRESHOLD`, `CTVIZ_LLM_CIRCUIT_OPEN_SECONDS` | `3`, `60` | Consecutive infrastructure failures that open a provider's circuit, and how long it then stays open (skipped without a call) before one half-open probe |
+| `CTVIZ_STARTUP_SELF_CHECK` | follows `CTVIZ_ENUM_DRIFT_CHECK` | At startup, one background `GET /version`; logs a warning if ClinicalTrials.gov is unreachable, never blocks startup |
 
 Other settings use the `CTVIZ_` prefix and have defaults in `src/ctviz/config.py`:
 
@@ -134,6 +139,7 @@ Other settings use the `CTVIZ_` prefix and have defaults in `src/ctviz/config.py
 uv run uvicorn ctviz.api.app:app          # single worker (see Limitations)
 open http://127.0.0.1:8000/docs           # generated OpenAPI / Swagger UI
 curl http://127.0.0.1:8000/health         # liveness
+curl http://127.0.0.1:8000/health/llm     # probes each LLM provider once (a real, tiny call)
 curl -s -X POST http://127.0.0.1:8000/query -H 'content-type: application/json' \
   -d '{"query": "Compare phases for trials involving pembrolizumab vs nivolumab"}'
 ```
@@ -143,7 +149,7 @@ page (plain JS, ECharts 5.5.1 from a pinned CDN URL, no build step) that posts t
 draws the response. The default view is for an analyst: eight example questions as chips
 (one per chart type, a ranking, a "fewest", a comparison and an unsupported question), the
 title, the chart, banners for notices of severity `error`/`warning`, a key-facts row in
-words ("Counting: registered studies, including observational and withdrawn", "based on
+words ("Counting: registered studies — any study type, any status", "based on
 2,642 retrieved records (reconciled with the registry total)", "Registry data as of 16 Oct
 2026", "173 studies appear in more than one group"), info notices and the assumptions
 below, and the registry records behind a bar, node or edge on click. Optional fields
@@ -154,10 +160,14 @@ the request and response JSON, and a box to render a saved response such as thos
 banners come from `severity`, greys from `is_unknown`/`is_unrecognized`/`is_not_applicable`,
 the lighter Other bar from `is_other`, and zero periods from `encoding.x.sort`.
 
+Responses of 1 KB or more are gzipped for clients that send `Accept-Encoding: gzip`. Every
+`/query` response (errors included) carries an `X-Request-ID` header, also in
+`meta.request_id` and in each LLM call's log line.
+
 **Test:**
 
 ```bash
-uv run pytest                 # 845 offline tests (default: -m 'not live'), about 6 s
+uv run pytest                 # 913 offline tests (default: -m 'not live'), about 6 s
 uv run pytest -m live         # the 7 live tests (real ClinicalTrials.gov API; prompt-injection tests also need a key)
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run python scripts/eval_planner.py --models gpt-4.1-mini          # planner eval, needs a key
@@ -190,6 +200,9 @@ is rejected and redrafted).
 | `phases` | list of `Phase` | no | Enum: `EARLY_PHASE1`, `PHASE1` … `PHASE4`, `NA`. At most 6 entries; repeats are removed |
 | `statuses` | list of `OverallStatus` | no | The API's 14 status values. At most 14 entries; repeats are removed |
 | `start_year_from`, `start_year_to` | int \| null | no | 1900..2100, inclusive. `from` must be ≤ `to` |
+| `study_types` | list of `StudyType` | no | `INTERVENTIONAL`, `OBSERVATIONAL`, `EXPANDED_ACCESS` (any of, `AREA[StudyType]`). At most 3; repeats removed. The LLM sets it only from explicit wording ("interventional trials"); "trials" alone sets nothing |
+| `exclude_withdrawn` | bool | no | Default `false`. `true` adds `NOT AREA[OverallStatus]WITHDRAWN`. With `WITHDRAWN` in `statuses` it is a 422 `contradictory_filters` |
+| `primary_purposes` | list of `PrimaryPurpose` | no | The 10 values of `/studies/enums` (`TREATMENT`, `PREVENTION`, `DIAGNOSTIC`, `ECT`, `SUPPORTIVE_CARE`, `SCREENING`, `HEALTH_SERVICES_RESEARCH`, `BASIC_SCIENCE`, `DEVICE_FEASIBILITY`, `OTHER`; `AREA[DesignPrimaryPurpose]`). Only interventional studies record one, so any value excludes observational studies |
 | `dimension` | enum \| null | no | `phase`, `start_year`, `start_month`, `country`, `sponsor_class`, `lead_sponsor`, `intervention_type`, `overall_status`, `condition`, `intervention_mesh`, `enrollment_bucket` |
 | `relation` | enum \| null | no | `sponsor_drug`, `drug_drug_cooccurrence`, `condition_drug`. Exactly one of `dimension`/`relation` must be set; relations take one cohort |
 | `chart_hint` | enum \| null | no | `bar_chart`, `grouped_bar_chart`, `time_series`, `network_graph`, `histogram`. Must fit the dimension kind |
@@ -204,7 +217,7 @@ is rejected and redrafted).
 | Key | Meaning |
 |---|---|
 | `type` | `bar_chart`, `grouped_bar_chart`, `time_series` or `histogram` use `data`. `network_graph` uses `nodes`/`edges` |
-| `title` | Built in code from the plan, never by the LLM. Ends with ` (partial: first N of M matches)` when the record cap cut a fetch |
+| `title` | Built in code from the plan, never by the LLM. Names the study scope: study types shared by every cohort become the subject ("Interventional studies by phase for pembrolizumab, excluding withdrawn"); other scope filters are part of each cohort label. Ends with ` (partial: first N of M matches)` when the record cap cut a fetch |
 | `encoding` | Vega-Lite-style channels `x`, `y`, `color`, `size`, each `{field, type: nominal\|temporal\|quantitative, title, sort, time_unit}`. `sort` gives the display order. On a start-year or start-month axis it lists every period from the earliest to the latest key present in any cohort, with no gaps, then `Unknown` if present (after a top/bottom-N limit: only the shown periods). The count axis title is "Studies" |
 | `data[]` | `Datum`: `key` (grouping identity), `label` (display), `cohort`, `count`, `citations[]`, `cited_trials_total`, `citation_count_total`, flags `is_unknown`, `is_unrecognized`, `is_not_applicable`, `is_other`, `incomplete`, `is_future`, and `estimated_count` (start date or enrollment; null where it does not apply), `unknown_date_type_count` (start dates only, else null) |
 | `nodes[]` | Cytoscape-style `{data: {id, label, type, size, citations, cited_trials_total, citation_count_total}}` |
@@ -215,7 +228,8 @@ is rejected and redrafted).
 | Key | Meaning |
 |---|---|
 | `interpretation` | Contents: <ul><li>question</li><li>executed `plan`</li><li>`planned_by` (`llm` \| `rules` \| `structured_fields`)</li><li>`model`, `provider`, `model_used`, `response_mode`, `fallback_reason`</li><li>`draft`, `overrides[]`, `rejected_attempts[]`</li><li>`ranking_top_n`</li><li>`unhandled_terms[]`: parts of the question no filter or grouping expresses</li><li>`planning_ms`</li></ul> |
-| `count_unit` | What one unit of `count` is: "registered studies (interventional and observational, any status)" |
+| `count_unit` | What one unit of `count` is: "registered studies" (a stable enum value) |
+| `count_scope` | Which studies the counts cover, built from the executed filters: study types, primary purposes and status, e.g. "interventional studies, excluding withdrawn" or "any study type, any status". Per cohort ("<label>: …; …") when the cohorts differ |
 | `filters_applied`, `match_mode` | The cohorts and the drug match mode that were executed |
 | `search_semantics` | Filter name → what the API actually matches (e.g. that `sponsor` includes collaborators) |
 | `phase_bucketing`, `country_granularity` | Fixed conventions: `exclusive_combined`, `country_as_reported` |
@@ -231,6 +245,8 @@ is rejected and redrafted).
 | `data_timestamp` | The API's `dataTimestamp` from `/version`. Null, with a warning, if `/version` failed |
 | `assumptions[]`, `warnings[]` | `Notice` objects `{code, severity, cohort, message}`. `code` is a `NoticeCode` (one per kind of message, e.g. `degraded_data`, `record_cap`, `not_applied`, `unknown_bucket`, `topn_ties`, `cohorts_overlap`, `cohort_subset`, `did_you_mean`; full list in `schemas/response.py`). `severity` is `error` (only `degraded_data`, always first), `warning` (the chart answers a narrower question than it seems, or data is missing) or `info`. `cohort` names the cohort a notice is about; in a comparison the message also starts with `"<label>: "`. Skipped records are listed 10 at a time, then one "and N more" line |
 | `timing_ms` | Wall time per stage: `validate`, `retrieve`, `retrieve_fallback`, `normalize`, `suggest` (the did-you-mean count, when made), `aggregate`, `spec`, `total` |
+| `request_id` | Same as the `X-Request-ID` header |
+| `llm` | `{calls[], total_latency_ms, total_input_tokens, total_output_tokens, total_estimated_cost_usd, skipped_providers[]}`. Each call: `request_id`, `provider`, `model_requested`, `model_used`, `response_mode`, `latency_ms`, `input_tokens`, `output_tokens`, `estimated_cost_usd` (null for a model not in `LLM_PRICES`), `outcome` (`ok`, `retry` = same-provider retry after an infrastructure failure, `fallback`, `validation_retry` = draft rejected and asked again, `failed`), `error_class`. A total is null when any call lacks it. `calls` is empty for rules-only requests. `skipped_providers` lists providers whose circuit breaker was open |
 
 ### Conventions a renderer needs
 
@@ -266,7 +282,7 @@ is rejected and redrafted).
 |---|---|
 | 422 | `invalid_request` (schema or bounds) |
 | 422 | `invalid_filter_value` |
-| 422 | Plan errors: `no_dimension_or_relation`, `both_dimension_and_relation`, `comparison_requires_dimension`, `chart_hint_incompatible`, `invalid_top_n`, `top_n_requires_dimension`, `invalid_year_range`, `duplicate_cohort` |
+| 422 | Plan errors: `no_dimension_or_relation`, `both_dimension_and_relation`, `comparison_requires_dimension`, `chart_hint_incompatible`, `invalid_top_n`, `top_n_requires_dimension`, `invalid_year_range`, `duplicate_cohort`, `contradictory_filters` |
 | 422 | Planner errors: `llm_not_configured`, `unsupported_question`, `clarification_needed` (readings as suggestions), `planning_failed` |
 | 502 | `llm_unavailable`, `upstream_unavailable`, `upstream_rejected_query`, `upstream_data_format_changed` |
 | 503 | `upstream_rate_limited` |
@@ -275,6 +291,13 @@ is rejected and redrafted).
 | 500 | `internal_error` (catch-all; traceback logged, generic message) |
 
 `code` is a free string in the schema, not an enum (M8); notice codes in `meta` are an enum.
+
+**`GET /health/llm`** probes each configured provider once with a tiny schema and is never
+cached (`Cache-Control: no-store`): `{configured, providers[{provider, model, status: ok |
+failed | skipped, latency_ms, response_mode, error, circuit: closed | open | half_open,
+consecutive_failures}]}`. A provider with an open circuit is `skipped` without a call. Each
+probe is a real, billed call, so it is meant for an external scheduler (e.g. once a day), not
+for a liveness check.
 
 ---
 
@@ -574,6 +597,11 @@ planner (prompt, merge, validation, retry) was run on the current prompt, which 
 
 A case is *stable* when all 3 repeats get every field right.
 
+A later run on the same day, after the study-scope filters were added to the prompt
+(28 seed questions, 1 repeat, `gpt-4.1-mini`), is the dated addendum "Study-scope filters
+(2026-10-18)" in [docs/planner_eval.md](docs/planner_eval.md): 27/28 stable, the 3 new scope
+cases passed, and the one miss is the known `chinese_question`.
+
 | Model | Seed cases stable | Paraphrase cases stable | Stable pass rate (all 75) | Per-run pass rate | Mean latency | p50 | Max | Retries |
 |---|---|---|---|---|---|---|---|---|
 | `gpt-4.1-mini` | 23/25 | 40/50 | 84% | 197/225 (88%) | 1.0 s | 0.9 s | 2.1 s | 0 |
@@ -649,10 +677,10 @@ What was not fixed is in §8.
 tests passed at that commit), served `/health` and `/query`, and was also installed from
 `requirements.txt` into a fresh Python 3.12 venv.
 
-**Tests:** 852 total. 845 run offline in about 6 s against captured fixtures (`tests/fixtures/`),
+**Tests:** 920 total. 913 run offline in about 6 s against captured fixtures (`tests/fixtures/`),
 `respx` HTTP mocks and fake LLMs. 7 are marked `live`. Normalize, aggregate, the registries,
 chart selection and the validator were written test-first. `ruff check` and `ruff format` are
-clean. `bandit` reports one `assert` (B101, low, `retrieval/client.py`). `pip-audit` reports no known
+clean. `bandit` reports no issues (the last `assert` became an explicit check). `pip-audit` reports no known
 vulnerabilities (engineering review, Tool output).
 
 ---
@@ -679,6 +707,10 @@ request. The same pattern existed here (decision 69):
 | Vocabulary drift | At startup a background task compares `GET /studies/enums` with Phase, Status, StudyType, AgencyClass and InterventionType, and logs new values. It never blocks or crashes startup |
 | `/version` | A missing or failed `dataTimestamp` sets `meta.data_timestamp: null` with a warning. Counts come from `/studies`, so the request still succeeds |
 | Transport | 429, 5xx and any `httpx.RequestError` are retried with backoff and jitter, then mapped to 502/503. Other 4xx fail fast with the API's error text |
+| Pagination | A fetch stops after `ceil(MAX_RECORDS / page size) + 2` pages even if the API keeps returning a `nextPageToken`, with a `pagination_cap` warning |
+| Cache | SQLite in WAL mode with a 5 s lock timeout; expired rows are deleted at startup; cached pages over 256 KB are decoded in a thread |
+| LLM providers | One same-provider retry on an infrastructure failure, then the next provider. A per-provider circuit breaker (3 consecutive infrastructure failures → open 60 s → one half-open probe) skips a failing provider without a call |
+| Startup | Background `GET /version` self-check and enum drift check; both only log |
 | Everything else | A catch-all handler returns 500 `internal_error` and logs the traceback |
 
 ---
@@ -690,7 +722,8 @@ limitations"), verbatim:
 
 1. Counts are of ClinicalTrials.gov registry records, including observational studies,
    non-treatment studies and withdrawn records that never enrolled a patient, unless a
-   filter excludes them; they are not a count of therapeutic trials, patients or sites.
+   filter excludes them (`study_types`, `primary_purposes`, `exclude_withdrawn`; the scope
+   is stated in `meta.count_scope`); they are not a count of therapeutic trials, patients or sites.
 2. A drug is matched by name and by NLM's automated MeSH mapping, so a name also matches
    conjugates, radiolabelled forms, biosimilars and coformulations that contain it (for
    example, "trastuzumab" includes trastuzumab deruxtecan), and brand names, code names
@@ -742,6 +775,13 @@ limitations"), verbatim:
 - **The cohort can include class placeholders.** The MeSH branch of the drug match adds them
   ("PD(L)-1 inhibitor" with Pembrolizumab in otherNames) (api_findings §16, domain #11).
 
+- **Primary purpose exists only for interventional studies.** Any `primary_purposes` value
+  drops every observational and expanded-access study, and interventional records without
+  a purpose. The search semantics say so; no Unknown-purpose option exists.
+- **Study-scope filters are applied as written.** "Trials" alone sets no study type, so
+  "pembrolizumab trials" still counts observational studies. An LLM that misses explicit
+  wording would leave a filter out; the planner eval covers three such phrasings only.
+
 **Product gaps**
 - No "Other" bar on overlapping dimensions (countries, conditions, intervention MeSH terms,
   intervention types): a sum of omitted values would count a study more than once. The
@@ -766,6 +806,12 @@ limitations"), verbatim:
 - **Open-vocabulary dimensions have no default top-N.** A "by condition" chart can have
   thousands of bars; the size budget keeps it under 1 MB by cutting citations, not bars (M6).
 - **The unrecognized-value warnings are not capped** (one per distinct raw value, M5).
+- **LLM circuit breakers are per process.** With several instances each keeps its own state,
+  so a failing provider is probed by every instance. `PrimaryPurpose` is not part of the
+  startup enum drift check (its test fixes the checked enum set).
+- **LLM cost estimates are only as current as `LLM_PRICES`.** `estimated_cost_usd` uses the
+  configured price table (default: gpt-4.1-mini only, as of `LLM_PRICE_TABLE_AS_OF` =
+  2025-04), which may be out of date and can be overridden; other models report a null cost.
 - **`meta.total_matched` is a sum over cohorts** (L7). `ErrorResponse.code` is a free string,
   not an enum, and `Visualization` is not a discriminated union (M8).
 - **The API's tie order is unspecified.** At the 10,000 cap, studies sharing the cutoff
@@ -803,13 +849,12 @@ In order:
 6. **Site metrics**: recruiting-site-aware country counts
    (`SEARCH[Location](AREA[LocationCountry]X AND AREA[LocationStatus]RECRUITING)`) and a "sites
    per country" metric.
-7. **Filters** for study type, primary purpose, and excluding withdrawn studies, all
-   `filter.advanced` fields that also fit the count route.
-8. **A first-posted-year dimension.** It has no registration lag and no estimated dates.
-9. **LLM operations:**
-   - a per-call cost and latency record and a `request_id`;
-   - `/health/llm` and a circuit breaker per provider;
-   - shared limiter and cache state (Redis, or SQLite in WAL mode) for multiple instances.
+7. **A first-posted-year dimension.** It has no registration lag and no estimated dates.
+8. **Shared state for multiple instances:** the rate limiter, the cache and the LLM circuit
+   breakers in Redis (one key per provider with a TTL for the open period), so N workers pace
+   and trip together.
+9. **A primary-purpose dimension** and an interventional-only default for "therapeutic
+   trials" questions, now that the filters exist.
 10. **A small frontend demo** rendering the spec, which would exercise the renderer conventions
     in §3.
 11. **A pre-ingested store (AACT/Postgres)** for large aggregates and open-vocabulary dimensions
@@ -874,9 +919,9 @@ src/ctviz/
   pipeline.py             stage orchestration and meta messages
   config.py               settings
   data/mesh_trees.json    NLM MeSH 2025 tree numbers (packaged)
-tests/                    36 test modules plus factories.py; fixtures/, golden/, eval/questions.yaml
+tests/                    47 test modules plus factories.py; fixtures/, golden/, eval/questions.yaml
 scripts/                  explore_api.py, capture_fixtures.py, fetch_mesh_trees.py, eval_planner.py
-examples/                 9 request/response pairs (a–i), regenerated live on 2026-10-18
+examples/                 11 request/response pairs (a–k), regenerated live on 2026-10-18
 docs/                     architecture.md, decisions.md, api_findings.md, planner_eval.md, review_*.md
 ```
 

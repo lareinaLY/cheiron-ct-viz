@@ -32,15 +32,23 @@ data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) retur
   the grouping, `ranking_direction`, `unsupported_reason` and `clarification`.
   `FallbackChain` tries the configured providers in order (default
   `openai:gpt-4.1-mini`; optionally `deepseek:deepseek-chat`). Each is an
-  `OpenAICompatibleProvider` with one SDK retry on transient errors, asked in its
+  `OpenAICompatibleProvider` that retries an infrastructure failure once itself (SDK
+  retries off, so each attempt is a call record), asked in its
   recorded response mode: OpenAI with a strict JSON schema (`chat.completions.parse`),
   DeepSeek in `json_object` mode with the schema embedded in the system prompt (it
   rejects strict `json_schema`). The chain moves to the next provider only after an
   infrastructure failure (timeout, connection error, 429, 5xx); any other failure is
   final, and validation rejections stay on the retry-with-error path below. A provider
-  without a key is skipped at startup with a log line. Every LLM call logs one line
-  (`llm_call provider= model= latency_ms= input_tokens= output_tokens= outcome=`, with
-  outcome ok, retry, fallback or failed). A set
+  without a key is skipped at startup with a log line. Each provider has an in-process
+  circuit breaker (`planner/circuit_breaker.py`: 3 consecutive infrastructure failures
+  open it for 60 s, then one half-open probe); an open provider is skipped without a call
+  and listed in `meta.llm.skipped_providers`. Every LLM call is one `LlmCall` record
+  (`schemas/llm.py`: request_id, provider, model requested and used, response mode,
+  latency, tokens, estimated cost from `LLM_PRICES` or null, outcome ok, retry,
+  fallback, validation_retry or failed, error class), logged as one JSON line
+  (`{"event": "llm_call", ...}`) and collected in `meta.llm` with totals; the request ID
+  comes from a context variable set by the `/query` middleware (`request_context.py`).
+  `GET /health/llm` probes each provider on demand. A set
   `unsupported_reason` or `clarification` becomes a `PlannerError`
   (`unsupported_question`, `clarification_needed` with the readings as suggestions).
   Explicit filter values are run through the query builder's checks before the LLM is
@@ -255,7 +263,8 @@ checked against golden snapshots in `tests/golden/`.
   for LLM plans, the model, draft, overrides, rejected drafts and `unhandled_terms`:
   parts of the question no filter, dimension or relation expresses, each also a
   "Not applied: '…'" warning placed after any degraded-data warning),
-  `count_unit` ("registered studies (interventional and observational, any status)"),
+  `count_unit` ("registered studies") and `count_scope` (study types, purposes and status
+  from the executed filters, e.g. "any study type, any status"),
   `search_semantics`, `retrieval_route` ("fetch", "count_per_bucket" or
   "mixed"), retrieval totals (`coverage` is the share of matches the counts cover,
   weighted by cohort) plus per-cohort `cohorts` stats (route, `count_requests`,

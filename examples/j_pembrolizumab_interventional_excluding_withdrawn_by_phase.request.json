@@ -1,0 +1,1 @@
+{"query": "Phase breakdown of interventional pembrolizumab studies, excluding withdrawn", "drug": "pembrolizumab", "dimension": "phase", "study_types": ["INTERVENTIONAL"], "exclude_withdrawn": true}
