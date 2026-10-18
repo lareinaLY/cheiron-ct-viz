@@ -17,7 +17,14 @@ from typing import Literal
 from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
 from ctviz.schemas.response import ExclusionReason, NodeType
-from ctviz.schemas.trial import UNKNOWN_BUCKET_KEY, EnrollmentType, Phase, TrialRecord
+from ctviz.schemas.trial import (
+    UNKNOWN_BUCKET_KEY,
+    UNRECOGNIZED_BUCKET_KEY,
+    EnrollmentType,
+    Phase,
+    TrialRecord,
+    UnrecognizedValue,
+)
 
 STUDY_URL = "https://clinicaltrials.gov/study/{nct_id}"
 
@@ -102,6 +109,7 @@ class DimensionValue:
     estimated: bool = False
     unknown_date_type: bool = False
     is_unknown: bool = False
+    is_unrecognized: bool = False
     rank: tuple[int, ...] = ()
 
 
@@ -172,21 +180,57 @@ def single(
     return DimensionValue(key=key, label=key, citations=(cite(record, path, value),))
 
 
+def unrecognized(record: TrialRecord, path: str, value_raw: str | list[str]) -> DimensionValue:
+    """The Unrecognized bucket entry for a value outside the known enum, citing it verbatim."""
+    return DimensionValue(
+        key=UNRECOGNIZED_BUCKET_KEY,
+        label=UNRECOGNIZED_BUCKET_KEY,
+        citations=(cite(record, path, value_raw),),
+        is_unrecognized=True,
+    )
+
+
+def raw_value(value: StrEnum | UnrecognizedValue) -> str:
+    """The exact source string of an enum value or an unrecognized one."""
+    return value.raw if isinstance(value, UnrecognizedValue) else value.value
+
+
 def extract_phase(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
     """The trial's single phase bucket, citing the raw phases list."""
     if record.phase_bucket == UNKNOWN_BUCKET_KEY:
         return []
+    phases_raw = [raw_value(phase) for phase in record.phases]
+    if record.phase_bucket == UNRECOGNIZED_BUCKET_KEY:
+        return [unrecognized(record, path(None), phases_raw)]
     value = DimensionValue(
         key=record.phase_bucket,
         label=record.phase_bucket,
-        citations=(cite(record, path(None), [phase.value for phase in record.phases]),),
-        rank=tuple(sorted(PHASE_RANK[phase] for phase in record.phases)),
+        citations=(cite(record, path(None), phases_raw),),
+        rank=tuple(
+            sorted(PHASE_RANK[phase] for phase in record.phases if isinstance(phase, Phase))
+        ),
     )
     return [value]
 
 
+def unparsed_date(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
+    """Unknown period for a date string in an unrecognized format, citing that string.
+
+    Such a trial has no position on a time axis, so it goes to Unknown (as a year-only
+    date does for months), not to a separate Unrecognized bucket.
+    """
+    citation = cite(record, path(None), record.start_date_raw)
+    return [
+        DimensionValue(
+            key=UNKNOWN_BUCKET_KEY, label=UNKNOWN_BUCKET_KEY, citations=(citation,), is_unknown=True
+        )
+    ]
+
+
 def extract_start_year(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
     """The start year, citing the raw date string; estimated dates are flagged."""
+    if record.start_date_precision == "unrecognized":
+        return unparsed_date(record, path)
     if record.start_date is None:
         return []
     key = str(record.start_date.year)
@@ -195,18 +239,23 @@ def extract_start_year(record: TrialRecord, path: PathFor) -> list[DimensionValu
 
 
 def dated_value(record: TrialRecord, key: str, citation: Citation) -> DimensionValue:
-    """A period value flagged with the start date's type (estimated, or no type at all)."""
+    """A period value flagged with the start date's type (estimated, or no known type).
+
+    An unrecognized type says neither actual nor estimated, like a missing one.
+    """
     return DimensionValue(
         key=key,
         label=key,
         citations=(citation,),
         estimated=record.start_date_type == "estimated",
-        unknown_date_type=record.start_date_type == "unknown",
+        unknown_date_type=record.start_date_type in ("unknown", "unrecognized"),
     )
 
 
 def extract_start_month(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
     """The start month; a year-only date has no month and goes to Unknown."""
+    if record.start_date_precision == "unrecognized":
+        return unparsed_date(record, path)
     if record.start_date is None:
         return []
     citation = cite(record, path(None), record.start_date_raw)
@@ -245,8 +294,10 @@ def extract_sponsor_class(record: TrialRecord, path: PathFor) -> list[DimensionV
     """The lead sponsor's agency class (the API's UNKNOWN is a real value)."""
     if record.lead_sponsor is None or record.lead_sponsor.agency_class is None:
         return []
-    value = record.lead_sponsor.agency_class.value
-    return [single(record, value, path(None), value)]
+    agency_class = record.lead_sponsor.agency_class
+    if isinstance(agency_class, UnrecognizedValue):
+        return [unrecognized(record, path(None), agency_class.raw)]
+    return [single(record, agency_class.value, path(None), agency_class.value)]
 
 
 def extract_lead_sponsor(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
@@ -258,17 +309,23 @@ def extract_lead_sponsor(record: TrialRecord, path: PathFor) -> list[DimensionVa
 
 def extract_intervention_type(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
     """Each intervention type as listed; types are set per trial, not per drug."""
-    return [
-        single(record, intervention.type_raw, path(index), intervention.type_raw)
-        for index, intervention in enumerate(record.interventions)
-        if intervention.type_raw is not None
-    ]
+    values = []
+    for index, intervention in enumerate(record.interventions):
+        if intervention.type_raw is None:
+            continue
+        if isinstance(intervention.intervention_type, UnrecognizedValue):
+            values.append(unrecognized(record, path(index), intervention.type_raw))
+        else:
+            values.append(single(record, intervention.type_raw, path(index), intervention.type_raw))
+    return values
 
 
 def extract_overall_status(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
     """The overall status (the API's UNKNOWN is a real value)."""
     if record.overall_status is None:
         return []
+    if isinstance(record.overall_status, UnrecognizedValue):
+        return [unrecognized(record, path(None), record.overall_status.raw)]
     value = record.overall_status.value
     return [single(record, value, path(None), value)]
 

@@ -7,6 +7,8 @@ chart (invariant 7).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -27,12 +29,14 @@ from ctviz.errors import (
     PlannerErrorCode,
     PlanValidationError,
     RateLimitError,
+    UpstreamDataFormatError,
     UpstreamError,
 )
 from ctviz.planner.llm import LlmClient, build_llm
 from ctviz.planner.plan import plan
 from ctviz.retrieval.cache import build_cache
 from ctviz.retrieval.client import CtGovClient
+from ctviz.retrieval.enums import check_enum_drift
 from ctviz.schemas.plan import ChartType, Dimension, Relation
 from ctviz.schemas.request import QueryRequest
 from ctviz.schemas.response import ErrorResponse, VisualizationResponse
@@ -73,7 +77,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     for status, description in {
         422: "The question, request or plan cannot be answered faithfully as written "
         "(including unsupported or ambiguous questions).",
-        502: "ClinicalTrials.gov or the LLM provider failed, or the API rejected the query.",
+        502: "ClinicalTrials.gov or the LLM provider failed, the API rejected the query, or "
+        "too many retrieved records were unreadable to return a trustworthy chart.",
         503: "ClinicalTrials.gov is rate-limiting this server; retry later.",
     }.items()
 }
@@ -85,6 +90,8 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
     `llm` defaults to the one configured in settings, built at startup so a malformed
     key stops the server with a clear message (None without an API key: then only
     structured fields are planned). Tests pass a fake.
+    The enum drift check (`settings.enum_drift_check`) runs as a background task, so a
+    slow or failing /studies/enums never delays startup; it is cancelled at shutdown.
     """
     settings = settings or Settings()
 
@@ -93,7 +100,15 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         app.state.llm = llm if llm is not None else build_llm(settings)
         async with CtGovClient(settings, cache=build_cache(settings)) as client:
             app.state.client = client
-            yield
+            app.state.enum_drift_task = (
+                asyncio.create_task(check_enum_drift(client), name="enum-drift-check")
+                if settings.enum_drift_check
+                else None
+            )
+            try:
+                yield
+            finally:
+                await cancel_task(app.state.enum_drift_task)
 
     app = FastAPI(
         title="ctviz",
@@ -125,10 +140,22 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
             default_top_n_for_ranking=settings.default_top_n_for_ranking,
         )
         return await pipeline.execute(
-            interpretation, client=client, network_limits=settings.network_limits()
+            interpretation,
+            client=client,
+            network_limits=settings.network_limits(),
+            data_quality_thresholds=settings.data_quality_thresholds(),
         )
 
     return app
+
+
+async def cancel_task(task: asyncio.Task[object] | None) -> None:
+    """Cancel a background task that may still be running, and wait for it to stop."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 def get_client(request: Request) -> CtGovClient:
@@ -187,6 +214,19 @@ def register_error_handlers(app: FastAPI) -> None:
     async def upstream_error(request: Request, error: UpstreamError) -> JSONResponse:
         logger.error("Upstream failure: %s", error)
         return error_response(502, "upstream_unavailable", str(error), ["Retry later."])
+
+    @app.exception_handler(UpstreamDataFormatError)
+    async def unreadable_data(request: Request, error: UpstreamDataFormatError) -> JSONResponse:
+        return error_response(
+            502,
+            "upstream_data_format_changed",
+            str(error),
+            [
+                "Retry later; if this persists, ClinicalTrials.gov has likely changed its "
+                "record format and the normalizer needs updating.",
+                "The skipped records and their reasons are in the server log.",
+            ],
+        )
 
     @app.exception_handler(ApiRequestError)
     async def rejected(request: Request, error: ApiRequestError) -> JSONResponse:

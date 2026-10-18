@@ -78,6 +78,15 @@ def make_raw_study(
     return study
 
 
+def set_path(study: dict[str, Any], path: str, value: Any) -> None:
+    """Set a dotted path in a raw study, creating intermediate objects as needed."""
+    *parents, leaf = path.split(".")
+    current = study
+    for segment in parents:
+        current = current.setdefault(segment, {})
+    current[leaf] = value
+
+
 def make_record(nct_id: str, **fields: Any) -> TrialRecord:
     """Build a TrialRecord directly, defaulting to an Unknown-phase record."""
     fields.setdefault("phase_bucket", "Unknown")

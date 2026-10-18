@@ -28,10 +28,11 @@ def group_cohorts(
     - `key_order` is the dimension's own bucket order over the union of all cohorts'
       trials (a trial in several cohorts counts once), Unknown last.
     - `top_n` keeps the N known keys with the most trials in that union (ties follow
-      `key_order`) and keeps the Unknown bucket. Kept buckets stay in `key_order`, their
-      counts unchanged. No "Other" bucket is made: for overlapping dimensions its count
-      would double-count trials. Each cohort gets a warning, and `top_n` in the result
-      lists the omitted keys and, per cohort, the trials visible only in omitted buckets.
+      `key_order`) and keeps the Unknown and Unrecognized buckets. Kept buckets stay in
+      `key_order`, their counts unchanged. No "Other" bucket is made: for overlapping
+      dimensions its count would double-count trials. Each cohort gets a warning, and
+      `top_n` in the result lists the omitted keys and, per cohort, the trials visible
+      only in omitted buckets.
     """
     as_of = as_of or date.today()
     grouped = [
@@ -80,8 +81,16 @@ def distinct_records(records: Iterable[TrialRecord]) -> list[TrialRecord]:
 
 
 def omitted_keys(ordered_buckets: list[Bucket], top_n: int) -> list[str]:
-    """Known keys outside the top N by count, in display order; Unknown is never omitted."""
-    known = [(index, b) for index, b in enumerate(ordered_buckets) if not b.is_unknown]
+    """Known keys outside the top N by count, in display order.
+
+    Unknown and Unrecognized are never omitted: they describe data quality, not a value
+    competing for the top N.
+    """
+    known = [
+        (index, b)
+        for index, b in enumerate(ordered_buckets)
+        if not (b.is_unknown or b.is_unrecognized)
+    ]
     ranked = sorted(known, key=lambda item: (-item[1].count, item[0]))
     kept = {bucket.key for _, bucket in ranked[:top_n]}
     return [bucket.key for _, bucket in known if bucket.key not in kept]

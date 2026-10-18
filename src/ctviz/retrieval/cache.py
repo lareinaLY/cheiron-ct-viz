@@ -21,9 +21,9 @@ from ctviz.config import Settings
 
 @dataclass(frozen=True)
 class CachedResponse:
-    """A cached JSON body and when it was stored."""
+    """A cached JSON body (an object, or a list for /studies/enums) and when it was stored."""
 
-    payload: dict[str, Any]
+    payload: Any
     stored_at: datetime
 
 
@@ -34,7 +34,7 @@ class ResponseCache(Protocol):
         """Return a fresh entry, or None if absent or expired."""
         ...
 
-    def set(self, key: str, payload: dict[str, Any]) -> None:
+    def set(self, key: str, payload: Any) -> None:
         """Store or replace an entry."""
         ...
 
@@ -51,7 +51,7 @@ class NoCache:
         """Always a miss."""
         return None
 
-    def set(self, key: str, payload: dict[str, Any]) -> None:
+    def set(self, key: str, payload: Any) -> None:
         """Discard the payload."""
 
 
@@ -87,7 +87,7 @@ class SqliteCache:
             payload=json.loads(payload), stored_at=datetime.fromtimestamp(stored_at, UTC)
         )
 
-    def set(self, key: str, payload: dict[str, Any]) -> None:
+    def set(self, key: str, payload: Any) -> None:
         """Store or replace an entry, stamped with the current time."""
         with self._connection:
             self._connection.execute(

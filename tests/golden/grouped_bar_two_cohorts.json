@@ -45,6 +45,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT02318771",
@@ -68,6 +69,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT06939036",
@@ -92,6 +94,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT06939036",
@@ -136,6 +139,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT04993677",
@@ -168,6 +172,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT03834519",
@@ -303,6 +308,7 @@
         "reconciled": true
       }
     ],
+    "data_quality": "normal",
     "top_n": null,
     "network": null,
     "estimated_count": 0,

@@ -16,14 +16,25 @@ from ctviz.schemas.trial import (
     OverallStatus,
     Phase,
     StudyType,
+    UnrecognizedField,
+    UnrecognizedValue,
 )
-from tests.factories import SOURCE_PATHS, fixture_study, load_fixture_studies, make_raw_study
+from tests.factories import (
+    SOURCE_PATHS,
+    fixture_study,
+    load_fixture_studies,
+    make_raw_study,
+    set_path,
+)
 
 
-class TestPhaseBucketErrors:
-    def test_unknown_phase_value_raises(self) -> None:
-        with pytest.raises(SourceRecordError, match="PHASE5"):
-            normalize_study(make_raw_study(phases=["PHASE5"]))
+class TestPhaseBucketUnrecognized:
+    # Supersedes test_unknown_phase_value_raises: an unknown phase is a value-domain
+    # failure, so the record is kept (docs/decisions.md, fault tolerance).
+    def test_unknown_phase_value_is_kept_as_unrecognized(self) -> None:
+        record = normalize_study(make_raw_study(phases=["PHASE5"]))
+        assert record.phases == [UnrecognizedValue(raw="PHASE5")]
+        assert record.phase_bucket == "Unrecognized"
 
 
 class TestPhaseBucket:
@@ -99,9 +110,14 @@ class TestStartDate:
         assert record.start_date_precision == "year"
         assert record.start_date_raw == "2026"
 
-    def test_malformed_date_raises(self) -> None:
-        with pytest.raises(SourceRecordError, match="NCT00000001"):
-            normalize_study(make_raw_study(start_date={"date": "Sept 2026"}))
+    # Supersedes test_malformed_date_raises: an unknown date format is a value-domain
+    # failure, so the record is kept with the raw string (docs/decisions.md).
+    def test_malformed_date_is_kept_as_unrecognized(self) -> None:
+        record = normalize_study(make_raw_study(start_date={"date": "Sept 2026"}))
+        assert record.nct_id == "NCT00000001"
+        assert record.start_date is None
+        assert record.start_date_raw == "Sept 2026"
+        assert record.start_date_precision == "unrecognized"
 
     def test_missing_type_with_date_present_is_unknown(self) -> None:
         # Legacy records (2013-2016) carry a date but no type; the fixture NCT02129556 is one.
@@ -224,3 +240,188 @@ def test_every_fixture_study_normalizes() -> None:
         for raw in load_fixture_studies(name):
             record = normalize_study(raw)
             assert record.nct_id.startswith("NCT")
+
+
+PHASES_PATH = SOURCE_PATHS["phases"]
+STATUS_PATH = SOURCE_PATHS["overall_status"]
+
+
+class TestValueDomainFailures:
+    """A value outside a known enum or date format keeps the record (as UnrecognizedValue)."""
+
+    def test_unrecognized_phase_is_reported_with_its_index(self) -> None:
+        record = normalize_study(make_raw_study(phases=["PHASE2", "PHASE5"]))
+        assert record.phases == [Phase.PHASE2, UnrecognizedValue(raw="PHASE5")]
+        assert record.phase_bucket == "Unrecognized"
+        assert record.unrecognized_values == [
+            UnrecognizedField(
+                record_field="phases", field_path=f"{PHASES_PATH}[1]", value_raw="PHASE5"
+            )
+        ]
+
+    def test_unrecognized_status_keeps_every_other_field(self) -> None:
+        raw = fixture_study("studies_pembrolizumab_page", "NCT04993677")
+        set_path(raw, STATUS_PATH, "PAUSED_FOREVER")
+        record = normalize_study(raw)
+        assert record.overall_status == UnrecognizedValue(raw="PAUSED_FOREVER")
+        assert record.unrecognized_values == [
+            UnrecognizedField(
+                record_field="overall_status", field_path=STATUS_PATH, value_raw="PAUSED_FOREVER"
+            )
+        ]
+        assert record.study_type == StudyType.INTERVENTIONAL
+        assert record.lead_sponsor is not None
+        assert record.lead_sponsor.agency_class == AgencyClass.INDUSTRY
+        assert record.enrollment == 77
+        assert record.start_date is not None
+
+    def test_unrecognized_study_type(self) -> None:
+        record = normalize_study(make_raw_study(study_type="REGISTRY_ONLY"))
+        assert record.study_type == UnrecognizedValue(raw="REGISTRY_ONLY")
+        assert [u.record_field for u in record.unrecognized_values] == ["study_type"]
+
+    def test_unrecognized_lead_sponsor_class(self) -> None:
+        raw = make_raw_study()
+        set_path(raw, f"{SOURCE_PATHS['lead_sponsor']}.class", "CONSORTIUM")
+        record = normalize_study(raw)
+        assert record.lead_sponsor is not None
+        assert record.lead_sponsor.name == "Acme Pharma"
+        assert record.lead_sponsor.agency_class == UnrecognizedValue(raw="CONSORTIUM")
+        assert record.unrecognized_values[0].field_path == (f"{SOURCE_PATHS['lead_sponsor']}.class")
+
+    def test_unrecognized_collaborator_class_has_indexed_path(self) -> None:
+        raw = make_raw_study()
+        set_path(
+            raw,
+            SOURCE_PATHS["collaborators"],
+            [{"name": "A", "class": "NIH"}, {"name": "B", "class": "CONSORTIUM"}],
+        )
+        record = normalize_study(raw)
+        assert record.collaborators[1].agency_class == UnrecognizedValue(raw="CONSORTIUM")
+        assert record.unrecognized_values[0].field_path == (
+            f"{SOURCE_PATHS['collaborators']}[1].class"
+        )
+
+    def test_unrecognized_intervention_type(self) -> None:
+        raw = make_raw_study(
+            interventions=[
+                {"type": "DRUG", "name": "pembrolizumab"},
+                {"type": "GENE_EDITING", "name": "CRISPR-X"},
+            ]
+        )
+        record = normalize_study(raw)
+        assert record.interventions[0].intervention_type == "DRUG"
+        assert record.interventions[1].intervention_type == UnrecognizedValue(raw="GENE_EDITING")
+        assert record.interventions[1].type_raw == "GENE_EDITING"
+        assert record.unrecognized_values == [
+            UnrecognizedField(
+                record_field="interventions",
+                field_path=f"{SOURCE_PATHS['interventions']}[1].type",
+                value_raw="GENE_EDITING",
+            )
+        ]
+
+    def test_free_text_date_is_unrecognized(self) -> None:
+        record = normalize_study(make_raw_study(start_date={"date": "soon", "type": "ACTUAL"}))
+        assert record.start_date is None
+        assert record.start_date_raw == "soon"
+        assert record.start_date_precision == "unrecognized"
+        assert record.start_date_type == "actual"
+        assert record.unrecognized_values == [
+            UnrecognizedField(
+                record_field="start_date",
+                field_path=SOURCE_PATHS["start_date"],
+                value_raw="soon",
+            )
+        ]
+
+    def test_impossible_calendar_date_is_unrecognized(self) -> None:
+        record = normalize_study(make_raw_study(start_date={"date": "2026-02-30"}))
+        assert record.start_date is None
+        assert record.start_date_precision == "unrecognized"
+
+    def test_unrecognized_date_type_keeps_the_date(self) -> None:
+        record = normalize_study(make_raw_study(start_date={"date": "2026-09", "type": "PLANNED"}))
+        assert record.start_date == date(2026, 9, 1)
+        assert record.start_date_type == "unrecognized"
+        assert record.unrecognized_values[0].value_raw == "PLANNED"
+
+    def test_unrecognized_enrollment_type_keeps_the_count(self) -> None:
+        raw = make_raw_study()
+        set_path(raw, "protocolSection.designModule.enrollmentInfo", {"count": 40, "type": "X"})
+        record = normalize_study(raw)
+        assert record.enrollment == 40
+        assert record.enrollment_type == UnrecognizedValue(raw="X")
+
+    def test_known_values_report_nothing(self) -> None:
+        for name in ("studies_pembrolizumab_page", "studies_multi_phase", "studies_multi_country"):
+            for raw in load_fixture_studies(name):
+                assert normalize_study(raw).unrecognized_values == []
+
+
+class TestStructuralFailures:
+    """A record that cannot be read at all raises SourceRecordError (skipped by the caller)."""
+
+    @pytest.mark.parametrize("raw", [None, "NCT00000001", ["a"], 7])
+    def test_study_that_is_not_an_object(self, raw: object) -> None:
+        with pytest.raises(SourceRecordError) as caught:
+            normalize_study(raw)
+        assert caught.value.nct_id == "unknown"
+
+    def test_missing_protocol_section(self) -> None:
+        with pytest.raises(SourceRecordError, match="protocolSection") as caught:
+            normalize_study({"derivedSection": {}})
+        assert caught.value.nct_id == "unknown"
+
+    def test_missing_nct_id(self) -> None:
+        raw = make_raw_study()
+        del raw["protocolSection"]["identificationModule"]["nctId"]
+        with pytest.raises(SourceRecordError, match="NCT ID") as caught:
+            normalize_study(raw)
+        assert caught.value.nct_id == "unknown"
+
+    def test_nct_id_of_wrong_type(self) -> None:
+        raw = make_raw_study()
+        set_path(raw, SOURCE_PATHS["nct_id"], 12345)
+        with pytest.raises(SourceRecordError) as caught:
+            normalize_study(raw)
+        assert caught.value.nct_id == "unknown"
+
+    @pytest.mark.parametrize(
+        ("path", "value"),
+        [
+            (PHASES_PATH, "PHASE2"),
+            (PHASES_PATH, [2]),
+            (STATUS_PATH, 3),
+            ("protocolSection.designModule", ["INTERVENTIONAL"]),
+            ("protocolSection.statusModule.startDateStruct", "2024-01"),
+            (SOURCE_PATHS["start_date"], 2024),
+            (SOURCE_PATHS["conditions"], "Melanoma"),
+            (SOURCE_PATHS["conditions"], ["Melanoma", None]),
+            (SOURCE_PATHS["interventions"], ["pembrolizumab"]),
+            (SOURCE_PATHS["interventions"], {"name": "pembrolizumab"}),
+            (SOURCE_PATHS["intervention_mesh_terms"], [{"term": 5}]),
+            (SOURCE_PATHS["lead_sponsor"], "Acme Pharma"),
+            (SOURCE_PATHS["collaborators"], {"name": "Merck"}),
+            ("protocolSection.contactsLocationsModule.locations", {"country": "France"}),
+            ("protocolSection.contactsLocationsModule.locations", [{"country": 1}]),
+            (SOURCE_PATHS["enrollment"], "77"),
+            (SOURCE_PATHS["enrollment"], True),
+            (SOURCE_PATHS["title"], ["A title"]),
+        ],
+    )
+    def test_field_of_wrong_json_type(self, path: str, value: object) -> None:
+        raw = make_raw_study()
+        set_path(raw, path, value)
+        with pytest.raises(SourceRecordError) as caught:
+            normalize_study(raw)
+        assert caught.value.nct_id == "NCT00000001"
+        assert caught.value.field_path.startswith(path)
+
+    def test_unknown_sections_and_keys_are_ignored(self) -> None:
+        raw = fixture_study("studies_pembrolizumab_page", "NCT04993677")
+        raw["brandNewSection"] = {"anything": [1, 2, 3]}
+        raw["protocolSection"]["statusModule"]["brandNewKey"] = {"x": 1}
+        record = normalize_study(raw)
+        assert record.nct_id == "NCT04993677"
+        assert record.unrecognized_values == []

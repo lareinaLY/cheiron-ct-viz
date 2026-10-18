@@ -63,6 +63,7 @@ def settings() -> Settings:
         backoff_base_seconds=0,
         max_retries=1,
         cache_enabled=False,
+        enum_drift_check=False,
         openai_api_key=None,
     )
 

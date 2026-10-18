@@ -31,6 +31,7 @@ type Clock = Callable[[], float]
 type Sleep = Callable[[float], Awaitable[None]]
 
 API_MAX_PAGE_SIZE = 1000
+ENUMS_PATH = "/studies/enums"
 
 
 class TokenBucket:
@@ -127,25 +128,45 @@ class CtGovClient:
             logger.info("Cache held only part of a paginated result; refetching live")
             return await self._fetch_pages(frozen, read_cache=False)
 
-    async def data_timestamp(self) -> datetime:
-        """The API's dataTimestamp from /version, reused for `version_ttl_seconds`."""
+    async def fetch_enums(self) -> list[Any]:
+        """GET /studies/enums (a JSON list), through the response cache.
+
+        Used once at startup to detect enum drift (`retrieval.enums`).
+        """
+        key = cache_key(f"{self._settings.ctgov_base_url}{ENUMS_PATH}", {})
+        hit = self._cache.get(key)
+        if hit is not None:
+            return hit.payload
+        payload = await self._request(ENUMS_PATH, {}, expected=list)
+        self._cache.set(key, payload)
+        return payload
+
+    async def data_timestamp(self) -> datetime | None:
+        """The API's dataTimestamp from /version, reused for `version_ttl_seconds`.
+
+        A missing or malformed dataTimestamp returns None (logged) instead of failing:
+        it only labels the data's as-of time, and the pipeline states its absence in
+        meta. None is not reused, so the next request asks again.
+        """
         now = self._clock()
         if self._data_timestamp is not None:
             fetched_at, timestamp = self._data_timestamp
             if now - fetched_at <= self._settings.version_ttl_seconds:
                 return timestamp
         payload = await self._request("/version", {})
+        raw_timestamp = payload.get("dataTimestamp")
         try:
-            timestamp = datetime.fromisoformat(payload["dataTimestamp"])
-        except (KeyError, TypeError, ValueError) as error:
-            raise UpstreamError(f"/version returned no valid dataTimestamp: {payload!r}") from error
+            timestamp = datetime.fromisoformat(raw_timestamp)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            logger.warning("/version returned no valid dataTimestamp: %r", raw_timestamp)
+            return None
         self._data_timestamp = (now, timestamp)
         return timestamp
 
     async def _fetch_pages(self, frozen: dict[str, str], *, read_cache: bool) -> FetchResult:
         """Walk nextPageToken until the last page or the record cap."""
         max_records = self._settings.max_records
-        studies: list[dict[str, Any]] = []
+        studies: list[Any] = []
         seen: set[str] = set()
         duplicates = 0
         total_count: int | None = None
@@ -163,7 +184,7 @@ class CtGovClient:
                 total_count = first_page_total(page)
             pages += 1
 
-            for study in page.get("studies") or []:
+            for study in page_studies(page):
                 nct_id = study_nct_id(study)
                 if nct_id is not None and nct_id in seen:
                     duplicates += 1
@@ -210,10 +231,13 @@ class CtGovClient:
         self._cache.set(key, payload)
         return payload, None
 
-    async def _request(self, path: str, params: dict[str, str]) -> dict[str, Any]:
+    async def _request[T: (dict[str, Any], list[Any])](
+        self, path: str, params: dict[str, str], *, expected: type[T] = dict
+    ) -> T:
         """Paced GET returning JSON; retries 429, 5xx and network errors with backoff.
 
-        Other 4xx responses fail immediately with the API's error text.
+        Other 4xx responses fail immediately with the API's error text. `expected` is the
+        JSON type of the whole body (an object for most endpoints).
         """
         max_retries = self._settings.max_retries
         for attempt in range(max_retries + 1):
@@ -226,7 +250,7 @@ class CtGovClient:
                     raise UpstreamError(f"{path}: {failure} after {max_retries} retries") from error
             else:
                 if response.status_code == 200:
-                    return parse_json(response)
+                    return parse_json(response, expected)
                 failure = f"HTTP {response.status_code}"
                 if response.status_code == 429:
                     if attempt == max_retries:
@@ -261,19 +285,41 @@ def first_page_total(page: dict[str, Any]) -> int:
     return total
 
 
-def study_nct_id(study: dict[str, Any]) -> str | None:
-    """The NCT ID used for deduplication; None if absent (normalize rejects those)."""
-    return study.get("protocolSection", {}).get("identificationModule", {}).get("nctId")
+def page_studies(page: dict[str, Any]) -> list[Any]:
+    """The page's `studies` list; absent means none, any other type is a broken page."""
+    studies = page.get("studies")
+    if studies is None:
+        return []
+    if not isinstance(studies, list):
+        raise UpstreamError(f"/studies page has `studies` of type {type(studies).__name__}")
+    return studies
 
 
-def parse_json(response: httpx.Response) -> dict[str, Any]:
-    """Decode a 200 body; a non-JSON or non-object body is an upstream failure."""
+def study_nct_id(study: Any) -> str | None:
+    """The NCT ID used for deduplication; None if absent or unreadable.
+
+    Raw studies are plain JSON and may be malformed at any level; those are kept so
+    normalize can skip and report them, and must not fail the fetch here.
+    """
+    if not isinstance(study, dict):
+        return None
+    protocol = study.get("protocolSection")
+    identification = protocol.get("identificationModule") if isinstance(protocol, dict) else None
+    nct_id = identification.get("nctId") if isinstance(identification, dict) else None
+    return nct_id if isinstance(nct_id, str) else None
+
+
+def parse_json[T: (dict[str, Any], list[Any])](
+    response: httpx.Response, expected: type[T] = dict
+) -> T:
+    """Decode a 200 body; a non-JSON body or one of another JSON type is an upstream failure."""
     try:
         payload = response.json()
     except ValueError as error:
         raise UpstreamError(
             f"{response.url}: HTTP 200 with a non-JSON body: {response.text[:300]}"
         ) from error
-    if not isinstance(payload, dict):
-        raise UpstreamError(f"{response.url}: expected a JSON object, got {type(payload).__name__}")
+    if not isinstance(payload, expected):
+        kind = "object" if expected is dict else "list"
+        raise UpstreamError(f"{response.url}: expected a JSON {kind}, got {type(payload).__name__}")
     return payload

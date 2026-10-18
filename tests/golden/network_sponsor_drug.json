@@ -1440,6 +1440,7 @@
         "reconciled": true
       }
     ],
+    "data_quality": "normal",
     "top_n": null,
     "network": {
       "excluded_terms": [],

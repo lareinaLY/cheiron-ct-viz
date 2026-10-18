@@ -26,6 +26,9 @@ class Bucket(BaseModel):
     incomplete: bool = Field(default=False, description="Period still in progress at as_of.")
     is_future: bool = Field(default=False, description="Period starts after as_of (projection).")
     is_unknown: bool = Field(default=False, description="Trials missing this value.")
+    is_unrecognized: bool = Field(
+        default=False, description="Trials whose value is outside the known API enum."
+    )
     citations: list[Citation] = Field(default_factory=list)
     citation_count_total: int = Field(description="True number of citations before the cap.")
 

@@ -31,6 +31,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT02129556",
@@ -52,6 +53,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT02318771",
@@ -73,6 +75,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT03631407",
@@ -94,6 +97,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT03834519",
@@ -115,6 +119,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT04993677",
@@ -136,6 +141,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT05973903",
@@ -157,6 +163,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT06939036",
@@ -178,6 +185,7 @@
         "incomplete": true,
         "is_future": false,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT09000001",
@@ -199,6 +207,7 @@
         "incomplete": false,
         "is_future": true,
         "is_unknown": false,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT07843550",
@@ -220,6 +229,7 @@
         "incomplete": false,
         "is_future": false,
         "is_unknown": true,
+        "is_unrecognized": false,
         "citations": [
           {
             "nct_id": "NCT09000002",
@@ -313,6 +323,7 @@
         "reconciled": true
       }
     ],
+    "data_quality": "normal",
     "top_n": null,
     "network": null,
     "estimated_count": 2,

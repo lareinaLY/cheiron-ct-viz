@@ -18,6 +18,18 @@ class CountUnit(StrEnum):
     TRIALS = "trials"
 
 
+class DataQuality(StrEnum):
+    """How much of the retrieved data could be read.
+
+    - normal: few or no retrieved records were skipped as unreadable.
+    - degraded: enough records were skipped (DEGRADED_SKIP_RATIO, MIN_SKIPPED_FOR_DEGRADED)
+      that counts and rankings may be off; a prominent warning says by how much.
+    """
+
+    NORMAL = "normal"
+    DEGRADED = "degraded"
+
+
 class ResponseMode(StrEnum):
     """How an LLM provider is asked for structured output.
 
@@ -81,6 +93,11 @@ class Datum(BaseModel):
         "(estimated) start dates: a projection, not activity.",
     )
     is_unknown: bool = Field(default=False, description="Bucket of trials missing this value.")
+    is_unrecognized: bool = Field(
+        default=False,
+        description="Bucket of trials whose value is outside the known API enum (the API "
+        "may have added a value); distinct from is_unknown.",
+    )
     citations: list[Citation] = Field(default_factory=list)
     citation_count_total: int = Field(description="True number of citations before the cap.")
 
@@ -305,6 +322,10 @@ class Meta(BaseModel):
     truncated: bool
     coverage: float | None = Field(description="records_retrieved / total_matched.")
     cohorts: list[CohortStats] = Field(default_factory=list)
+    data_quality: DataQuality = Field(
+        default=DataQuality.NORMAL,
+        description="'degraded' when many retrieved records were unreadable and skipped.",
+    )
     top_n: TopNSummary | None = None
     network: NetworkSummary | None = Field(
         default=None, description="Exclusions and readability caps; networks only."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
 from typing import Any
@@ -218,6 +219,36 @@ class TestReconciliation:
             await client.fetch_all({})
 
 
+class TestDirtyPages:
+    """Raw studies stay plain JSON: one malformed study never fails the fetch."""
+
+    async def test_malformed_studies_are_kept_for_normalize_to_skip(
+        self, client: CtGovClient, mock_api: respx.MockRouter
+    ) -> None:
+        dirty: list[Any] = [
+            study("NCT1"),
+            None,
+            "garbage",
+            {"protocolSection": None},
+            {"protocolSection": {"identificationModule": ["NCT2"]}},
+            {"protocolSection": {"identificationModule": {"nctId": 7}}},
+        ]
+        body = {"studies": dirty, "totalCount": len(dirty), "brandNewPageKey": {"x": 1}}
+        mock_api.get("/studies").mock(return_value=httpx.Response(200, json=body))
+        result = await client.fetch_all({})
+        assert result.studies == dirty
+        assert result.reconciled is True
+        assert result.duplicates_dropped == 0
+
+    async def test_studies_that_is_not_a_list_is_an_upstream_error(
+        self, client: CtGovClient, mock_api: respx.MockRouter
+    ) -> None:
+        body = {"studies": {"NCT1": {}}, "totalCount": 1}
+        mock_api.get("/studies").mock(return_value=httpx.Response(200, json=body))
+        with pytest.raises(UpstreamError, match="studies"):
+            await client.fetch_all({})
+
+
 class TestCap:
     async def test_stops_at_cap_and_reports_coverage(
         self, clock: FakeClock, mock_api: respx.MockRouter
@@ -386,6 +417,41 @@ class TestVersion:
             clock.now += 2
             await client.data_timestamp()
             assert route.call_count == 2
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"apiVersion": "2.0.5"},
+            {"dataTimestamp": None},
+            {"dataTimestamp": "yesterday"},
+            {"dataTimestamp": 20261016},
+            {"dataTimestamp": ["2026-10-16T09:00:05"]},
+        ],
+    )
+    async def test_missing_or_malformed_timestamp_is_none_not_an_error(
+        self,
+        client: CtGovClient,
+        mock_api: respx.MockRouter,
+        caplog: pytest.LogCaptureFixture,
+        body: dict[str, Any],
+    ) -> None:
+        mock_api.get("/version").mock(return_value=httpx.Response(200, json=body))
+        with caplog.at_level(logging.WARNING, logger="ctviz.retrieval.client"):
+            assert await client.data_timestamp() is None
+        assert any("dataTimestamp" in r.getMessage() for r in caplog.records)
+
+    async def test_invalid_timestamp_is_not_reused(
+        self, client: CtGovClient, mock_api: respx.MockRouter
+    ) -> None:
+        route = mock_api.get("/version").mock(
+            side_effect=[
+                httpx.Response(200, json={"dataTimestamp": "yesterday"}),
+                httpx.Response(200, json={"dataTimestamp": "2026-10-16T09:00:05"}),
+            ]
+        )
+        assert await client.data_timestamp() is None
+        assert await client.data_timestamp() == datetime(2026, 10, 16, 9, 0, 5)
+        assert route.call_count == 2
 
 
 class TestCache:

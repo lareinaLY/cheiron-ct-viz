@@ -32,6 +32,7 @@ class BucketTally:
     key: str
     label: str
     is_unknown: bool
+    is_unrecognized: bool
     rank: tuple[int, ...]
     count: int = 0
     estimated_count: int = 0
@@ -60,6 +61,9 @@ def group_by(
       the true number of citations for the bucket.
     - Records missing the value go to the "Unknown" bucket (`is_unknown=True`). It is
       never merged into another bucket, including the API's own `UNKNOWN` enum value.
+    - Values outside the known API enum go to the "Unrecognized" bucket
+      (`is_unrecognized=True`), never to Unknown; dates in an unrecognized format have no
+      period and go to Unknown. The pipeline warns about each unrecognized value.
     - Multi-valued dimensions (country, condition, intervention_mesh) count a trial once
       per distinct value and set `buckets_overlap=True`.
     - Temporal dimensions count estimated dates and report them in `estimated_count`.
@@ -87,7 +91,9 @@ def group_by(
         for value in values:
             tally = tallies.get(value.key)
             if tally is None:
-                tally = BucketTally(value.key, value.label, value.is_unknown, value.rank)
+                tally = BucketTally(
+                    value.key, value.label, value.is_unknown, value.is_unrecognized, value.rank
+                )
                 tallies[value.key] = tally
             tally.add(value)
 
@@ -124,14 +130,17 @@ def unknown_value(record: TrialRecord, spec: DimensionSpec) -> DimensionValue:
 
 
 def sort_tallies(tallies: list[BucketTally], order: BucketOrder) -> list[BucketTally]:
-    """Sort buckets by the dimension's order, always placing Unknown last."""
+    """Sort buckets by the dimension's order, then Unrecognized, always placing Unknown last."""
     sort_keys = {
         BucketOrder.BY_COUNT: lambda t: (-t.count, t.label),
         BucketOrder.BY_KEY: lambda t: (t.key,),
         BucketOrder.BY_RANK: lambda t: (t.rank, t.key),
     }
-    known = sorted((t for t in tallies if not t.is_unknown), key=sort_keys[order])
-    return known + [t for t in tallies if t.is_unknown]
+    known = sorted(
+        (t for t in tallies if not (t.is_unknown or t.is_unrecognized)), key=sort_keys[order]
+    )
+    unrecognized = [t for t in tallies if t.is_unrecognized]
+    return known + unrecognized + [t for t in tallies if t.is_unknown]
 
 
 def is_future_period(tally: BucketTally, current_period: str | None) -> bool:
@@ -139,7 +148,9 @@ def is_future_period(tally: BucketTally, current_period: str | None) -> bool:
 
     Period keys ('2026', '2026-09') are zero-padded, so string order is time order.
     """
-    return current_period is not None and not tally.is_unknown and tally.key > current_period
+    if current_period is None or tally.is_unknown or tally.is_unrecognized:
+        return False
+    return tally.key > current_period
 
 
 def to_bucket(
@@ -155,6 +166,7 @@ def to_bucket(
         incomplete=incomplete,
         is_future=is_future,
         is_unknown=tally.is_unknown,
+        is_unrecognized=tally.is_unrecognized,
         citations=tally.citations[:citation_cap],
         citation_count_total=len(tally.citations),
     )

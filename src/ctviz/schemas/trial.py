@@ -14,6 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 # Bucket key for a missing value. Distinct from the API's own `UNKNOWN` enum values.
 UNKNOWN_BUCKET_KEY = "Unknown"
 
+# Bucket key for a value that is present but outside the enum we know (e.g. a phase the
+# API added after this code was written). Distinct from Unknown, which means missing.
+UNRECOGNIZED_BUCKET_KEY = "Unrecognized"
+
 
 class Phase(StrEnum):
     """Trial phase as listed in `protocolSection.designModule.phases`."""
@@ -71,11 +75,54 @@ class AgencyClass(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class InterventionType(StrEnum):
+    """Intervention type from `armsInterventionsModule.interventions[].type`."""
+
+    BEHAVIORAL = "BEHAVIORAL"
+    BIOLOGICAL = "BIOLOGICAL"
+    COMBINATION_PRODUCT = "COMBINATION_PRODUCT"
+    DEVICE = "DEVICE"
+    DIAGNOSTIC_TEST = "DIAGNOSTIC_TEST"
+    DIETARY_SUPPLEMENT = "DIETARY_SUPPLEMENT"
+    DRUG = "DRUG"
+    GENETIC = "GENETIC"
+    PROCEDURE = "PROCEDURE"
+    RADIATION = "RADIATION"
+    OTHER = "OTHER"
+
+
 class EnrollmentType(StrEnum):
     """Whether the enrollment count is actual or anticipated."""
 
     ACTUAL = "ACTUAL"
     ESTIMATED = "ESTIMATED"
+
+
+class UnrecognizedValue(BaseModel):
+    """A value outside the enum (or date format) we know, kept verbatim.
+
+    Upstream vocabularies drift: rejecting the whole record for one new value would drop
+    a trial that is still usable on every other dimension, so the field holds this
+    marker instead and dimensions that use it put the trial in the Unrecognized bucket.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    raw: str
+
+
+class UnrecognizedField(BaseModel):
+    """Where a record holds an unrecognized value, for meta warnings and drift counts.
+
+    `record_field` is a key of `TrialRecord.source_paths` (e.g. "phases");
+    `field_path` is the exact JSON path, with list indices (e.g. "...phases[1]").
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    record_field: str
+    field_path: str
+    value_raw: str
 
 
 class Intervention(BaseModel):
@@ -88,6 +135,19 @@ class Intervention(BaseModel):
 
     name_raw: str
     type_raw: str | None = None
+
+    @property
+    def intervention_type(self) -> InterventionType | UnrecognizedValue | None:
+        """`type_raw` as an enum value; a value outside the enum stays recognizable as such.
+
+        Derived rather than stored so the raw string remains the single source value.
+        """
+        if self.type_raw is None:
+            return None
+        try:
+            return InterventionType(self.type_raw)
+        except ValueError:
+            return UnrecognizedValue(raw=self.type_raw)
 
 
 class MeshTerm(BaseModel):
@@ -117,7 +177,7 @@ class Sponsor(BaseModel):
     """A lead sponsor or collaborator."""
 
     name: str
-    agency_class: AgencyClass | None = Field(default=None, alias="class")
+    agency_class: AgencyClass | UnrecognizedValue | None = Field(default=None, alias="class")
 
     model_config = {"populate_by_name": True}
 
@@ -134,16 +194,20 @@ class TrialRecord(BaseModel):
 
     nct_id: str
     title: str | None = None
-    overall_status: OverallStatus | None = None
-    study_type: StudyType | None = None
-    phases: list[Phase] = Field(default_factory=list)
+    overall_status: OverallStatus | UnrecognizedValue | None = None
+    study_type: StudyType | UnrecognizedValue | None = None
+    phases: list[Phase | UnrecognizedValue] = Field(default_factory=list)
     phase_bucket: str
     start_date: date | None = None
     start_date_raw: str | None = Field(
         default=None, description="Exact source string, e.g. '2026-09', used as the cited value."
     )
-    start_date_precision: Literal["day", "month", "year", "unknown"] = "unknown"
-    start_date_type: Literal["actual", "estimated", "unknown"] = "unknown"
+    start_date_precision: Literal["day", "month", "year", "unknown", "unrecognized"] = Field(
+        default="unknown",
+        description="'unrecognized': a date string in an unknown format, kept in "
+        "start_date_raw with start_date None.",
+    )
+    start_date_type: Literal["actual", "estimated", "unknown", "unrecognized"] = "unknown"
     conditions: list[str] = Field(default_factory=list)
     interventions: list[Intervention] = Field(default_factory=list)
     intervention_mesh_terms: list[MeshTerm] = Field(default_factory=list)
@@ -153,7 +217,12 @@ class TrialRecord(BaseModel):
         default_factory=list, description="Distinct countries in first-seen order."
     )
     enrollment: int | None = None
-    enrollment_type: EnrollmentType | None = None
+    enrollment_type: EnrollmentType | UnrecognizedValue | None = None
+    unrecognized_values: list[UnrecognizedField] = Field(
+        default_factory=list,
+        description="Every value kept as UnrecognizedValue (or an unrecognized date), "
+        "with its exact path and raw string.",
+    )
     source_paths: dict[str, str] = Field(
         default_factory=dict,
         description="Record field name -> JSON path in the raw API response, used for citations.",

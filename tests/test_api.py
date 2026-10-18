@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from ctviz.api.app import create_app
 from ctviz.config import Settings
 from ctviz.schemas.response import VisualizationResponse
-from tests.factories import load_fixture_studies, make_raw_study
+from tests.factories import load_fixture_studies, make_raw_study, set_path
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -40,6 +40,7 @@ def api() -> Iterator[TestClient]:
         backoff_base_seconds=0,
         max_retries=1,
         cache_enabled=False,
+        enum_drift_check=False,
     )
     with TestClient(create_app(settings)) as client:
         yield client
@@ -47,7 +48,10 @@ def api() -> Iterator[TestClient]:
 
 def test_phase_query_end_to_end(api: TestClient, mock_api: respx.MockRouter) -> None:
     studies = load_fixture_studies("studies_pembrolizumab_page")
-    bad = make_raw_study("NCT09999999", phases=["PHASE9"])
+    # A structural failure (phases is a string, not a list) is skipped; an unknown phase
+    # inside a list would be kept as Unrecognized instead (tests/test_poison_records.py).
+    bad = make_raw_study("NCT09999999")
+    set_path(bad, "protocolSection.designModule.phases", "PHASE9")
     route = mock_api.get("/studies").mock(return_value=studies_page([*studies, bad]))
 
     response = api.post(
@@ -82,6 +86,63 @@ def test_phase_query_end_to_end(api: TestClient, mock_api: respx.MockRouter) -> 
         "spec",
         "total",
     }
+
+
+@pytest.mark.parametrize(
+    "version", [{"apiVersion": "2.0.5"}, {"apiVersion": "2.0.5", "dataTimestamp": "n/a"}]
+)
+def test_missing_data_timestamp_does_not_fail_the_request(
+    api: TestClient, mock_api: respx.MockRouter, version: dict[str, Any]
+) -> None:
+    mock_api.get("/version").mock(return_value=httpx.Response(200, json=version))
+    studies = load_fixture_studies("studies_pembrolizumab_page")
+    mock_api.get("/studies").mock(return_value=studies_page(studies))
+    response = api.post(
+        "/query", json={"query": "q", "drug": "pembrolizumab", "dimension": "phase"}
+    )
+    assert response.status_code == 200, response.text
+    meta = VisualizationResponse.model_validate(response.json()).meta
+    assert meta.data_timestamp is None
+    assert sum(
+        d.count for d in VisualizationResponse.model_validate(response.json()).visualization.data
+    ) == len(studies)
+    assert any("dataTimestamp" in w for w in meta.warnings)
+
+
+@pytest.mark.parametrize(
+    ("version_response", "cause"),
+    [
+        (httpx.Response(503, text="maintenance"), "HTTP 503"),
+        (httpx.ConnectError("connection refused"), "network error"),
+        (httpx.Response(200, json=["2026-10-16T09:00:05"]), "expected a JSON object"),
+        (httpx.Response(429), "rate-limited"),
+    ],
+)
+def test_failing_version_endpoint_does_not_fail_the_request(
+    api: TestClient,
+    mock_api: respx.MockRouter,
+    version_response: httpx.Response | Exception,
+    cause: str,
+) -> None:
+    mock_api.get("/version").mock(side_effect=lambda request: raise_or_return(version_response))
+    studies = load_fixture_studies("studies_pembrolizumab_page")
+    mock_api.get("/studies").mock(return_value=studies_page(studies))
+    response = api.post(
+        "/query", json={"query": "q", "drug": "pembrolizumab", "dimension": "phase"}
+    )
+    assert response.status_code == 200, response.text
+    body = VisualizationResponse.model_validate(response.json())
+    assert body.meta.data_timestamp is None
+    assert sum(d.count for d in body.visualization.data) == len(studies)
+    (warning,) = [w for w in body.meta.warnings if "/version" in w]
+    assert cause in warning
+    assert "data_timestamp is null" in warning
+
+
+def raise_or_return(outcome: httpx.Response | Exception) -> httpx.Response:
+    if isinstance(outcome, Exception):
+        raise outcome
+    return outcome
 
 
 def test_country_query_with_top_n(api: TestClient, mock_api: respx.MockRouter) -> None:

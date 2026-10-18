@@ -86,6 +86,27 @@ class SourceRecordError(ValueError):
         self.value = value
 
 
+class UpstreamDataFormatError(Exception):
+    """Too many retrieved records were unreadable to return a trustworthy chart.
+
+    Raised when a cohort's skip ratio reaches REFUSE_SKIP_RATIO: at that point the API's
+    data format has most likely changed, and a chart over the remaining records could
+    mislead.
+    """
+
+    def __init__(self, cohort: str, retrieved: int, skipped: int, refuse_skip_ratio: float) -> None:
+        super().__init__(
+            "upstream data format may have changed; refusing to return a chart that could "
+            f"mislead: {skipped} of {retrieved} retrieved trials ({skipped / retrieved:.1%}) "
+            f"for cohort {cohort!r} could not be read (REFUSE_SKIP_RATIO="
+            f"{refuse_skip_ratio:g})"
+        )
+        self.cohort = cohort
+        self.retrieved = retrieved
+        self.skipped = skipped
+        self.refuse_skip_ratio = refuse_skip_ratio
+
+
 class InvalidFilterError(ValueError):
     """A filter value cannot be sent to the API without changing its meaning.
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Self
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_TOP_N_FOR_RANKING = 15
@@ -12,6 +13,11 @@ DEFAULT_MAX_NETWORK_NODES = 50
 DEFAULT_MIN_EDGE_WEIGHT = 2
 DEFAULT_NETWORK_MAX_RESPONSE_BYTES = 1_000_000
 DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP = 2
+# Judgment calls anchored on the observed baseline (0 skipped records in every live run,
+# docs/api_findings.md §15) and on how sensitive rankings are to small losses.
+DEFAULT_DEGRADED_SKIP_RATIO = 0.05
+DEFAULT_REFUSE_SKIP_RATIO = 0.5
+DEFAULT_MIN_SKIPPED_FOR_DEGRADED = 20
 
 
 class NetworkLimits(BaseModel):
@@ -23,6 +29,31 @@ class NetworkLimits(BaseModel):
     min_edge_weight: int = DEFAULT_MIN_EDGE_WEIGHT
     max_response_bytes: int = DEFAULT_NETWORK_MAX_RESPONSE_BYTES
     reduced_edge_citation_cap: int = DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP
+
+
+class DataQualityThresholds(BaseModel):
+    """When skipped (unreadable) records make a result degraded, or too unreliable to return.
+
+    Skip ratio = structurally skipped records / retrieved records, per cohort. Below
+    `min_skipped_for_degraded` skipped records the result is always normal, so a small
+    sample with a few bad records is not flagged.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    degraded_skip_ratio: float = Field(default=DEFAULT_DEGRADED_SKIP_RATIO, gt=0, le=1)
+    refuse_skip_ratio: float = Field(default=DEFAULT_REFUSE_SKIP_RATIO, gt=0, le=1)
+    min_skipped_for_degraded: int = Field(default=DEFAULT_MIN_SKIPPED_FOR_DEGRADED, ge=0)
+
+    @model_validator(mode="after")
+    def refuse_above_degraded(self) -> Self:
+        """A refuse ratio below the degraded ratio would skip the degraded band."""
+        if self.refuse_skip_ratio < self.degraded_skip_ratio:
+            raise ValueError(
+                f"REFUSE_SKIP_RATIO ({self.refuse_skip_ratio}) must be >= "
+                f"DEGRADED_SKIP_RATIO ({self.degraded_skip_ratio})"
+            )
+        return self
 
 
 class Settings(BaseSettings):
@@ -113,6 +144,39 @@ class Settings(BaseSettings):
         description="Citations kept per edge when over the size budget; 2 cites both "
         "endpoints in one trial.",
     )
+
+    degraded_skip_ratio: float = Field(
+        default=DEFAULT_DEGRADED_SKIP_RATIO,
+        gt=0,
+        le=1,
+        validation_alias=AliasChoices("DEGRADED_SKIP_RATIO", "CTVIZ_DEGRADED_SKIP_RATIO"),
+        description="At or above this skipped/retrieved ratio a result is 'degraded'.",
+    )
+    refuse_skip_ratio: float = Field(
+        default=DEFAULT_REFUSE_SKIP_RATIO,
+        gt=0,
+        le=1,
+        validation_alias=AliasChoices("REFUSE_SKIP_RATIO", "CTVIZ_REFUSE_SKIP_RATIO"),
+        description="At or above this skipped/retrieved ratio no chart is returned.",
+    )
+    min_skipped_for_degraded: int = Field(
+        default=DEFAULT_MIN_SKIPPED_FOR_DEGRADED,
+        ge=0,
+        validation_alias=AliasChoices("MIN_SKIPPED_FOR_DEGRADED", "CTVIZ_MIN_SKIPPED_FOR_DEGRADED"),
+        description="Fewer skipped records than this never degrade or refuse a result.",
+    )
+    enum_drift_check: bool = Field(
+        default=True,
+        description="At startup, compare GET /studies/enums with our enums and log new values.",
+    )
+
+    def data_quality_thresholds(self) -> DataQualityThresholds:
+        """The skip-ratio thresholds as one value for the pipeline."""
+        return DataQualityThresholds(
+            degraded_skip_ratio=self.degraded_skip_ratio,
+            refuse_skip_ratio=self.refuse_skip_ratio,
+            min_skipped_for_degraded=self.min_skipped_for_degraded,
+        )
 
     def network_limits(self) -> NetworkLimits:
         """The network caps as one value for the pipeline."""
