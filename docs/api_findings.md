@@ -25,7 +25,7 @@ These are choices a reasonable person could make differently. Each states our ch
 | Multi-phase bucketing | Own combined bucket ("Phase 1/Phase 2"); buckets are mutually exclusive | Count the trial in every phase it lists (totals exceed the number of trials), or assign it to its highest phase |
 | Territories | Reported as the API gives them (Puerto Rico, Guam, Hong Kong are separate) | Roll territories up into a sovereign country |
 | Drug matching | `AREA[InterventionName]` OR `AREA[InterventionMeshTerm]` by default (§16); `query.intr` as opt-in `broad` | Broad by default, name only (misses code-name-only trials), or MeSH only (misses names without a MeSH term) |
-| Non-drug nodes in networks | Drug nodes are all intervention MeSH terms, including radiation, procedures and diagnostics; this is noted in meta assumptions. A small deny-list of exact MeSH ids (comparators, mis-mapped terms, §8) is excluded and reported in `meta.network` | Filter nodes by intervention type (DRUG/BIOLOGICAL), which needs an intervention↔MeSH link the API doesn't provide; or by `browseLeaves[].relevance`, which the API does not serve (§8) |
+| Non-drug nodes in networks | Drug nodes are intervention MeSH terms filed under Chemicals and Drugs: supplementary concepts (C ids) and descriptors with a MeSH tree number in branch D (§18), minus two branch-D comparators (Saline Solution, Placebos). Dropped terms are listed in `meta.network.excluded_terms`, descriptors missing from the trees are kept and listed in `meta.network.unmatched_terms` | Filter nodes by intervention type (DRUG/BIOLOGICAL), which needs an intervention↔MeSH link the API doesn't provide; by `browseLeaves[].relevance`, which the API does not serve (§8); or by a deny-list of observed terms, which does not generalize to other drugs |
 | Trials without intervention MeSH | `Unknown` bucket, with a meta warning giving the count | Fall back to the raw intervention name as the bucket key, which splits aliases into separate buckets |
 | "Fewest" questions ("which countries have the fewest trials") | Not a ranking: `ranking_intent` covers most/top/leading only, so the chart is untrimmed and sorted by count, with the smallest values last | Trim to the N smallest buckets, which needs a sort direction in the plan |
 | Year-only start date in monthly views | `Unknown` bucket for `start_month` (citing the raw year); counted normally for `start_year` | Place it in January (the API's indexing convention) |
@@ -263,7 +263,8 @@ Quirks:
   carries `Placebos` (D010919); placebo arms map to `Saline Solution` (D000077330; 8 of its 18
   trials list an intervention named "Placebo"). Diagnostics are frequent and large:
   `Specimen Handling` (81), `Magnetic Resonance Spectroscopy` (84, mapped from "Magnetic
-  Resonance Imaging"), `Biopsy` (49).
+  Resonance Imaging"), `Biopsy` (49). All of these are outside MeSH tree branch D and are
+  now dropped from drug networks by the tree rule (§18).
 - **`browseLeaves` and `browseBranches` are in the OpenAPI schema but not served.** On
   2026-10-18 full records (`/studies/NCT07198074`, `/studies/NCT02142738`) carry only
   `meshes` and `ancestors` in both browse modules; projecting
@@ -515,3 +516,68 @@ The 6,913 older trials the cap dropped are much more often drug trials in Phase 
 (38.7% vs 23.0% among the retrieved), and less often Not Applicable or without a phase.
 A truncated chart shows the mix of recent registrations, not the cohort. This is the bias the title suffix and `data_quality="partial"`
 warn about on dimensions that still have to be fetched.
+
+## 18. MeSH tree numbers as a drug node filter (verified 2026-10-18)
+
+**Source.** NLM's MeSH tree file `mtrees2025.bin`,
+`https://nlmpubs.nlm.nih.gov/projects/mesh/2025/meshtrees/mtrees2025.bin` (2,722,561 bytes,
+Last-Modified 2026-01-08; one ` Preferred Name;TreeNumber` line per tree position, each with
+a leading space). It is linked from the year directories under
+`https://nlmpubs.nlm.nih.gov/projects/mesh/`, not from the download page
+(`https://www.nlm.nih.gov/databases/download/mesh.html`). On 2026-10-18 there is **no 2026
+file**: `/2026/meshtrees/mtrees2026.bin` and `/MESH_FILES/meshtrees/mtrees2026.bin` redirect to
+an error page, and the `MESH_FILES/meshtrees/` listing is empty, so 2025 is the newest
+published release.
+
+**License.** Free to use under NLM's Terms and Conditions for MeSH
+(`https://www.nlm.nih.gov/databases/download/terms_and_conditions_mesh.html`), which is
+not a public-domain dedication: redistributors must acknowledge NLM as the source, must
+not imply NLM endorsement, and must either keep the data current or identify the MeSH
+version used. The derived file and every network response name the version ("NLM MeSH
+2025" in the drug-node assumption).
+
+**Derived file.** `scripts/fetch_mesh_trees.py` writes
+`src/ctviz/data/mesh_trees.json`, `{preferred_name: [tree_numbers]}`, key-sorted: 30,954
+descriptors, 2,187,017 bytes. That is under the 3 MB budget, so full tree numbers are kept
+(the script falls back to first letters only above it). The file has descriptors (D ids)
+only. Supplementary concept records (C ids, e.g. pembrolizumab C582435) have no tree
+numbers.
+
+**Rule.** A drug node is kept when its id is a C id, or when its preferred name has any
+tree number in branch D (Chemicals and Drugs). Branch-D comparators matched by id (Saline
+Solution D000077330, Placebos D010919) are dropped. A descriptor whose name is not in the
+file is kept and listed as `unmatched_in_tree`.
+
+**Live check** (pembrolizumab, `intervention_name` match mode, 2,642 trials, dataTimestamp
+2026-10-16T09:00:05):
+- 712 distinct intervention MeSH keys: 388 C ids and 324 D ids. **All 324 D ids match the
+  tree file by exact preferred name** (match rate 100%; no unmatched terms).
+- **117 terms are excluded, in 456 trials**: 116 by branch (E01 diagnostics, E02 therapies
+  incl. radiotherapy, E04 surgery, E05 investigative techniques, G/N/F/I/J
+  mis-mappings) and Saline Solution as a comparator. Top: Magnetic Resonance Spectroscopy
+  (84 trials, E05), Specimen Handling (81, E01/E05), Radiotherapy (79, E02), Biopsy (50, E01), Taxes
+  (49, N03), Radiation (47, G01), Drug Therapy (43, E02), Radiosurgery (42, E02). None of the 117
+  is a drug.
+- Kept: Platinum (D01), Carboplatin (D02). Excluded: Radiotherapy (E02).
+- The former deny-list under the rule: Standard of Care (N04/N05), Observation (E05),
+  Watchful Waiting (N04), Taxes (N03), Single Person (F01/I01/M01/N01), Automobiles (J01)
+  and Congresses as Topic (N03) are excluded by branch; Saline Solution by the comparator
+  list. **Solutions (D012996, 4 trials) is now kept**: it is D26.776 (pharmaceutical
+  solutions), so the branch rule cannot tell it from a drug.
+- **Class-level descriptors pass the rule.** 16 kept D ids sit only in D26 (pharmaceutic
+  preparations) or D27 (chemical actions and uses), e.g. Immune Checkpoint Inhibitors (24
+  trials), Adjuvants, Pharmaceutic (5), Solutions (4), Antineoplastic Agents (1). They are
+  drug classes or dosage forms rather than drugs. They are kept as nodes of type
+  `drug_class` and counted in `meta.network.drug_class_nodes_total`.
+- **Known gap: C ids are kept without inspection.** Supplementary concept records have a
+  class (1 chemical, 2 protocol, 3 disease, 4 organism) and a mapped-to descriptor, but
+  neither is in the tree file. Classifying them would need NLM's supplementary concept file
+  (`https://nlmpubs.nlm.nih.gov/projects/mesh/2025/asciimesh/c2025.bin`, not downloaded or
+  measured). Until then, a disease or organism SCR mapped from an intervention would be
+  drawn as a `drug` node. None was noticed among the top pembrolizumab hubs, but the 388 C ids
+  were not checked one by one.
+- Top-10 drug co-occurrence hubs (weighted degree) are the same ten drugs before and after;
+  the change is lower down. Before, Specimen Handling ranked 17, Magnetic Resonance
+  Spectroscopy 18, Radiotherapy 23, Radiation 28, Biopsy 30 and Drug Therapy 34 among the
+  50 shown nodes. In the sponsor-drug network, Specimen Handling and Magnetic Resonance
+  Spectroscopy were drug hubs 6 and 7 (degree 67 and 64) and are now gone.
