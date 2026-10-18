@@ -295,3 +295,28 @@ payloads small, about 1.7 KB per study with 20 fields.
 - Comma or pipe lists: `filter.overallStatus=RECRUITING|NOT_YET_RECRUITING`, `filter.ids=NCT…,NCT…`.
 - If any `query.*` param contains only NCT IDs, filters are ignored (per the spec).
 - `query.*` affects relevance ranking; `filter.*` and `postFilter.*` don't, and are otherwise equivalent.
+
+## 14. Quoting values in `filter.advanced` and `query.*` (verified 2026-10-17)
+
+| Params | totalCount |
+|---|---|
+| `filter.advanced=AREA[InterventionName]pembrolizumab` | 2575 |
+| `filter.advanced=AREA[InterventionName]"pembrolizumab"` | 2575 |
+| `filter.advanced=AREA[InterventionName]"pembrolizumab (KEYTRUDA®)"` | 43 |
+| `filter.advanced=AREA[InterventionName]pembrolizumab (KEYTRUDA®)` (unquoted) | 559 |
+| `filter.advanced=AREA[InterventionName]"nab-paclitaxel"` / unquoted | 1120 / 998 |
+| `filter.advanced=AREA[InterventionName]"foo \"bar\""` | 0 |
+| `AREA[InterventionName]"pembrolizumab" AND AREA[Phase](PHASE2 OR PHASE3) AND AREA[StartDate]RANGE[2015-01-01,MAX]` | 1887 |
+| `AREA[InterventionName]"pembrolizumab" AND AREA[StartDate]RANGE[2015-01-01,2019-12-31]` | 990 |
+| `query.cond=non-small cell lung cancer` | 8601 |
+| `query.cond="non-small cell lung cancer"` (phrase) | 8078 |
+| `query.cond=non-small cell lung cancer` + `filter.overallStatus=RECRUITING` | 1297 |
+
+- Quoting a one-word value inside `AREA[...]` does not change the result. An unquoted
+  multi-word value is not one value: parentheses are parsed as grouping. So
+  intervention names are always quoted.
+- A backslash-escaped quote inside a quoted value matched nothing. The escape
+  semantics could not be confirmed, so values containing `"` are rejected.
+- Quoting a `query.*` value turns term search (with synonym expansion) into a phrase
+  match: 8601 vs 8078 for NSCLC. `query.*` values are sent raw, and values containing
+  Essie syntax are rejected.

@@ -50,6 +50,9 @@ class ChartType(StrEnum):
     HISTOGRAM = "histogram"
 
 
+MatchMode = Literal["intervention_name", "broad"]
+
+
 class Filters(BaseModel):
     """Retrieval filters for one cohort. All are optional and combined with AND."""
 
@@ -90,4 +93,4 @@ class QueryPlan(BaseModel):
     chart_hint: ChartType | None = None
     time_granularity: Literal["year", "month"] | None = None
     top_n: int | None = None
-    match_mode: Literal["intervention_name", "broad"] = "intervention_name"
+    match_mode: MatchMode = "intervention_name"
