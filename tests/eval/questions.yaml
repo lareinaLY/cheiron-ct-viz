@@ -7,6 +7,8 @@
 # - dimension or relation; top_n (absent means null; a ranking question without a
 #   number expects the configured default, DEFAULT_TOP_N_FOR_RANKING).
 # Granularity is scored for temporal dimensions (start_year vs start_month).
+# - unhandled_terms (optional): the exact set of question parts the plan cannot apply,
+#   compared casefolded; scored only for cases that list it.
 # Names and wording differ from the few-shot examples in planner/prompt.py.
 
 - id: trend_drug_year_range
@@ -153,3 +155,24 @@
   question: Break down Opdivo trials by sponsor and by year
   expect:
     outcome: clarification
+
+- id: unhandled_combination_trend
+  class: unhandled
+  question: How many new durvalumab combination trials started each year since 2019?
+  expect:
+    outcome: plan
+    cohorts:
+      # start_year_to must stay null: "since 2019" states no end year.
+      - {drug: durvalumab, start_year_from: 2019, start_year_to: null}
+    dimension: start_year
+    unhandled_terms: [combination]
+
+- id: unhandled_line_and_monotherapy
+  class: unhandled
+  question: Phase breakdown of second-line lorlatinib monotherapy trials
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: lorlatinib}
+    dimension: phase
+    unhandled_terms: [second-line, monotherapy]

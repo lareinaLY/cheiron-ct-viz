@@ -123,3 +123,17 @@ def test_messages_end_with_the_question_after_the_examples() -> None:
     assert messages[0]["role"] == "system"
     assert messages[-1] == {"role": "user", "content": "How many trials per year?"}
     assert len(messages) == 2 + 2 * len(FEW_SHOT_EXAMPLES)
+
+
+def test_prompt_asks_for_unhandled_terms(prompt: str) -> None:
+    assert "unhandled_terms" in prompt
+    assert "combination" in prompt
+
+
+def test_a_few_shot_example_lists_an_unhandled_term() -> None:
+    assert any(draft.unhandled_terms for _, draft in FEW_SHOT_EXAMPLES)
+
+
+def test_prompt_forbids_unstated_year_bounds(prompt: str) -> None:
+    assert "Never add a bound the user did not state" in prompt
+    assert "'since 2015' means start_year_from=2015 and start_year_to=null" in prompt

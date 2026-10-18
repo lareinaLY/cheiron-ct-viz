@@ -58,7 +58,8 @@ RULES = """\
    translate or replace a name: "Keytruda" stays "Keytruda", "NSCLC" stays "NSCLC".
    Leave out words that are not part of the name ("trials", "patients", "the").
 2. Never add a filter the user did not state. "Trials" alone sets no status, phase,
-   country, sponsor or year.
+   country, sponsor or year. Never add a bound the user did not state;
+   'since 2015' means start_year_from=2015 and start_year_to=null (not the current year).
 3. Use one cohort, unless the user compares groups ("A vs B", "compare A and B"): then
    one cohort per group, each with the shared filters plus its own value.
 4. Choose the dimension or relation that answers the question. Leave `chart_hint` null
@@ -74,7 +75,14 @@ RULES = """\
    example two groupings at once), set `clarification` with a short question and the
    readings as options, and leave dimension and relation null. Do not ask when one
    reading is clearly intended.
-7. Filter values are plain text: no quotes, parentheses, brackets or AND/OR/NOT."""
+7. Filter values are plain text: no quotes, parentheses, brackets or AND/OR/NOT.
+8. List in `unhandled_terms` every word or phrase of the question that narrows or
+   reshapes the answer but that no filter, dimension or relation above expresses, copied
+   from the question: for example "combination", "monotherapy", "first-line",
+   "HER2-positive", or "mix" and "share" when the user asks for proportions. Still plan
+   the rest of the question; code tells the user what was not applied. Do not list
+   words already expressed by the plan ("trials", "by phase", a drug name). Leave it
+   empty when every part of the question is mapped."""
 
 
 def build_system_prompt(today: date) -> str:
@@ -139,6 +147,7 @@ def example(question: str, *cohorts: Filters, **fields: Any) -> tuple[str, LlmPl
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
+        "unhandled_terms": [],
     }
     values.update(fields)
     return question, LlmPlanDraft(**values)
@@ -154,9 +163,11 @@ FEW_SHOT_EXAMPLES: list[tuple[str, LlmPlanDraft]] = [
         dimension=Dimension.START_MONTH,
     ),
     example(
-        "What is the phase breakdown of breast cancer trials sponsored by Novartis?",
+        "What is the phase breakdown of first-line breast cancer combination trials "
+        "sponsored by Novartis?",
         Filters(condition="breast cancer", sponsor="Novartis"),
         dimension=Dimension.PHASE,
+        unhandled_terms=["first-line", "combination"],
     ),
     example(
         "How large are completed phase 3 type 2 diabetes trials?",
