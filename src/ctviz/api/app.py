@@ -265,6 +265,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
                     network_limits=settings.network_limits(),
                     data_quality_thresholds=settings.data_quality_thresholds(),
                     count_route=settings.count_route_policy(),
+                    max_bars=settings.max_bars,
                     request_id=REQUEST_ID.get(),
                     llm_usage=call_log.usage(),
                 )

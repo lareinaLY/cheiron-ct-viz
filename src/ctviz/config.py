@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ctviz.schemas.llm import LlmPrice
 
 DEFAULT_TOP_N_FOR_RANKING = 15
+# A categorical chart with more values than this, and no top_n or bottom_n, shows only the
+# most frequent ones: 2,755 lead-sponsor bars cannot be drawn or read (QA report, C5).
+DEFAULT_MAX_BARS = 50
 DEFAULT_MAX_NETWORK_NODES = 50
 DEFAULT_MIN_EDGE_WEIGHT = 2
 DEFAULT_NETWORK_MAX_RESPONSE_BYTES = 1_000_000
@@ -171,6 +174,13 @@ class Settings(BaseSettings):
             "DEFAULT_TOP_N_FOR_RANKING", "CTVIZ_DEFAULT_TOP_N_FOR_RANKING"
         ),
         description="top_n used when the question asks for a ranking without a number.",
+    )
+    max_bars: int = Field(
+        default=DEFAULT_MAX_BARS,
+        gt=0,
+        validation_alias=AliasChoices("MAX_BARS", "CTVIZ_MAX_BARS"),
+        description="Categorical charts with more values and no top_n/bottom_n show the "
+        "top this many (with an Other bar where exact) and a readability_cap warning.",
     )
     max_network_nodes: int = Field(
         default=DEFAULT_MAX_NETWORK_NODES,

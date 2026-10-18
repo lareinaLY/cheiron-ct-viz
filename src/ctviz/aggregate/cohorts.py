@@ -49,6 +49,7 @@ def group_cohorts(
     bottom_n: int | None = None,
     citation_cap: int = DEFAULT_CITATION_CAP,
     as_of: date | None = None,
+    max_bars: int | None = None,
 ) -> GroupedCohorts:
     """Group each (label, records or counted buckets) cohort by `dimension` on a shared key order.
 
@@ -76,6 +77,10 @@ def group_cohorts(
       `key_order`). Values with no matching trials have no bucket, so they cannot be among
       the bottom N; the warning says so even when nothing is omitted. `top_n` in the
       result carries `direction` "fewest".
+    - `max_bars`: a categorical dimension with more known values than this, and neither
+      `top_n` nor `bottom_n`, is limited to `top_n = max_bars` exactly as above (Other
+      bar included where exact), with a readability_cap warning. A requested ranking is
+      never overridden; temporal and binned axes are never capped.
     - `cohorts_overlap` reports trials found in more than one cohort (see `cohorts_overlap`).
     """
     if top_n is not None and bottom_n is not None:
@@ -89,6 +94,11 @@ def group_cohorts(
     combined = combined_buckets(cohorts, [result for _, _, result in grouped], spec, as_of)
     key_order = [bucket.key for bucket in combined]
     overlap = cohorts_overlap(cohorts)
+    cap_warnings: list[Notice] = []
+    if top_n is None and bottom_n is None and max_bars is not None:
+        cap_warnings = readability_cap_warnings(spec, combined, max_bars)
+        if cap_warnings:
+            top_n = max_bars
     if top_n is None and bottom_n is None:
         return GroupedCohorts(
             dimension=dimension,
@@ -136,8 +146,27 @@ def group_cohorts(
         ),
         cohorts_overlap=overlap,
         assumptions=other_bucket_assumptions(spec, omitted, has_other),
-        warnings=tie_warnings(ties, cutoff),
+        warnings=[*cap_warnings, *tie_warnings(ties, cutoff)],
     )
+
+
+def readability_cap_warnings(
+    spec: DimensionSpec, combined: list[Bucket], max_bars: int
+) -> list[Notice]:
+    """The readability_cap warning when a categorical axis has more than `max_bars` values.
+
+    Unknown and Unrecognized are not counted: they are always shown and never ranked.
+    """
+    values = sum(1 for bucket in combined if not (bucket.is_unknown or bucket.is_unrecognized))
+    if spec.kind != DimensionKind.CATEGORICAL or values <= max_bars:
+        return []
+    return [
+        Notice.of(
+            NoticeCode.READABILITY_CAP,
+            f"Showing the {max_bars:,} most frequent of {values:,} {spec.plural_label}; "
+            "set top_n for more or fewer.",
+        )
+    ]
 
 
 def ranked_key_order(combined: list[Bucket], omitted: set[str], has_other: bool) -> list[str]:

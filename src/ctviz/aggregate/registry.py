@@ -287,7 +287,8 @@ class DimensionSpec:
     bucket exactly (see ApiCount); such a dimension must be single-valued, so its bucket
     counts add up to the cohort total. Without it the dimension is fetch-only.
     `estimate_kind` names the value that can be estimated (see EstimateKind); None means
-    estimated counts do not apply.
+    estimated counts do not apply. `plural` is the plural of `label` when adding "s" is
+    wrong ("location countries").
     """
 
     label: str
@@ -305,6 +306,12 @@ class DimensionSpec:
     api_count: ApiCount | None = None
     unknown_warning: str | None = None
     estimate_kind: EstimateKind | None = None
+    plural: str | None = None
+
+    @property
+    def plural_label(self) -> str:
+        """The label for several values, e.g. '2,755 lead sponsors'."""
+        return self.plural or f"{self.label}s"
 
     @property
     def other_bucket(self) -> bool:
@@ -662,6 +669,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
     Dimension.COUNTRY: DimensionSpec(
         label="location country",
         title_label="location country",
+        plural="location countries",
         description=(
             "Countries with at least one trial site; a trial with sites in several "
             "countries counts in each. For 'which countries', 'where', geographic "

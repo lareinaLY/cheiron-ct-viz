@@ -23,7 +23,12 @@ from typing import Any
 from ctviz.aggregate import build_network, counted_sample_problems, group_cohorts
 from ctviz.aggregate.drug_terms import matched_terms
 from ctviz.aggregate.registry import DIMENSIONS, DimensionKind
-from ctviz.config import CountRoutePolicy, DataQualityThresholds, NetworkLimits
+from ctviz.config import (
+    DEFAULT_MAX_BARS,
+    CountRoutePolicy,
+    DataQualityThresholds,
+    NetworkLimits,
+)
 from ctviz.errors import (
     InvalidFilterError,
     RateLimitError,
@@ -175,6 +180,7 @@ async def execute(
     count_route: CountRoutePolicy | None = None,
     request_id: str | None = None,
     llm_usage: LlmUsage | None = None,
+    max_bars: int = DEFAULT_MAX_BARS,
 ) -> VisualizationResponse:
     """Answer the planner's plan with live data.
 
@@ -191,9 +197,10 @@ async def execute(
     dimension, is counted exactly per bucket instead (`retrieval_route.retrieve_cohort`);
     when its sample records contradict their buckets it is fetched after all
     (timed as "retrieve_fallback").
-    `network_limits`, `data_quality_thresholds` and `count_route` default to the
-    configured defaults. `request_id` and `llm_usage` (the planner's LLM calls) are
-    copied into meta; without them meta.llm lists no calls.
+    `network_limits`, `data_quality_thresholds`, `count_route` and `max_bars` (the
+    readability cap on categorical charts) default to the configured defaults.
+    `request_id` and `llm_usage` (the planner's LLM calls) are copied into meta; without
+    them meta.llm lists no calls.
     """
     plan, question = interpretation.plan, interpretation.question
     limits = network_limits or NetworkLimits()
@@ -245,7 +252,7 @@ async def execute(
             ]
 
     with timer.stage("aggregate"):
-        result = await asyncio.to_thread(aggregate, plan, cohorts, as_of, limits)
+        result = await asyncio.to_thread(aggregate, plan, cohorts, as_of, limits, max_bars)
 
     with timer.stage("spec"):
         response = build_response(
@@ -579,9 +586,13 @@ def data_timestamp_warnings(problem: str | None) -> list[str]:
 
 
 def aggregate(
-    plan: QueryPlan, cohorts: Sequence[CohortData], as_of: date | None, limits: NetworkLimits
+    plan: QueryPlan,
+    cohorts: Sequence[CohortData],
+    as_of: date | None,
+    limits: NetworkLimits,
+    max_bars: int,
 ) -> GroupedCohorts | Graph:
-    """Dispatch to the network builder or the per-cohort grouping."""
+    """Dispatch to the network builder or the per-cohort grouping (readability-capped)."""
     if plan.relation is not None:
         return build_network(
             cohorts[0].records,
@@ -601,6 +612,7 @@ def aggregate(
         top_n=plan.top_n,
         bottom_n=plan.bottom_n,
         as_of=as_of,
+        max_bars=max_bars,
     )
 
 

@@ -304,10 +304,9 @@ def fit_network_budget(
     reduced = len(response.model_dump_json().encode())
     message = (
         f"The network response was {size / 1_000_000:.1f} MB, over the "
-        f"{max_response_bytes / 1_000_000:.1f} MB budget (NETWORK_MAX_RESPONSE_BYTES), so "
-        f"citations per edge were cut to {summary.edge_citation_cap} "
-        f"(NETWORK_REDUCED_EDGE_CITATION_CAP); no edge was dropped and each edge's "
-        "citation_count_total keeps the true number."
+        f"{max_response_bytes / 1_000_000:.1f} MB size limit, so citations per link were cut "
+        f"to {summary.edge_citation_cap}; no link was dropped, and each link still reports "
+        "its full number of studies."
     )
     if reduced > max_response_bytes:
         for element in response.visualization.nodes:
@@ -317,12 +316,12 @@ def fit_network_budget(
         summary.node_supporting_citations_dropped = True
         reduced = len(response.model_dump_json().encode())
         message += (
-            " Still over budget, so the supporting citations of nodes were dropped (each node "
+            " Still over the limit, so the supporting citations of nodes were dropped (each node "
             "keeps its primary citations)."
         )
     message += f" Size now {reduced / 1_000_000:.2f} MB."
     if reduced > max_response_bytes:
-        message += " The response is still over budget."
+        message += " The response is still over the limit."
     response.meta.warnings.append(Notice.of(NoticeCode.CITATIONS_REDUCED, message))
 
 
@@ -343,13 +342,12 @@ def fit_grouped_budget(
     reduced = len(response.model_dump_json().encode())
     message = (
         f"The response was {size / 1_000_000:.1f} MB, over the "
-        f"{max_response_bytes / 1_000_000:.1f} MB budget (NETWORK_MAX_RESPONSE_BYTES, shared "
-        f"by all charts), so citations per bar were cut to {reduced_citation_cap} "
-        "(NETWORK_REDUCED_EDGE_CITATION_CAP); no bar was dropped and each bar's "
-        f"cited_trials_total keeps the true number. Size now {reduced / 1_000_000:.2f} MB."
+        f"{max_response_bytes / 1_000_000:.1f} MB size limit, so citations per bar were cut "
+        f"to {reduced_citation_cap}; no bar was dropped, and each bar still reports its full "
+        f"number of studies. Size now {reduced / 1_000_000:.2f} MB."
     )
     if reduced > max_response_bytes:
-        message += " The response is still over budget."
+        message += " The response is still over the limit."
     response.meta.warnings.append(Notice.of(NoticeCode.CITATIONS_REDUCED, message))
 
 
@@ -440,9 +438,13 @@ def grouped_visualization(plan: QueryPlan, result: GroupedCohorts) -> Visualizat
             title="Cohort",
             sort=[cohort.label for cohort in result.cohorts],
         )
+    title = chart_title(plan)
+    if plan.top_n is None and plan.bottom_n is None and result.top_n is not None:
+        # The readability cap chose top_n; the title says so like a requested one.
+        title += f" (top {result.top_n.top_n})"
     return Visualization(
         type=chart_type,
-        title=chart_title(plan),
+        title=title,
         encoding=Encoding(x=x_channel(result, chart_type, data), y=COUNT_CHANNEL, color=color),
         data=data,
     )

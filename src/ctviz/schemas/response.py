@@ -146,6 +146,7 @@ class NoticeCode(StrEnum):
     FUTURE_PERIODS = "future_periods"
     TOP_N_APPLIED = "top_n_applied"
     TOPN_TIES = "topn_ties"
+    READABILITY_CAP = "readability_cap"
     OTHER_BUCKET = "other_bucket"
     CITATIONS_REDUCED = "citations_reduced"
     # Networks.
@@ -178,6 +179,7 @@ DEFAULT_SEVERITY: dict[NoticeCode, NoticeSeverity] = {
             NoticeCode.STATUS_TREND_BIAS,
             NoticeCode.COHORT_SUBSET,
             NoticeCode.TOPN_TIES,
+            NoticeCode.READABILITY_CAP,
             NoticeCode.FUTURE_PERIODS,
             NoticeCode.NETWORK_SEMANTICS,
         ),

@@ -31,7 +31,7 @@ from ctviz.schemas.response import (
     UnmatchedTerm,
 )
 from ctviz.schemas.trial import TrialRecord
-from ctviz.text import plural
+from ctviz.text import plural, verb
 
 
 @dataclass
@@ -455,20 +455,30 @@ def drug_class_assumptions(summary: NetworkSummary, screening: Screening) -> lis
 
 
 def trim_warnings(summary: NetworkSummary) -> list[Notice]:
-    """Report the readability caps whenever they removed anything (never trim silently)."""
+    """Report the readability caps whenever they removed anything (never trim silently).
+
+    The message is for analysts, so it names no setting; meta.network carries the caps
+    (`max_nodes`, `min_edge_weight`) and every count.
+    """
     if summary.nodes_shown == summary.nodes_total and summary.edges_shown == summary.edges_total:
         return []
+    nodes = (
+        f"the {summary.nodes_shown:,} most connected of {summary.nodes_total:,} nodes"
+        if summary.nodes_shown < summary.nodes_total
+        else f"all {summary.nodes_total:,} nodes"
+    )
     return [
         Notice.of(
             NoticeCode.NETWORK_TRIMMED,
-            f"Network trimmed for readability: showing {summary.nodes_shown} of "
-            f"{summary.nodes_total} nodes (highest weighted degree, cap MAX_NETWORK_NODES="
-            f"{summary.max_nodes}) and {summary.edges_shown} of {summary.edges_total} edges; "
-            f"{summary.edges_below_min_weight} edges below MIN_EDGE_WEIGHT="
-            f"{summary.min_edge_weight} trials and {summary.edges_with_omitted_node} edges to "
-            f"omitted nodes are not shown. "
-            f"{plural(summary.trials_without_shown_edge, 'trial')} with co-occurrences "
-            f"contribute no shown edge, and {plural(summary.trials_without_shown_node, 'trial')} "
-            "appear in no shown node. Node sizes still count every trial.",
+            f"Network trimmed for readability: showing {nodes} and {summary.edges_shown:,} of "
+            f"{summary.edges_total:,} links. Not shown: "
+            f"{plural(summary.edges_below_min_weight, 'link')} seen in fewer than "
+            f"{plural(summary.min_edge_weight, 'study', 'studies')}, and "
+            f"{plural(summary.edges_with_omitted_node, 'link')} to nodes not shown. "
+            f"{plural(summary.trials_without_shown_edge, 'study', 'studies')} with co-listed "
+            f"values add no shown link, and "
+            f"{plural(summary.trials_without_shown_node, 'study', 'studies')} "
+            f"{verb(summary.trials_without_shown_node, 'appears', 'appear')} in no shown node. "
+            "Node sizes still count every study.",
         )
     ]

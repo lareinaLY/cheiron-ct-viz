@@ -294,11 +294,13 @@ class TestReadabilityCaps:
             hub_records(), Relation.DRUG_DRUG_COOCCURRENCE, max_nodes=3, min_edge_weight=2
         )
         (message,) = [w for w in messages(graph.warnings) if "trimmed" in w]
-        assert "3 of 4 nodes" in message
-        assert "3 of 4 edges" in message
-        assert "MAX_NETWORK_NODES" in message
-        assert "MIN_EDGE_WEIGHT" in message
-        assert "2 trials" in message
+        assert "the 3 most connected of 4 nodes" in message
+        assert "3 of 4 links" in message
+        assert "0 links seen in fewer than 2 studies" in message
+        assert "2 studies with co-listed values add no shown link" in message
+        # Spec change (QA report, A6): setting names live in meta.network, not in the text.
+        assert "MAX_NETWORK_NODES" not in message
+        assert "MIN_EDGE_WEIGHT" not in message
 
     def test_sponsor_drug_trimming_keeps_both_node_types_eligible(self) -> None:
         merck = Sponsor(name="Merck", agency_class=AgencyClass.INDUSTRY)
@@ -390,7 +392,7 @@ class TestResponseSizeBudget:
         assert summary.edge_citations_reduced is True
         assert summary.edge_citation_cap == 2
         assert summary.response_bytes_before_reduction == len(full.model_dump_json().encode())
-        assert any("citations per edge" in w for w in messages(reduced.meta.warnings))
+        assert any("citations per link" in w for w in messages(reduced.meta.warnings))
 
     def test_no_reduction_under_budget(self) -> None:
         response = network_response(busy_graph(), max_response_bytes=10_000_000)
