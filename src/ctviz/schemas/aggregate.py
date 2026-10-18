@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from ctviz.schemas.citation import Citation
 from ctviz.schemas.plan import Dimension, Relation
-from ctviz.schemas.response import NetworkEdge, NetworkNode, TopNSummary
+from ctviz.schemas.response import NetworkEdge, NetworkNode, NetworkSummary, TopNSummary
 
 
 class Bucket(BaseModel):
@@ -54,12 +54,14 @@ class GroupResult(BaseModel):
 class Graph(BaseModel):
     """Output of `aggregate.build_network`.
 
-    `assumptions` and `warnings` are copied into the response meta by the spec stage.
+    `assumptions` and `warnings` are copied into the response meta by the spec stage, and
+    `summary` (set by `build_network`) becomes `meta.network`.
     """
 
     relation: Relation
     nodes: list[NetworkNode]
     edges: list[NetworkEdge]
+    summary: NetworkSummary | None = None
     assumptions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 

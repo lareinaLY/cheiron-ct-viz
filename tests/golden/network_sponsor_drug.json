@@ -1441,12 +1441,31 @@
       }
     ],
     "top_n": null,
+    "network": {
+      "excluded_terms": [],
+      "trials_with_excluded_terms": 0,
+      "max_nodes": null,
+      "min_edge_weight": 1,
+      "nodes_total": 18,
+      "nodes_shown": 18,
+      "edges_total": 17,
+      "edges_shown": 17,
+      "edges_below_min_weight": 0,
+      "edges_with_omitted_node": 0,
+      "trials_with_edges": 5,
+      "trials_without_shown_edge": 0,
+      "trials_without_shown_node": 0,
+      "edge_citation_cap": 20,
+      "edge_citations_reduced": false,
+      "response_bytes_before_reduction": null
+    },
     "estimated_count": null,
     "unknown_date_type_count": null,
     "data_timestamp": "2026-10-16T09:00:05",
     "assumptions": [
       "Sponsors are lead sponsors only; collaborators are not included.",
       "Intervention MeSH terms are study-level and include non-drug interventions (e.g. radiation, procedures).",
+      "Node type 'drug' marks an intervention MeSH term: the API does not link MeSH terms to intervention types (DRUG, RADIATION, PROCEDURE, ...), so non-drug therapies such as radiotherapy keep type 'drug' rather than a guessed type.",
       "Node size is the number of trials an entity appears in; a trial counts toward every entity it lists, so node sizes can add up to more than the number of trials."
     ],
     "warnings": [],

@@ -17,6 +17,7 @@ from datetime import date
 from typing import Any
 
 from ctviz.aggregate import build_network, group_cohorts
+from ctviz.config import NetworkLimits
 from ctviz.errors import SourceRecordError
 from ctviz.normalize import normalize_study
 from ctviz.planner import validate_plan
@@ -62,10 +63,11 @@ async def run(
     question: str,
     client: CtGovClient,
     as_of: date | None = None,
+    network_limits: NetworkLimits | None = None,
 ) -> VisualizationResponse:
     """Answer a plan supplied directly by code (no planner; planned_by "structured_fields")."""
     interpretation = Interpretation(question=question, plan=plan, planned_by="structured_fields")
-    return await execute(interpretation, client=client, as_of=as_of)
+    return await execute(interpretation, client=client, as_of=as_of, network_limits=network_limits)
 
 
 async def execute(
@@ -73,14 +75,17 @@ async def execute(
     *,
     client: CtGovClient,
     as_of: date | None = None,
+    network_limits: NetworkLimits | None = None,
 ) -> VisualizationResponse:
     """Answer the planner's plan with live data.
 
     Raises PlanValidationError or InvalidFilterError before any network call, and
     RetrievalError subclasses if the API cannot be reached. A record that fails to
-    normalize is skipped and reported, never fatal.
+    normalize is skipped and reported, never fatal. `network_limits` defaults to the
+    configured defaults (50 nodes, edge weight 2, 1 MB).
     """
     plan, question = interpretation.plan, interpretation.question
+    limits = network_limits or NetworkLimits()
     timer = StageTimer()
     started = time.perf_counter()
 
@@ -99,7 +104,7 @@ async def execute(
         ]
 
     with timer.stage("aggregate"):
-        result = aggregate(plan, cohorts, as_of)
+        result = aggregate(plan, cohorts, as_of, limits)
 
     with timer.stage("spec"):
         response = build_response(
@@ -117,6 +122,8 @@ async def execute(
                 *(a for data in cohorts for a in retrieval_assumptions(data, len(cohorts))),
             ],
             interpretation=interpretation,
+            max_response_bytes=limits.max_response_bytes,
+            reduced_edge_citation_cap=limits.reduced_edge_citation_cap,
         )
 
     timer.timings["total"] = round((time.perf_counter() - started) * 1000, 1)
@@ -185,11 +192,16 @@ def normalize_all(
 
 
 def aggregate(
-    plan: QueryPlan, cohorts: Sequence[CohortData], as_of: date | None
+    plan: QueryPlan, cohorts: Sequence[CohortData], as_of: date | None, limits: NetworkLimits
 ) -> GroupedCohorts | Graph:
     """Dispatch to the network builder or the per-cohort grouping."""
     if plan.relation is not None:
-        return build_network(cohorts[0].records, plan.relation)
+        return build_network(
+            cohorts[0].records,
+            plan.relation,
+            max_nodes=limits.max_nodes,
+            min_edge_weight=limits.min_edge_weight,
+        )
     if plan.dimension is None:
         raise ValueError("A validated plan has a dimension or a relation.")
     return group_cohorts(

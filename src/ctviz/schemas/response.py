@@ -38,6 +38,18 @@ class NodeType(StrEnum):
     CONDITION = "condition"
 
 
+class ExclusionReason(StrEnum):
+    """Why an intervention MeSH term is not drawn as a network node.
+
+    - comparator: no active treatment (standard of care, observation, placebo vehicle).
+    - mesh_mismapping: the derived MeSH term is not an intervention at all (e.g. "Taxes"
+      derived from "taxane").
+    """
+
+    COMPARATOR = "comparator"
+    MESH_MISMAPPING = "mesh_mismapping"
+
+
 class FieldType(StrEnum):
     """Vega-Lite measurement type of an encoded field."""
 
@@ -92,6 +104,50 @@ class NetworkEdge(BaseModel):
     weight: int
     citations: list[Citation] = Field(default_factory=list)
     citation_count_total: int
+
+
+class ExcludedTerm(BaseModel):
+    """A deny-listed MeSH term that was left out of a network, and how many trials listed it."""
+
+    id: str = Field(description="MeSH id, e.g. 'D059039'.")
+    label: str = Field(description="MeSH term as observed, e.g. 'Standard of Care'.")
+    reason: ExclusionReason
+    trials: int = Field(description="Trials in the result set that list this term.")
+
+
+class NetworkSummary(BaseModel):
+    """What a network response leaves out, and why (invariant 3: nothing is silent).
+
+    Counts with `_total` describe the graph after deny-list exclusion and before the
+    readability caps; `_shown` describe what the response contains. A trial "without a
+    shown edge" contributed at least one edge before trimming and none after; a trial
+    "without a shown node" appeared in at least one node before trimming and in none after.
+    """
+
+    excluded_terms: list[ExcludedTerm] = Field(default_factory=list)
+    trials_with_excluded_terms: int = 0
+    max_nodes: int | None = Field(description="Node cap; None means no cap.")
+    min_edge_weight: int = Field(description="Edges with fewer co-occurring trials are omitted.")
+    nodes_total: int
+    nodes_shown: int
+    edges_total: int
+    edges_shown: int
+    edges_below_min_weight: int
+    edges_with_omitted_node: int = Field(
+        description="Edges at or above the weight threshold dropped because an endpoint "
+        "was omitted by the node cap."
+    )
+    trials_with_edges: int
+    trials_without_shown_edge: int
+    trials_without_shown_node: int
+    edge_citation_cap: int = Field(
+        description="Citations kept per edge (citation_count_total keeps the true number)."
+    )
+    edge_citations_reduced: bool = Field(
+        default=False,
+        description="True when edge citations were cut to fit the response size budget.",
+    )
+    response_bytes_before_reduction: int | None = None
 
 
 class NodeElement(BaseModel):
@@ -250,6 +306,9 @@ class Meta(BaseModel):
     coverage: float | None = Field(description="records_retrieved / total_matched.")
     cohorts: list[CohortStats] = Field(default_factory=list)
     top_n: TopNSummary | None = None
+    network: NetworkSummary | None = Field(
+        default=None, description="Exclusions and readability caps; networks only."
+    )
     estimated_count: int | None = Field(
         description="Trials counted via an estimated value, summed over cohorts; None for networks."
     )

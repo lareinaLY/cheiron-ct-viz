@@ -124,7 +124,9 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
             today=date.today(),
             default_top_n_for_ranking=settings.default_top_n_for_ranking,
         )
-        return await pipeline.execute(interpretation, client=client)
+        return await pipeline.execute(
+            interpretation, client=client, network_limits=settings.network_limits()
+        )
 
     return app
 

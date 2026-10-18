@@ -53,6 +53,8 @@ def build_response(
     warnings: Sequence[str] = (),
     assumptions: Sequence[str] = (),
     interpretation: Interpretation | None = None,
+    max_response_bytes: int | None = None,
+    reduced_edge_citation_cap: int = 2,
 ) -> VisualizationResponse:
     """Build the chart spec and its meta block.
 
@@ -64,6 +66,8 @@ def build_response(
     - Graphs become Cytoscape-style `nodes`/`edges` elements.
     - Meta carries the count unit, retrieval totals summed over cohorts, per-cohort
       stats, and every assumption and warning (aggregate ones after the caller's).
+    - A network response larger than `max_response_bytes` keeps every edge but cuts each
+      edge's citations to `reduced_edge_citation_cap` (see `fit_network_budget`).
     """
     if isinstance(result, Graph):
         visualization = network_visualization(plan, result)
@@ -110,7 +114,43 @@ def build_response(
         warnings=unique([*warnings, *result_warnings]),
         timing_ms=timing_ms,
     )
-    return VisualizationResponse(visualization=visualization, meta=meta)
+    response = VisualizationResponse(visualization=visualization, meta=meta)
+    if isinstance(result, Graph) and result.summary is not None:
+        meta.network = result.summary.model_copy()
+        if max_response_bytes is not None:
+            fit_network_budget(response, max_response_bytes, reduced_edge_citation_cap)
+    return response
+
+
+def fit_network_budget(
+    response: VisualizationResponse, max_response_bytes: int, reduced_edge_citation_cap: int
+) -> None:
+    """Cut edge citations (never edges) when the serialized response is over budget.
+
+    Edges carry most of a large network's bytes; dropping edges would change the graph,
+    while fewer citations per edge keep every edge cited and `citation_count_total`
+    still gives the true number. The reduction is stated in meta.
+    """
+    size = len(response.model_dump_json().encode())
+    summary = response.meta.network
+    if size <= max_response_bytes or summary is None:
+        return
+    for element in response.visualization.edges:
+        element.data.citations = element.data.citations[:reduced_edge_citation_cap]
+    summary.edge_citation_cap = min(summary.edge_citation_cap, reduced_edge_citation_cap)
+    summary.edge_citations_reduced = True
+    summary.response_bytes_before_reduction = size
+    reduced = len(response.model_dump_json().encode())
+    message = (
+        f"The network response was {size / 1_000_000:.1f} MB, over the "
+        f"{max_response_bytes / 1_000_000:.1f} MB budget (NETWORK_MAX_RESPONSE_BYTES), so "
+        f"citations per edge were cut to {summary.edge_citation_cap} "
+        f"(NETWORK_REDUCED_EDGE_CITATION_CAP); no edge was dropped and each edge's "
+        f"citation_count_total keeps the true number. Size now {reduced / 1_000_000:.2f} MB."
+    )
+    if reduced > max_response_bytes:
+        message += " The response is still over budget."
+    response.meta.warnings.append(message)
 
 
 def chart_title(plan: QueryPlan) -> str:

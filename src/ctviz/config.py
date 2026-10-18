@@ -4,10 +4,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_TOP_N_FOR_RANKING = 15
+DEFAULT_MAX_NETWORK_NODES = 50
+DEFAULT_MIN_EDGE_WEIGHT = 2
+DEFAULT_NETWORK_MAX_RESPONSE_BYTES = 1_000_000
+DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP = 2
+
+
+class NetworkLimits(BaseModel):
+    """Readability and size limits for network responses, passed from settings to the pipeline."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_nodes: int = DEFAULT_MAX_NETWORK_NODES
+    min_edge_weight: int = DEFAULT_MIN_EDGE_WEIGHT
+    max_response_bytes: int = DEFAULT_NETWORK_MAX_RESPONSE_BYTES
+    reduced_edge_citation_cap: int = DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP
 
 
 class Settings(BaseSettings):
@@ -69,3 +84,41 @@ class Settings(BaseSettings):
         ),
         description="top_n used when the question asks for a ranking without a number.",
     )
+    max_network_nodes: int = Field(
+        default=DEFAULT_MAX_NETWORK_NODES,
+        gt=0,
+        validation_alias=AliasChoices("MAX_NETWORK_NODES", "CTVIZ_MAX_NETWORK_NODES"),
+        description="Networks keep this many highest-degree nodes.",
+    )
+    min_edge_weight: int = Field(
+        default=DEFAULT_MIN_EDGE_WEIGHT,
+        gt=0,
+        validation_alias=AliasChoices("MIN_EDGE_WEIGHT", "CTVIZ_MIN_EDGE_WEIGHT"),
+        description="Network edges with fewer co-occurring trials are omitted.",
+    )
+    network_max_response_bytes: int = Field(
+        default=DEFAULT_NETWORK_MAX_RESPONSE_BYTES,
+        gt=0,
+        validation_alias=AliasChoices(
+            "NETWORK_MAX_RESPONSE_BYTES", "CTVIZ_NETWORK_MAX_RESPONSE_BYTES"
+        ),
+        description="Above this size, network edge citations are cut (edges are kept).",
+    )
+    network_reduced_edge_citation_cap: int = Field(
+        default=DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP,
+        gt=0,
+        validation_alias=AliasChoices(
+            "NETWORK_REDUCED_EDGE_CITATION_CAP", "CTVIZ_NETWORK_REDUCED_EDGE_CITATION_CAP"
+        ),
+        description="Citations kept per edge when over the size budget; 2 cites both "
+        "endpoints in one trial.",
+    )
+
+    def network_limits(self) -> NetworkLimits:
+        """The network caps as one value for the pipeline."""
+        return NetworkLimits(
+            max_nodes=self.max_network_nodes,
+            min_edge_weight=self.min_edge_weight,
+            max_response_bytes=self.network_max_response_bytes,
+            reduced_edge_citation_cap=self.network_reduced_edge_citation_cap,
+        )
