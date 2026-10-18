@@ -29,7 +29,7 @@ data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) retur
 `Interpretation` (`schemas/response.py`):
 - With an LLM (a key for at least one provider in `LLM_FALLBACK_CHAIN`): `prompt.py`
   builds the messages and `llm.py` returns an `LlmPlanDraft`: filter sets per cohort,
-  the grouping, `ranking_intent`, `unsupported_reason` and `clarification`.
+  the grouping, `ranking_direction`, `unsupported_reason` and `clarification`.
   `FallbackChain` tries the configured providers in order (default
   `openai:gpt-4.1-mini`; optionally `deepseek:deepseek-chat`). Each is an
   `OpenAICompatibleProvider` with one SDK retry on transient errors, asked in its
@@ -52,10 +52,13 @@ data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) retur
   labels are derived from the merged filters, never taken from the LLM. The plan is then
   validated (`validate_plan` plus the query builder's filter checks). A rejected draft is
   retried once with the error appended to the conversation; a second rejection is a
-  `planning_failed` error. When the draft flags `ranking_intent` ("which countries have
-  the most ...") and neither the question nor the request gives `top_n`, the planner
-  sets `top_n` to `DEFAULT_TOP_N_FOR_RANKING` (15) and records it in `ranking_top_n`;
-  the LLM never picks the number, and relations are never trimmed. `planned_by="llm"`,
+  `planning_failed` error. The draft's `ranking_direction` sets the ranking: "most"
+  ("which countries have the most ...") gives `top_n`, "fewest" gives `bottom_n` (the N
+  known buckets with the fewest trials; a number from the question moves from the
+  draft's `top_n` to `bottom_n`). Without a number the planner uses
+  `DEFAULT_TOP_N_FOR_RANKING` (15) and records it in `ranking_top_n`. A `top_n` sent in
+  the request wins over either direction. The LLM never picks the number, and relations
+  are never trimmed. `planned_by="llm"`,
   with `model` (primary of the chain), `provider`, `model_used` (as reported by the
   provider), `response_mode`, `fallback_reason`, `draft`, `overrides`,
   `rejected_attempts`, `ranking_top_n` and `planning_ms`.

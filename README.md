@@ -26,7 +26,8 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
     "encoding": {
       "x": {"field": "label", "type": "nominal", "title": "Phase",
             "sort": ["Early Phase 1", "Phase 1", "Phase 1/Phase 2", "Phase 2", "Phase 2/Phase 3",
-                     "Phase 3", "Phase 4", "Not Applicable", "Unknown"]},
+                     "Phase 3", "Phase 4", "Not Applicable",
+                     "Not applicable (observational / expanded access)"]},
       "y": {"field": "count", "type": "quantitative", "title": "Trials"},
       "color": {"field": "cohort", "type": "nominal", "title": "Cohort"}
     },
@@ -37,42 +38,33 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
                       "value": ["PHASE2"], "url": "https://clinicaltrials.gov/study/NCT…",
                       "role": "primary"} /* … up to 20 */]},
       {"key": "Phase 2", "label": "Phase 2", "cohort": "nivolumab", "count": 765, "…": "…"},
-      {"key": "Unknown", "label": "Unknown", "cohort": "pembrolizumab", "count": 67,
-       "is_unknown": true, "…": "…"}
-      /* 18 data points: 9 phase buckets × 2 cohorts */
+      {"key": "Not applicable (observational / expanded access)", "cohort": "pembrolizumab",
+       "count": 67, "is_unknown": false,
+       "citations": [{"field_path": "protocolSection.designModule.studyType",
+                      "value": "OBSERVATIONAL", "…": "…"}]}
+      /* 18 data points: 9 phase buckets × 2 cohorts; neither cohort has an Unknown phase */
     ]
   },
   "meta": {
     "interpretation": {"question": "…", "planned_by": "llm",
                        "model_used": "gpt-4.1-mini-2025-04-14", "plan": {"…": "…"}},
+    "count_unit": "registered studies (interventional and observational, any status)",
     "retrieval_route": "fetch",
     "cohorts": [
       {"label": "pembrolizumab", "total_matched": 2642, "records_retrieved": 2642,
-       "records_skipped": 0, "reconciled": true, "coverage": 1.0},
+       "records_skipped": 0, "reconciled": true, "coverage": 1.0, "withdrawn": 122,
+       "drug_matched_terms": [{"term": "pembrolizumab", "trials": 2570}]},
       {"label": "nivolumab", "total_matched": 1760, "records_retrieved": 1760, "…": "…"}
     ],
     "cohorts_overlap": {"pairs": [{"cohorts": ["pembrolizumab", "nivolumab"],
                                    "shared_trials": 173}], "total_shared": 173},
     "data_quality": "normal",
     "data_timestamp": "2026-10-16T09:00:05",
-    "warnings": ["pembrolizumab: 67 of 2642 trials have no phase; …", "…"],
-    "timing_ms": {"retrieve": 2583.7, "normalize": 217.2, "aggregate": 25.3, "total": 2827.1}
+    "warnings": ["pembrolizumab: 122 withdrawn studies (never enrolled) are included …", "…"],
+    "timing_ms": {"retrieve": 2004.0, "normalize": 213.7, "aggregate": 26.2, "total": 2249.8}
   }
 }
 ```
-
-> **Examples are one schema version behind.** The files in `examples/` were generated before
-> the last review-fix batch, and they are regenerated in a separate step. The counts above are
-> unchanged under the current code. The current code differs in five ways:
-> - `count_unit` reads "registered studies (interventional and observational, any status)".
-> - Phase-less observational and expanded-access studies move out of "Unknown" into their own
->   bucket.
-> - Drug co-occurrence has a new title.
-> - `meta.cohorts[]` gains `drug_matched_terms` and `withdrawn`.
-> - Status and sponsor-class buckets get display labels.
->
-> Examples a, b and d still use the old name-only drug match (2,575 rather than 2,642
-> pembrolizumab trials), as the engineering review noted (H1).
 
 ---
 
@@ -89,6 +81,11 @@ key is optional (see below).
 | pip, editable | `pip install -e .` | Resolves from `pyproject.toml` ranges. Dev tools (`pytest`, `respx`, `ruff`, …) are in `[dependency-groups].dev` and must be installed separately |
 | pip, pinned | `pip install -r requirements.txt` | Exported from `uv.lock` with `uv export --format requirements-txt --no-dev --no-hashes -o requirements.txt` (see its header). It pins runtime dependencies only and installs the package itself via `-e .`. Regenerate it after changing the lock |
 
+A venv created by `uv venv` has no pip, and a bare `pip` may resolve to another Python (on the
+test machine it hit Homebrew's 3.11 and failed with "requires a different Python"). Inside
+the venv run `python -m ensurepip --upgrade` once, then `python -m pip install -r
+requirements.txt`, or use `uv pip install --python .venv -r requirements.txt`.
+
 **Configure:** `cp .env.example .env`, then set what you need. The app never prints keys.
 
 | Variable | Default | What it does |
@@ -98,7 +95,7 @@ key is optional (see below).
 | `LLM_FALLBACK_CHAIN` | `openai:gpt-4.1-mini` | Ordered `provider:model` list, tried in order on infrastructure failures only. Example: `openai:gpt-4.1-mini,deepseek:deepseek-chat` |
 | `DEEPSEEK_API_KEY` | empty | Optional fallback provider. Providers without a key are skipped at startup |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek endpoint |
-| `DEFAULT_TOP_N_FOR_RANKING` | `15` | `top_n` that code applies when a question asks for "the most …" without a number |
+| `DEFAULT_TOP_N_FOR_RANKING` | `15` | `top_n` (or `bottom_n`) that code applies when a question asks for "the most …" (or "the fewest …") without a number |
 | `CTGOV_BASE_URL` | `https://clinicaltrials.gov/api/v2` | Registry API |
 | `DEGRADED_SKIP_RATIO` | `0.05` | Share of unreadable records per cohort that marks a result `degraded` |
 | `REFUSE_SKIP_RATIO` | `0.5` | Share at which no chart is returned (502) |
@@ -139,11 +136,13 @@ curl -s -X POST http://127.0.0.1:8000/query -H 'content-type: application/json' 
 **Test:**
 
 ```bash
-uv run pytest                 # 701 offline tests (default: -m 'not live'), about 5 s
+uv run pytest                 # 761 offline tests (default: -m 'not live'), about 5 s
 uv run pytest -m live         # the 7 live tests (real ClinicalTrials.gov API; prompt-injection tests also need a key)
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run python scripts/eval_planner.py --models gpt-4.1-mini          # planner eval, needs a key
 uv run python scripts/eval_planner.py --ids <case_id> ...             # run selected cases
+uv run python scripts/eval_planner.py --models gpt-4.1-mini gpt-5-mini --repeats 3 --paraphrases 2 \
+  --concurrency 4 --output docs/planner_eval.md                       # the run in §6
 ```
 
 ---
@@ -202,7 +201,7 @@ cohort, and each override is listed in `meta.interpretation.overrides`.
 | `cohorts[]` | Per cohort: <ul><li>`label`, `total_matched`, `records_retrieved`, `records_skipped`</li><li>`truncated`, `coverage`, `reconciled`, `retrieval_route`</li><li>`count_requests`, `count_remainder`</li><li>`drug_matched_terms[]`: `{term, trials}`, the intervention MeSH terms whose name contains the drug string</li><li>`withdrawn`: WITHDRAWN studies counted</li></ul>The last two are null on the count route |
 | `cohorts_overlap` | `{pairs[{cohorts, shared_trials}], total_shared}`. Null for one cohort, for networks, or when a cohort was counted per bucket |
 | `data_quality` | `normal`, `degraded` (≥ `DEGRADED_SKIP_RATIO` unreadable) or `partial` (record cap hit) |
-| `top_n` | `{top_n, omitted_keys, trials_omitted{cohort: n}}`: the studies visible only in omitted buckets |
+| `top_n` | `{top_n, direction, omitted_keys, trials_omitted{cohort: n}}`. `direction` is `most` (the plan's `top_n`) or `fewest` (the plan's `bottom_n`); `trials_omitted` counts the studies visible only in omitted buckets |
 | `network` | Networks only: <ul><li>`excluded_terms` (with reason and trials), `unmatched_terms`</li><li>`drug_class_nodes_total`/`_shown`</li><li>node and edge totals vs shown, trials without a shown edge or node</li><li>`edge_citation_cap`, `edge_citations_reduced`, `response_bytes_before_reduction`</li></ul> |
 | `estimated_count`, `unknown_date_type_count` | Totals for temporal and enrollment charts. Null when not determined |
 | `data_timestamp` | The API's `dataTimestamp` from `/version`. Null, with a warning, if `/version` failed |
@@ -263,7 +262,7 @@ performs network I/O. `normalize/`, `aggregate/` and `spec/` are pure functions.
 API enums, and ends with 8 few-shot examples that a test validates. The LLM returns an
 `LlmPlanDraft`:
 - filters per cohort and a dimension or relation;
-- `ranking_intent`;
+- `ranking_direction` (`most`, `fewest` or null);
 - `unsupported_reason` or `clarification`;
 - `unhandled_terms`.
 
@@ -336,15 +335,15 @@ request (decisions 85–90):
 **The LLM boundary.** The model produces a schema-constrained draft: enums, filter strings and
 a grouping. It never produces numbers, labels or titles. Every draft goes through the same
 validator and filter checks as structured input. Counts come only from retrieval.
-`ranking_intent` lets the model say "this is a ranking question"; code picks the number
-(`top_n` 15).
+`ranking_direction` lets the model say "this asks for the most" or "the fewest"; code
+picks the number (`top_n` or `bottom_n` 15).
 
 ---
 
 ## 5. Design decisions and tradeoffs
 
 Format: **decision** — reason — *rejected alternative*. Numbers in parentheses refer to
-lines in [docs/decisions.md](docs/decisions.md), which has 110 entries.
+lines in [docs/decisions.md](docs/decisions.md), which has 114 entries.
 
 **Platform**
 - **No agent framework; fixed plan → validate → execute (7, 47).** The LLM's only job is one
@@ -446,9 +445,13 @@ lines in [docs/decisions.md](docs/decisions.md), which has 110 entries.
   8,078). Values with `"`, `()`, `[]`, uppercase `AND`/`OR`/`NOT`, `\` or control characters
   return `invalid_filter_value` before any LLM or API call. *Escaping; quoting; stripping
   silently.*
-- **`ranking_intent`: the LLM flags a ranking, code picks the number (55).** Showing 65 countries
-  does not answer "which have the most", and a number chosen by the LLM would be an invented
-  parameter (invariant 1). *LLM-chosen `top_n`.*
+- **`ranking_direction`: the LLM flags most or fewest, code picks the number (55, 114).**
+  Showing 65 countries does not answer "which have the most", and a number chosen by the
+  LLM would be an invented parameter (invariant 1). "Fewest" keeps the N known buckets with
+  the fewest trials (`bottom_n`, title "(bottom 15)"). Unknown and Unrecognized are shown but
+  never ranked. This replaced a boolean `ranking_intent`: `gpt-5-mini` set it for "fewest"
+  on 6 of 9 eval runs, which charted the 15 *largest* countries. *LLM-chosen `top_n`;
+  leaving "fewest" untrimmed.*
 - **`unhandled_terms` (104).** The LLM lists the parts of the question no filter expresses
   ("combination", "first-line"). Each becomes a "Not applied: 'X' …" warning and is echoed in
   `meta.interpretation`. A silently dropped qualifier turned "combination trials" into "all
@@ -493,8 +496,11 @@ request already logs (`normalize cohort= … skip_ratio= band=`).
 
 - Order alone changes the truncated answer: with the API's default order, Phase 2 was 2,094 of
   10,000, against 1,699 sorted.
-- The count route needed 10 requests and 12.0 s, against 13.1 s for the truncated fetch, and
-  is exact.
+- The count route needed 11 requests and 12.1 s (example i), against 13.1 s for the truncated
+  fetch, and is exact.
+- The table was measured before observational studies got their own bucket. Under the current
+  code, example i splits the exact 3,728 into 3,726 "Not applicable (observational / expanded
+  access)" and 2 Unknown.
 
 **Poison records.** `tests/test_poison_records.py` mixes 20 good records with 5 dirty ones:
 - no NCT ID (skipped and reported);
@@ -525,35 +531,61 @@ Live prompt injection (decisions 78, 81):
 **Golden snapshots.** `tests/golden/*.json` pin four full responses (bar, time series, grouped
 bar, network). Regenerating them requires `UPDATE_GOLDEN=1` and a reviewed diff.
 
-**Planner eval** ([docs/planner_eval.md](docs/planner_eval.md)). On 2026-10-17, 15 questions
-covering trend, distribution, comparison, geographic, network, unsupported and ambiguous were
-run through the real planner (prompt, merge, validation, retry):
+**Planner eval** ([docs/planner_eval.md](docs/planner_eval.md)). On 2026-10-18 the real
+planner (prompt, merge, validation, retry) was run on the current prompt, which includes
+`ranking_direction`, with `--repeats 3 --paraphrases 2`:
+- 25 seed questions: trend, distribution, comparison, geographic, network, unsupported,
+  ambiguous, unhandled terms, and robustness (misspelling, "pembro", "NSCLC", Chinese,
+  "fewest", "since 2015").
+- 50 LLM-generated paraphrases of them.
 
-| Model | All fields correct | Mean latency | p50 | Max | Retries |
-|---|---|---|---|---|---|
-| `gpt-4.1-mini` | 15/15 | 1.2 s | 1.2 s | 1.4 s | 0 |
-| `gpt-5-mini` | 15/15 | 6.6 s | 5.9 s | 10.7 s | 0 |
+A case is *stable* when all 3 repeats get every field right.
 
-- Run-to-run variance is real: in an earlier run, `gpt-5-mini` asked a spurious clarification
-  in 1 of 5 repeats of the monthly question.
-- Three cases were added later and each was run alone with `--ids` on `gpt-4.1-mini`:
-  - the ranking default passed on 2026-10-17;
-  - the two unhandled-term questions both scored `unhandled_terms` correctly;
-  - one of those missed `filters` with an invented `start_year_to`, and passed (twice) after
-    the year-bound prompt rule was added.
-- The full set (18 cases) has not been re-run on the current prompt.
+| Model | Seed cases stable | Paraphrase cases stable | Stable pass rate (all 75) | Per-run pass rate | Mean latency | p50 | Max | Retries |
+|---|---|---|---|---|---|---|---|---|
+| `gpt-4.1-mini` | 23/25 | 40/50 | 84% | 197/225 (88%) | 1.0 s | 0.9 s | 2.1 s | 0 |
+| `gpt-5-mini` | 23/25 | 40/50 | 84% | 199/225 (88%) | 6.1 s | 4.8 s | 23.2 s | 0 |
+
+- **Previous prompt:** before the fix, the same set gave `gpt-5-mini` 22/25 and 38/50 (80%);
+  `gpt-4.1-mini` was unchanged at 84%.
+- **"Fewest" is fixed:** 3/3 on both models, seed and paraphrases. Before the fix, `gpt-5-mini`
+  charted the 15 *largest* countries on 6 of 9 runs. No wrong-chart miss remains.
+- **The Chinese question** gets its name copied verbatim by both models, which matches
+  nothing; neither maps nor declines it.
+- **One silent drop:** `gpt-4.1-mini` once planned "by phase" and dropped "which countries"
+  without listing it as unhandled (`multi_intent`, 1 of 3).
+- **One new miss, a safe one:** `gpt-5-mini` asked whether "locations" meant countries or
+  sites on one Pfizer paraphrase (2 of 3).
+- **Paraphrase drift:** three paraphrase cases fail because the generator "corrected"
+  "pembrolizumb" and expanded "pembro"/"nivo", so the inherited expectation no longer fits.
+  Without them, both models are 40/47.
+- **Default model:** `gpt-4.1-mini` stays the default (about 6x faster at the same rate).
 
 The eval's limitations section, verbatim:
 
-> - 15 questions detect systematic failures (a query class the planner cannot map, a rule
->   it ignores), not statistically robust accuracy: one miss moves a field by 7-8 points,
->   and a perfect score does not mean the planner is always right.
+> - 25 seed questions detect systematic failures (a query class the planner cannot
+>   map, a rule it ignores), not statistically robust accuracy: one miss moves a field by
+>   about 4 points, and a perfect score does not mean the planner is always right.
 > - Results are for one prompt version on one day. Model outputs vary between runs at the
 >   same settings, providers update models behind the same name, and any change to the
 >   prompt, few-shot examples or registry descriptions needs a new run.
 > - Questions were written by the developer of the prompt, so they share its vocabulary;
 >   real users phrase questions differently and misspell names.
 > - Latency is wall-clock time from one machine, including the network and any retry.
+> - The paraphrase cases were generated by an LLM (the configured planner model), not by
+>   real users, and each inherits its seed's expectations unchecked: a paraphrase that
+>   drifted in meaning would be scored against the wrong answer. They test robustness to
+>   rewording, not to the vocabulary or mistakes of real users.
+
+**A decision the eval reversed.** "Fewest" questions were left untrimmed by design, and
+`fewest_is_not_ranking` was written to confirm that. In the 2026-10-18 run, `gpt-5-mini`
+flagged "fewest" as a ranking on 6 of 9 runs, so code kept the 15 *largest* countries: a
+wrong chart, not a safe 422. The fix gives the plan a direction (`ranking_direction` →
+`bottom_n`, decision 114) rather than a stronger prompt rule; the ranking re-run passed
+27/27 runs per model. Two process lessons:
+- A rule that relies on the LLM *not* doing something needs a case that scores the chart,
+  and the full set is re-run after every prompt change, not only the related cases.
+- Run repeats on every candidate model: `gpt-4.1-mini` was 9/9, so one default run hid it.
 
 **Independent review.** Three review sessions ran against a finished tree, each in a separate
 persona:
@@ -580,7 +612,11 @@ All three agreed the arithmetic is right and several framings mislead. Fixed fro
 
 What was not fixed is in §8.
 
-**Tests:** 708 total. 701 run offline in about 5 s against captured fixtures (`tests/fixtures/`),
+**Verified cold start.** On 2026-10-18 a clean clone was installed with `uv sync` (701/701
+tests passed at that commit), served `/health` and `/query`, and was also installed from
+`requirements.txt` into a fresh Python 3.12 venv.
+
+**Tests:** 768 total. 761 run offline in about 5 s against captured fixtures (`tests/fixtures/`),
 `respx` HTTP mocks and fake LLMs. 7 are marked `live`. Normalize, aggregate, the registries,
 chart selection and the validator were written test-first. `ruff check` and `ruff format` are
 clean. `bandit` reports only `assert` usage (B101, 6 low). `pip-audit` reports no known
@@ -651,6 +687,10 @@ limitations"), verbatim:
 - **The sponsor network is lead sponsors only.** MSD is lead sponsor on 267 of 2,642
   pembrolizumab trials and a collaborator on 791 more, about 40% with both roles. The network
   shows 10% (domain #5).
+- **"Fewest" ranks only values with at least one trial.** A value with no matching trials has
+  no bucket, so it cannot appear among the bottom N. For open dimensions (countries,
+  sponsors, conditions) the full list of possible values is unknown, so "the countries with
+  the fewest trials" cannot include countries with none. The warning and assumption say so.
 - **C ids (supplementary concepts) are not classified.** A disease or organism SCR mapped from
   an intervention would be drawn as a `drug` node. None was noticed among the top hubs, but
   the 388 C ids were not checked individually (api_findings §18).
@@ -672,6 +712,8 @@ limitations"), verbatim:
   texts still contain codes and engineering terms (`MAX_NETWORK_NODES=50`) (user #10).
 - Warnings and assumptions are free strings. A UI cannot rank them by severity (M8, user §3).
 - No "did you mean" for unmatched names: "pembro" returns an empty chart with a note (user #5).
+- `bottom_n` is not on `QueryRequest`: structured callers get a bottom-N chart only through
+  the question.
 - No ranked edge table next to networks, and no CSV export (user #9 and §3).
 - Unsupported-question messages can misstate what the registry holds, and the suggestions are
   generic (user #9).
@@ -795,9 +837,9 @@ src/ctviz/
   pipeline.py             stage orchestration and meta messages
   config.py               settings
   data/mesh_trees.json    NLM MeSH 2025 tree numbers (packaged)
-tests/                    35 test modules plus factories.py; fixtures/, golden/, eval/questions.yaml
+tests/                    36 test modules plus factories.py; fixtures/, golden/, eval/questions.yaml
 scripts/                  explore_api.py, capture_fixtures.py, fetch_mesh_trees.py, eval_planner.py
-examples/                 9 request/response pairs (a–i), one schema version behind (see §1)
+examples/                 9 request/response pairs (a–i), regenerated live on 2026-10-18
 docs/                     architecture.md, decisions.md, api_findings.md, planner_eval.md, review_*.md
 ```
 
