@@ -581,3 +581,31 @@ file is kept and listed as `unmatched_in_tree`.
   Spectroscopy 18, Radiotherapy 23, Radiation 28, Biopsy 30 and Drug Therapy 34 among the
   50 shown nodes. In the sponsor-drug network, Specimen Handling and Magnetic Resonance
   Spectroscopy were drug hubs 6 and 7 (degree 67 and 64) and are now gone.
+
+## 19. Network node ranking: plain vs weighted degree (measured 2026-10-18 10:21 PT)
+
+Drug co-occurrence network for pembrolizumab (example h, `intervention_name` match mode,
+2,642 trials), top 10 of the 50 shown nodes before and after the ranking changed from plain
+degree (number of distinct neighbours) to weighted degree (sum of incident edge weights after
+the `MIN_EDGE_WEIGHT` cut; decisions.md, weighted degree entry):
+
+| Rank | Plain degree (before) | Weighted degree (after) |
+|---|---|---|
+| 1 | pembrolizumab | pembrolizumab (3143) |
+| 2 | Nivolumab | Carboplatin (1359) |
+| 3 | Carboplatin | Cisplatin (997) |
+| 4 | Bevacizumab | Paclitaxel (973) |
+| 5 | olaparib | Pemetrexed (795) |
+| 6 | atezolizumab | Gemcitabine (518) |
+| 7 | durvalumab | Fluorouracil (502) |
+| 8 | lenvatinib | Nivolumab (490) |
+| 9 | Ipilimumab | Oxaliplatin (388) |
+| 10 | Paclitaxel | nab-paclitaxel (380) |
+
+Plain degree ranks drugs that appear next to many different drugs, which favours other
+checkpoint inhibitors and drugs listed in umbrella and platform protocols. Weighted degree
+ranks drugs that repeatedly appear with the same partners, and the top 10 becomes the
+platinum-doublet chemotherapy backbone pembrolizumab is combined with in practice
+(carboplatin or cisplatin with paclitaxel, pemetrexed or gemcitabine). Edges are still
+co-listing, not co-administration (decisions.md): Nivolumab stays in the top 10 as an
+alternative or comparator, not a partner.
