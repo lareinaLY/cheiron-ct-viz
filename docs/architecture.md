@@ -215,7 +215,13 @@ checked against golden snapshots in `tests/golden/`.
   each edge's citations to `NETWORK_REDUCED_EDGE_CITATION_CAP` (2: both endpoints in one
   trial) instead of dropping edges, keeps `citation_count_total`, and states the sizes
   before and after in a warning.
-- Titles are derived from the plan only (e.g. "Trials by phase for pembrolizumab").
+- Titles are derived from the plan only (e.g. "Trials by phase for pembrolizumab");
+  a relation's title is its registry `title` template, so drug co-occurrence reads
+  "Drugs listed in the same trial record as X (any arm; co-listing is not
+  co-administration)", and that relation carries a standing warning (comparator arms,
+  either-or options and observational studies are included). A sponsor filter's label
+  says "(lead sponsor or collaborator; name contains '…')". Status and sponsor-class
+  buckets keep the registry code as `key` and get a display `label`.
   Titles and axis titles use the dimension's `title_label`, which states the granularity
   of temporal dimensions ("start year"); warnings keep using `label` ("start date").
 - Every temporal datum carries `is_future` (its period starts after the as-of date, so
@@ -226,11 +232,16 @@ checked against golden snapshots in `tests/golden/`.
 - Every datum carries `is_unknown` (missing) and `is_unrecognized` (a value the API sent
   that we do not know), so a renderer can show both apart from real values.
 - `Meta` carries `interpretation` (the question, the executed plan, `planned_by` and,
-  for LLM plans, the model, draft, overrides and rejected drafts),
-  `count_unit`, `search_semantics`, `retrieval_route` ("fetch", "count_per_bucket" or
+  for LLM plans, the model, draft, overrides, rejected drafts and `unhandled_terms`:
+  parts of the question no filter, dimension or relation expresses, each also a
+  "Not applied: '…'" warning placed after any degraded-data warning),
+  `count_unit` ("registered studies (interventional and observational, any status)"),
+  `search_semantics`, `retrieval_route` ("fetch", "count_per_bucket" or
   "mixed"), retrieval totals (`coverage` is the share of matches the counts cover,
   weighted by cohort) plus per-cohort `cohorts` stats (route, `count_requests`,
-  `count_remainder`),
+  `count_remainder`, `drug_matched_terms`: the intervention MeSH terms containing the
+  cohort's drug name with trial counts, warned on when more than one; `withdrawn`: counted
+  WITHDRAWN studies, warned on when nonzero; both null on the count_per_bucket route),
   `data_quality` ("normal", "degraded" or "partial"), `top_n`, `cohorts_overlap`
   (trials counted in several cohorts, with an assumption line when nonzero), `network` (exclusions,
   unmatched terms, caps and citation reduction; networks only),
@@ -278,7 +289,9 @@ fields, a blank `query`, `top_n` or start years outside the validator's bounds),
 filter values, and for unsupported, ambiguous or unplannable questions; 502 when the API
 or the LLM provider fails, the API rejects the query, or too many retrieved records are
 unreadable (`upstream_data_format_changed`); 503 when the API keeps
-rate-limiting. The network caps come from settings (`Settings.network_limits()`) and are
+rate-limiting; 500 `internal_error` for any other exception (a catch-all handler logs
+the traceback and returns a generic message). Filter values containing a backslash or a
+C0 control character are rejected as `invalid_filter_value`. The network caps come from settings (`Settings.network_limits()`) and are
 passed to `pipeline.execute`, as is the count route policy (`Settings.count_route_policy()`:
 `CITATION_SAMPLE_SIZE` 10, `MAX_COUNT_REQUESTS` 60). `GET /health` is a liveness probe. Run the app with
 `uv run uvicorn ctviz.api.app:app`. Example requests and real responses are in `examples/`.
@@ -294,7 +307,10 @@ passed to `pipeline.execute`, as is the count route policy (`Settings.count_rout
   `filter.advanced` clause selecting exactly that bucket), the Unknown bucket's
   `missing_filter`, and either the enum `keys` or a `year_range_field`. Declared for
   phase (exact phase sets: `AREA[Phase]PHASE2 AND NOT AREA[Phase](NA OR EARLY_PHASE1 OR
-  PHASE1 OR PHASE3 OR PHASE4)`, plus the two combinations that exist), start year
+  PHASE1 OR PHASE3 OR PHASE4)`, plus the two combinations that exist, and the
+  phase-less observational / expanded-access bucket `AREA[Phase]MISSING AND
+  AREA[StudyType](OBSERVATIONAL OR EXPANDED_ACCESS)`; Unknown is the remaining
+  `AREA[Phase]MISSING`), start year
   (`AREA[StartDate]RANGE[Y-01-01,Y-12-31]`), overall status (`AREA[OverallStatus]`) and
   lead sponsor class (`AREA[LeadSponsorClass]`). Only single-valued dimensions qualify,
   so the bucket counts can reconcile to totalCount. `bucket_filters` lists (key, clause)
