@@ -6,9 +6,11 @@ from datetime import date
 
 import pytest
 
+from ctviz.errors import SourceRecordError
 from ctviz.normalize import normalize_study
 from ctviz.schemas.trial import (
     AgencyClass,
+    CountryLocation,
     Intervention,
     MeshTerm,
     OverallStatus,
@@ -16,6 +18,12 @@ from ctviz.schemas.trial import (
     StudyType,
 )
 from tests.factories import SOURCE_PATHS, fixture_study, load_fixture_studies, make_raw_study
+
+
+class TestPhaseBucketErrors:
+    def test_unknown_phase_value_raises(self) -> None:
+        with pytest.raises(SourceRecordError, match="PHASE5"):
+            normalize_study(make_raw_study(phases=["PHASE5"]))
 
 
 class TestPhaseBucket:
@@ -85,6 +93,16 @@ class TestStartDate:
         )
         assert record.start_date_type == "actual"
 
+    def test_year_only_date_is_first_of_year(self) -> None:
+        record = normalize_study(make_raw_study(start_date={"date": "2026", "type": "ESTIMATED"}))
+        assert record.start_date == date(2026, 1, 1)
+        assert record.start_date_precision == "year"
+        assert record.start_date_raw == "2026"
+
+    def test_malformed_date_raises(self) -> None:
+        with pytest.raises(SourceRecordError, match="NCT00000001"):
+            normalize_study(make_raw_study(start_date={"date": "Sept 2026"}))
+
     def test_missing_type_with_date_present_is_unknown(self) -> None:
         # Legacy records (2013-2016) carry a date but no type; the fixture NCT02129556 is one.
         record = normalize_study(fixture_study("studies_multi_country", "NCT02129556"))
@@ -111,6 +129,14 @@ class TestCountries:
         assert sorted(record.countries) == ["Australia", "Austria", "Belgium", "France", "Italy"]
         assert len(record.countries) == len(set(record.countries))
 
+    def test_country_location_keeps_raw_value_and_first_index(self) -> None:
+        raw = make_raw_study(countries=["France", "Guam ", "France", "Guam"])
+        record = normalize_study(raw)
+        assert record.country_locations == [
+            CountryLocation(country="France", value_raw="France", location_index=0),
+            CountryLocation(country="Guam", value_raw="Guam ", location_index=1),
+        ]
+
     def test_missing_locations_is_empty(self) -> None:
         record = normalize_study(make_raw_study(countries=None))
         assert record.countries == []
@@ -132,11 +158,10 @@ class TestInterventions:
 
     def test_study_level_mesh_terms_from_derived_section(self) -> None:
         record = normalize_study(fixture_study("studies_pembrolizumab_page", "NCT04993677"))
-        # Fixture was captured without InterventionMeshId, so ids are absent.
         assert record.intervention_mesh_terms == [
-            MeshTerm(id=None, term="pembrolizumab"),
-            MeshTerm(id=None, term="Pemetrexed"),
-            MeshTerm(id=None, term="Carboplatin"),
+            MeshTerm(id="C582435", term="pembrolizumab"),
+            MeshTerm(id="D000068437", term="Pemetrexed"),
+            MeshTerm(id="D016190", term="Carboplatin"),
         ]
 
     def test_mesh_id_kept_when_projected(self) -> None:

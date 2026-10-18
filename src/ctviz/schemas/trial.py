@@ -9,7 +9,10 @@ from datetime import date
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+# Bucket key for a missing value. Distinct from the API's own `UNKNOWN` enum values.
+UNKNOWN_BUCKET_KEY = "Unknown"
 
 
 class Phase(StrEnum):
@@ -98,6 +101,18 @@ class MeshTerm(BaseModel):
     term: str
 
 
+class CountryLocation(BaseModel):
+    """One distinct country of a study, with the location row that first lists it.
+
+    `country` is the trimmed value used as the bucket key; `value_raw` is the exact API
+    string and `location_index` its index in `locations[]`, so citations quote the source.
+    """
+
+    country: str
+    value_raw: str
+    location_index: int
+
+
 class Sponsor(BaseModel):
     """A lead sponsor or collaborator."""
 
@@ -112,8 +127,10 @@ class TrialRecord(BaseModel):
 
     List fields keep the source order, so an index `i` into a list matches index `i`
     of the corresponding raw JSON array and can be cited as `<path>[i]`.
-    Exception: `countries` is deduplicated and therefore cited without an index.
+    Countries are deduplicated; `country_locations` keeps the first location index of each.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     nct_id: str
     title: str | None = None
@@ -125,15 +142,15 @@ class TrialRecord(BaseModel):
     start_date_raw: str | None = Field(
         default=None, description="Exact source string, e.g. '2026-09', used as the cited value."
     )
-    start_date_precision: Literal["day", "month", "unknown"] = "unknown"
+    start_date_precision: Literal["day", "month", "year", "unknown"] = "unknown"
     start_date_type: Literal["actual", "estimated", "unknown"] = "unknown"
     conditions: list[str] = Field(default_factory=list)
     interventions: list[Intervention] = Field(default_factory=list)
     intervention_mesh_terms: list[MeshTerm] = Field(default_factory=list)
     lead_sponsor: Sponsor | None = None
     collaborators: list[Sponsor] = Field(default_factory=list)
-    countries: list[str] = Field(
-        default_factory=list, description="Trimmed and deduplicated within the study."
+    country_locations: list[CountryLocation] = Field(
+        default_factory=list, description="Distinct countries in first-seen order."
     )
     enrollment: int | None = None
     enrollment_type: EnrollmentType | None = None
@@ -141,3 +158,9 @@ class TrialRecord(BaseModel):
         default_factory=dict,
         description="Record field name -> JSON path in the raw API response, used for citations.",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def countries(self) -> list[str]:
+        """Distinct trimmed country names, derived from `country_locations`."""
+        return [location.country for location in self.country_locations]

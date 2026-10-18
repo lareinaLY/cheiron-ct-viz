@@ -112,15 +112,19 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C000594389",
                 "term": "atezolizumab"
               },
               {
+                "id": "C000613593",
                 "term": "durvalumab"
               },
               {
+                "id": "C000609138",
                 "term": "avelumab"
               },
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               }
             ]
@@ -192,9 +196,11 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C000609083",
                 "term": "larotrectinib"
               },
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               }
             ]
@@ -263,9 +269,11 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C531958",
                 "term": "lenvatinib"
               },
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               }
             ]
@@ -274,5 +282,10 @@
       }
     ],
     "nextPageToken": "ZVNj7o2Elu8o3lpzXcinvarumpOQJJxsYPmm2Pg"
+  },
+  "_recaptured": {
+    "url": "https://clinicaltrials.gov/api/v2/studies/{nctId}",
+    "fields": "NCTId|BriefTitle|OverallStatus|StudyType|Phase|StartDate|StartDateType|Condition|InterventionName|InterventionType|InterventionOtherName|LeadSponsorName|LeadSponsorClass|CollaboratorName|CollaboratorClass|LocationCountry|EnrollmentCount|EnrollmentType|ConditionMeshTerm|InterventionMeshTerm|InterventionMeshId",
+    "on": "2026-10-17"
   }
 }

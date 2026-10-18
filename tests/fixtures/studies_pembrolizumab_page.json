@@ -188,12 +188,15 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               },
               {
+                "id": "D000068437",
                 "term": "Pemetrexed"
               },
               {
+                "id": "D016190",
                 "term": "Carboplatin"
               }
             ]
@@ -299,9 +302,11 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C486781",
                 "term": "vicriviroc"
               },
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               }
             ]
@@ -987,21 +992,27 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               },
               {
+                "id": "C531550",
                 "term": "olaparib"
               },
               {
+                "id": "D000069501",
                 "term": "Abiraterone Acetate"
               },
               {
+                "id": "D011241",
                 "term": "Prednisone"
               },
               {
+                "id": "C540278",
                 "term": "enzalutamide"
               },
               {
+                "id": "D011239",
                 "term": "Prednisolone"
               }
             ]
@@ -1109,15 +1120,19 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "C000594389",
                 "term": "atezolizumab"
               },
               {
+                "id": "C000613593",
                 "term": "durvalumab"
               },
               {
+                "id": "C000609138",
                 "term": "avelumab"
               },
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               }
             ]
@@ -1221,12 +1236,15 @@
           "interventionBrowseModule": {
             "meshes": [
               {
+                "id": "D011878",
                 "term": "Radiotherapy"
               },
               {
+                "id": "D011827",
                 "term": "Radiation"
               },
               {
+                "id": "C582435",
                 "term": "pembrolizumab"
               }
             ]
@@ -1235,5 +1253,10 @@
       }
     ],
     "nextPageToken": "ZVNj7o2Elu8o3lpzXcinvarumpOQJJxqbPWn0A"
+  },
+  "_recaptured": {
+    "url": "https://clinicaltrials.gov/api/v2/studies/{nctId}",
+    "fields": "NCTId|BriefTitle|OverallStatus|StudyType|Phase|StartDate|StartDateType|Condition|InterventionName|InterventionType|InterventionOtherName|LeadSponsorName|LeadSponsorClass|CollaboratorName|CollaboratorClass|LocationCountry|EnrollmentCount|EnrollmentType|ConditionMeshTerm|InterventionMeshTerm|InterventionMeshId",
+    "on": "2026-10-17"
   }
 }
