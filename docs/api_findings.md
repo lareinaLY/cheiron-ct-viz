@@ -4,8 +4,8 @@
 
 | Assumption before exploring | What the data showed | Design consequence |
 |---|---|---|
-| `query.intr=X` returns trials that test drug X | It also matches titles, arm labels, keywords, intervention/arm descriptions and MeSH ancestors, with synonym expansion. 336 / 2981 pembrolizumab hits mention the drug only in text or comparator arms (§2) | Default match mode is `AREA[InterventionName]` (exact). `query.intr` is an opt-in `broad` mode, echoed in `meta.match_mode` |
-| Derived MeSH terms are a clean normalization layer | Intervention MeSH reliably merges aliases (Keytruda, MK-3475 → pembrolizumab, C582435). Condition MeSH has spurious terms (201 cancer trials tagged "Parkinson Disease 4…"), and 435 / 2981 studies have none. MeSH is study-level, not tied to an intervention (§8) | Drugs are grouped by study-level intervention MeSH (id + term). Conditions use raw strings. No intervention↔MeSH linking is attempted |
+| `query.intr=X` returns trials that test drug X | It also matches titles, arm labels, keywords, intervention/arm descriptions and MeSH ancestors, with synonym expansion. 336 / 2981 pembrolizumab hits mention the drug only in text or comparator arms (§2) | Default match mode is the intervention name or derived intervention MeSH term (`AREA[InterventionName]` OR `AREA[InterventionMeshTerm]`, §16). `query.intr` is an opt-in `broad` mode, echoed in `meta.match_mode` |
+| Derived MeSH terms are a clean normalization layer | Intervention MeSH reliably merges aliases (Keytruda, MK-3475 → pembrolizumab, C582435; ONO-4538, BMS-936558 → Nivolumab, which name matching does not expand, §16). Condition MeSH has spurious terms (201 cancer trials tagged "Parkinson Disease 4…"), and 435 / 2981 studies have none. MeSH is study-level, not tied to an intervention (§8) | Drugs are grouped by study-level intervention MeSH (id + term). Conditions use raw strings. No intervention↔MeSH linking is attempted |
 | `ESTIMATED` start dates are future dates | 266 `ESTIMATED` start dates are already in the past, and 55 legacy records have a date but no type (§5) | Estimated dates are counted and flagged (`estimated_count`), not excluded. A missing type is `"unknown"` |
 | A trial has one phase | `phases` is a list; 24,765 studies have two. A Phase filter matches any element, so per-phase API counts overlap (§4) | Multi-phase trials get their own mutually exclusive bucket ("Phase 1/Phase 2") |
 | One location row per country | Locations are per site, up to 1660 rows for one study, with repeated countries (§9) | Countries are deduplicated within a study. Country buckets overlap across multi-country trials, and the result is flagged `buckets_overlap` |
@@ -23,7 +23,7 @@ These are choices a reasonable person could make differently. Each states our ch
 | Count unit | Trials (studies), stated in `meta.count_unit` | Sites, arms or enrolled participants |
 | Multi-phase bucketing | Own combined bucket ("Phase 1/Phase 2"); buckets are mutually exclusive | Count the trial in every phase it lists (totals exceed the number of trials), or assign it to its highest phase |
 | Territories | Reported as the API gives them (Puerto Rico, Guam, Hong Kong are separate) | Roll territories up into a sovereign country |
-| Drug matching | Exact `AREA[InterventionName]` by default; `query.intr` as opt-in `broad` | Broad by default, or `AREA[InterventionMeshTerm]` |
+| Drug matching | `AREA[InterventionName]` OR `AREA[InterventionMeshTerm]` by default (§16); `query.intr` as opt-in `broad` | Broad by default, name only (misses code-name-only trials), or MeSH only (misses names without a MeSH term) |
 | Non-drug nodes in networks | Drug nodes are all intervention MeSH terms, including radiation, procedures and diagnostics; this is noted in meta assumptions. A small deny-list of exact MeSH ids (comparators, mis-mapped terms, §8) is excluded and reported in `meta.network` | Filter nodes by intervention type (DRUG/BIOLOGICAL), which needs an intervention↔MeSH link the API doesn't provide; or by `browseLeaves[].relevance`, which the API does not serve (§8) |
 | Trials without intervention MeSH | `Unknown` bucket, with a meta warning giving the count | Fall back to the raw intervention name as the bucket key, which splits aliases into separate buckets |
 | "Fewest" questions ("which countries have the fewest trials") | Not a ranking: `ranking_intent` covers most/top/leading only, so the chart is untrimmed and sorted by count, with the smallest values last | Trim to the N smallest buckets, which needs a sort direction in the plan |
@@ -380,3 +380,66 @@ baseline the degradation thresholds (`DEGRADED_SKIP_RATIO`, `REFUSE_SKIP_RATIO`,
   `AgencyClass` and `InterventionType` enums exactly (startup drift check: no new values).
 - Each request logs this rate per cohort (`normalize cohort= retrieved= skipped=
   skip_ratio= unrecognized= band=`), so a baseline-relative alert can be built on it.
+
+## 16. Does exact `AREA[InterventionName]` miss brand and code names? (verified 2026-10-18)
+
+Area name check: `/studies/search-areas` lists `InterventionMeshTerm` as a synonym-enabled
+piece (`isSynonyms: true`). It indexes `derivedSection.interventionBrowseModule.meshes[].term`.
+Counts use `countTotal=true&pageSize=1`. Set comparisons use full NCT ID fetches.
+
+| Query | pembrolizumab | nivolumab |
+|---|---|---|
+| A `AREA[InterventionName]"<generic>"` | 2575 | 1675 |
+| B `AREA[InterventionName]"<brand>"` (Keytruda / Opdivo) | 2575, B = A | 1675, B = A |
+| B, `EXPANSION[None]` (literal brand only) | 67, all in A | 36, all in A |
+| C `AREA[InterventionName]"<code>"` (MK-3475 / BMS-936558) | 2575, C = A | 11, **7 not in A** |
+| C2 `AREA[InterventionName]"ONO-4538"` | n/a | 22, **21 not in A** |
+| `AREA[InterventionName]"MDX-1106"` / `"MK3475"`, `"lambrolizumab"` | 2575, = A | 1675, = A |
+| D `AREA[InterventionName](pembrolizumab OR Keytruda OR MK-3475)` (unquoted) | 2576 | — |
+| E `AREA[InterventionMeshTerm]"<generic>"` | 2570 | 1712 |
+| E − A / A − E | 67 / 72 | 85 / 48 |
+| A OR E | 2642 | 1760 |
+| A OR `AREA[InterventionOtherName]"<generic>"` | 2644 | 1748 |
+| F `query.intr=<generic>` | 2981 | 2033 |
+
+- `OR` works inside `AREA[...]`: D = |A ∪ unquoted C|. Unquoted `MK-3475` matches one extra
+  trial, NCT02430363 (intervention named `"MK - 3475"`). The quoted form the query builder
+  sends matches exactly A.
+- **The API's concept expansion is per drug, not general.** It merges Keytruda, MK-3475,
+  MK3475 and lambrolizumab into pembrolizumab, and Opdivo and MDX-1106 into nivolumab, but
+  **not BMS-936558 or ONO-4538**. 28 nivolumab trials are registered only under those code
+  names and missed by exact matching, e.g. NCT02261285 (sole intervention `"ONO-4538"`, no
+  otherNames, MeSH `Nivolumab`). All 28 carry the nivolumab MeSH term. Pembrolizumab has no
+  such misses.
+- **A second gap, for both drugs: the drug only in `InterventionOtherName`.** Pembrolizumab
+  E − A is 67 trials, nivolumab 57 (plus the 28 code-name trials). Some are real trials of the
+  drug under another name, e.g. NCT05127590 (`"RBN-2397"` + otherNames Pembrolizumab,
+  Keytruda) or NCT07662720 (misspelled `"Pembolizumab"`). Others are class-level placeholders
+  that list the drug as one allowed option, e.g. NCT07419932 (`"PD(L)-1 inhibitor"`, otherName
+  Pembrolizumab) or NCT04115410 (`"PD-1 inhibitor"`; MeSH lists nivolumab, pembrolizumab and
+  atezolizumab).
+- **MeSH alone is not a superset of exact name.** A − E is 72 (pembrolizumab) and 48
+  (nivolumab). These are trials whose names mention the drug but whose derived MeSH lacks
+  it, mostly combination strings, e.g. NCT05389527 (`"Pembrolizumab+Lenvatinib"`, no MeSH) or
+  NCT07581509 (`"US-Licensed Keytruda"`, no MeSH). Replacing A by E would lose these.
+
+**Conclusion.** Exact name matching undercounts, and how much depends on the drug. So
+`intervention_name` mode now sends
+`(AREA[InterventionName]"X" OR AREA[InterventionMeshTerm]"X")`. The two signals complement
+each other: code-name-only trials are reachable only via MeSH, and combination-string names
+only via the name. The match stays at the intervention level and still excludes the
+text-only matches of `broad` mode (336 for pembrolizumab, §2).
+
+| Drug | Name only (before) | Name OR MeSH (after) | Recovered | `broad` |
+|---|---|---|---|---|
+| pembrolizumab | 2575 | 2642 | +67 | 2981 |
+| nivolumab | 1675 | 1760 | +85 (28 code-name-only) | 2033 |
+
+- The parentheses are required. AND binds tighter than OR: without them, pembrolizumab with
+  `AREA[Phase](PHASE2 OR PHASE3)` gives 2611 instead of 1951 (name only: 1915).
+- A quoted name with parentheses still works (`"pembrolizumab (KEYTRUDA®)"`: 43, the MeSH
+  branch adds 0). An unknown drug matches 0 in both branches, so no MeSH lookup or fallback
+  is needed.
+- **Known cost:** the added trials include class-level placeholders that list the drug as one
+  allowed option in otherNames ("PD(L)-1 inhibitor" → Pembrolizumab), and any MeSH
+  mis-mapping onto the drug's term (§8). Both are stated in `meta.search_semantics`.
