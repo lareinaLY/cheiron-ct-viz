@@ -8,19 +8,23 @@ is a new entry here, not a new branch elsewhere.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from typing import Literal
 
+from ctviz.normalize.study import phase_bucket
 from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
 from ctviz.schemas.response import ExclusionReason, NodeType
 from ctviz.schemas.trial import (
     UNKNOWN_BUCKET_KEY,
     UNRECOGNIZED_BUCKET_KEY,
+    AgencyClass,
     EnrollmentType,
+    OverallStatus,
     Phase,
     TrialRecord,
     UnrecognizedValue,
@@ -99,6 +103,93 @@ class BucketOrder(StrEnum):
 type PathFor = Callable[[int | None], str]
 
 
+# Phase sets that occur in the whole registry (2026-10-18): each single phase, PHASE1+PHASE2
+# (17,142 trials) and PHASE2+PHASE3 (7,623). The other 13 pairs match 0 trials and no trial
+# lists more than two phases (docs/api_findings.md §4). A new combination is not counted by
+# any bucket, so it shows up as a nonzero remainder and the cohort is fetched instead.
+COUNTABLE_PHASE_SETS: tuple[tuple[Phase, ...], ...] = (
+    (Phase.EARLY_PHASE1,),
+    (Phase.PHASE1,),
+    (Phase.PHASE1, Phase.PHASE2),
+    (Phase.PHASE2,),
+    (Phase.PHASE2, Phase.PHASE3),
+    (Phase.PHASE3,),
+    (Phase.PHASE4,),
+    (Phase.NA,),
+)
+PHASES_BY_BUCKET: dict[str, tuple[Phase, ...]] = {
+    phase_bucket(list(phases)): phases for phases in COUNTABLE_PHASE_SETS
+}
+YEAR_KEY = re.compile(r"\d{4}")
+
+
+@dataclass(frozen=True)
+class ApiCount:
+    """How the API counts one bucket of a dimension exactly (the count-per-bucket route).
+
+    `api_filter` maps a bucket key to a `filter.advanced` clause matching exactly the
+    trials in that bucket, so one countTotal request gives the bucket's count; it raises
+    KeyError for a key it cannot express. `missing_filter` matches the Unknown bucket.
+    `keys` lists the bucket keys of an enum-valued dimension. A dimension whose keys
+    depend on the data (years) leaves `keys` empty and names `year_range_field`, the
+    sortable API field whose first and last values bound its years.
+    """
+
+    api_filter: Callable[[str], str]
+    missing_filter: str
+    keys: tuple[str, ...] = ()
+    year_range_field: str | None = None
+
+
+def phase_api_filter(key: str) -> str:
+    """Exactly this phase set: every listed phase present and every other phase absent.
+
+    `AREA[Phase]X` matches any element of the phases list, so "Phase 2" alone would also
+    match Phase 1/Phase 2 trials (docs/api_findings.md §4).
+    """
+    phases = PHASES_BY_BUCKET[key]
+    present = " AND ".join(f"AREA[Phase]{phase.value}" for phase in phases)
+    others = " OR ".join(phase.value for phase in Phase if phase not in phases)
+    return f"{present} AND NOT AREA[Phase]({others})"
+
+
+def enum_api_filter(area: str, values: type[StrEnum]) -> Callable[[str], str]:
+    """`AREA[<area>]<key>` for a key that is a value of `values`."""
+    allowed = {member.value for member in values}
+
+    def api_filter(key: str) -> str:
+        if key not in allowed:
+            raise KeyError(key)
+        return f"AREA[{area}]{key}"
+
+    return api_filter
+
+
+def start_year_api_filter(key: str) -> str:
+    """Inclusive whole-year range; month-only dates are indexed as the first of the month."""
+    if not YEAR_KEY.fullmatch(key):
+        raise KeyError(key)
+    return f"AREA[StartDate]RANGE[{key}-01-01,{key}-12-31]"
+
+
+def bucket_filters(
+    api_count: ApiCount, *, year_range: tuple[int, int] | None
+) -> list[tuple[str, str]]:
+    """(bucket key, filter clause) for every bucket to count, the Unknown bucket last.
+
+    Year-keyed dimensions count each year from `year_range` (first, last), inclusive;
+    None means no trial has a readable value, so only Unknown is counted.
+    """
+    keys: list[str] = list(api_count.keys)
+    if api_count.year_range_field is not None and year_range is not None:
+        first, last = year_range
+        keys = [str(year) for year in range(first, last + 1)]
+    return [
+        *((key, api_count.api_filter(key)) for key in keys),
+        (UNKNOWN_BUCKET_KEY, api_count.missing_filter),
+    ]
+
+
 @dataclass(frozen=True)
 class DimensionValue:
     """One value a trial has for a dimension, with the citations that prove it."""
@@ -125,7 +216,9 @@ class DimensionSpec:
     `source_field` is a key of `TrialRecord.source_paths`; `leaf` is appended after the
     list index (e.g. ".name"). `extract` returns [] when the trial lacks the value,
     which puts it in the Unknown bucket. `time_unit` is the Vega-Lite time unit of a
-    temporal dimension's bucket keys.
+    temporal dimension's bucket keys. `api_count` is set when the API can count each
+    bucket exactly (see ApiCount); such a dimension must be single-valued, so its bucket
+    counts add up to the cohort total. Without it the dimension is fetch-only.
     """
 
     label: str
@@ -140,6 +233,7 @@ class DimensionSpec:
     period_key: Callable[[date], str] | None = None
     time_unit: Literal["year", "yearmonth"] | None = None
     assumptions: tuple[str, ...] = field(default_factory=tuple)
+    api_count: ApiCount | None = None
 
 
 def field_path(base: str, leaf: str, index: int | None) -> str:
@@ -404,6 +498,11 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
             "Multi-phase trials form their own bucket (e.g. 'Phase 1/Phase 2'); "
             "phase buckets are mutually exclusive.",
         ),
+        api_count=ApiCount(
+            api_filter=phase_api_filter,
+            missing_filter="AREA[Phase]MISSING",
+            keys=tuple(PHASES_BY_BUCKET),
+        ),
     ),
     Dimension.START_YEAR: DimensionSpec(
         label="start date",
@@ -419,6 +518,11 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         order=BucketOrder.BY_KEY,
         period_key=year_key,
         time_unit="year",
+        api_count=ApiCount(
+            api_filter=start_year_api_filter,
+            missing_filter="AREA[StartDate]MISSING",
+            year_range_field="StartDate",
+        ),
     ),
     Dimension.START_MONTH: DimensionSpec(
         label="start month",
@@ -465,6 +569,11 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         leaf=".class",
         extract=extract_sponsor_class,
         order=BucketOrder.BY_COUNT,
+        api_count=ApiCount(
+            api_filter=enum_api_filter("LeadSponsorClass", AgencyClass),
+            missing_filter="AREA[LeadSponsorClass]MISSING",
+            keys=tuple(agency_class.value for agency_class in AgencyClass),
+        ),
     ),
     Dimension.LEAD_SPONSOR: DimensionSpec(
         label="lead sponsor",
@@ -506,6 +615,13 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         source_field="overall_status",
         extract=extract_overall_status,
         order=BucketOrder.BY_COUNT,
+        api_count=ApiCount(
+            # Same counts as filter.overallStatus (verified 2026-10-18), and an AREA clause
+            # AND-joins with a cohort's own status filter.
+            api_filter=enum_api_filter("OverallStatus", OverallStatus),
+            missing_filter="AREA[OverallStatus]MISSING",
+            keys=tuple(status.value for status in OverallStatus),
+        ),
     ),
     Dimension.CONDITION: DimensionSpec(
         label="condition",
