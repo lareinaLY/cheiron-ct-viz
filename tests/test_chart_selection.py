@@ -82,3 +82,9 @@ def test_incompatible_hint_raises_with_reason(
         select_chart(plan, result)
     assert error.value.reason == PlanErrorReason.CHART_HINT_INCOMPATIBLE
     assert str(error.value)
+
+
+def test_result_kind_must_match_plan() -> None:
+    plan = make_plan(dimension=Dimension.PHASE)
+    with pytest.raises(ValueError, match="phase"):
+        select_chart(plan, graph(Relation.SPONSOR_DRUG))
