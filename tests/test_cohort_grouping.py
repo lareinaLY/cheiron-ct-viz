@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from ctviz.aggregate import UNKNOWN_BUCKET_KEY, group_by, group_cohorts
 from ctviz.schemas.aggregate import GroupedCohorts
-from ctviz.schemas.plan import Dimension
+from ctviz.schemas.plan import Dimension, RankingDirection
 from ctviz.schemas.trial import Phase, TrialRecord
 from tests.factories import country, make_record
 
@@ -209,3 +211,59 @@ class TestCohortsOverlap:
     def test_single_cohort_has_no_overlap(self) -> None:
         result = group_cohorts([("a", [with_phase("NCT1", Phase.PHASE2)])], Dimension.PHASE)
         assert result.cohorts_overlap is None
+
+
+class TestBottomN:
+    # Counts: United States 3, France 2, Peru 2, Chile 1, plus one trial with no country.
+    records = TestTopN.records
+
+    def test_keeps_the_known_buckets_with_the_fewest_trials_and_unknown(self) -> None:
+        # France and Peru tie at 2; ties follow the shared key order, so France is kept.
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=2, as_of=AS_OF)
+        assert keys(result) == ["France", "Chile", UNKNOWN_BUCKET_KEY]
+        assert result.key_order == ["France", "Chile", UNKNOWN_BUCKET_KEY]
+
+    def test_unknown_is_not_ranked_even_when_smallest(self) -> None:
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=1, as_of=AS_OF)
+        assert keys(result) == ["Chile", UNKNOWN_BUCKET_KEY]
+
+    def test_reports_direction_omitted_keys_and_trials(self) -> None:
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=2, as_of=AS_OF)
+        assert result.top_n is not None
+        assert result.top_n.direction == RankingDirection.FEWEST
+        assert result.top_n.top_n == 2
+        assert result.top_n.omitted_keys == ["United States", "Peru"]
+        # NCT1 (United States, Peru), NCT2, NCT3 (United States) and NCT6 (Peru) are hidden.
+        assert result.top_n.trials_omitted == {"a": 4}
+
+    def test_top_n_summary_says_most(self) -> None:
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, top_n=2, as_of=AS_OF)
+        assert result.top_n is not None
+        assert result.top_n.direction == RankingDirection.MOST
+
+    def test_warning_states_bottom_and_that_zero_values_cannot_appear(self) -> None:
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=2, as_of=AS_OF)
+        warning = result.cohorts[0].result.warnings[-1]
+        assert "bottom 2" in warning
+        assert "2 location country values omitted" in warning
+        assert "4 trials" in warning
+        assert "no matching trials" in warning
+
+    def test_zero_caveat_is_stated_even_when_nothing_is_omitted(self) -> None:
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=50, as_of=AS_OF)
+        assert result.top_n is not None
+        assert result.top_n.omitted_keys == []
+        assert any("no matching trials" in w for w in result.cohorts[0].result.warnings)
+
+    def test_kept_bucket_counts_unchanged(self) -> None:
+        full = group_by(self.records(), Dimension.COUNTRY, as_of=AS_OF)
+        result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=2, as_of=AS_OF)
+        assert result.cohorts[0].result.buckets == [
+            b for b in full.buckets if b.key in {"France", "Chile", UNKNOWN_BUCKET_KEY}
+        ]
+
+    def test_top_n_and_bottom_n_together_raise(self) -> None:
+        with pytest.raises(ValueError, match="top_n and bottom_n"):
+            group_cohorts(
+                [("a", self.records())], Dimension.COUNTRY, top_n=1, bottom_n=1, as_of=AS_OF
+            )

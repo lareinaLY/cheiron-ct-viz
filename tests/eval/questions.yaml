@@ -4,11 +4,17 @@
 # - outcome: plan | unsupported | clarification
 # - cohorts: every cohort's filters, in any order. Filters not listed must be absent
 #   (an invented filter is a miss). Strings compare case-insensitively.
-# - dimension or relation; top_n (absent means null; a ranking question without a
-#   number expects the configured default, DEFAULT_TOP_N_FOR_RANKING).
+# - dimension or relation; top_n and bottom_n (absent means null; a ranking question
+#   without a number expects the configured default, DEFAULT_TOP_N_FOR_RANKING, as top_n
+#   for "most" and as bottom_n for "fewest").
+# - ranking_direction (optional): the draft's most | fewest | null; scored only for
+#   cases that list it.
 # Granularity is scored for temporal dimensions (start_year vs start_month).
 # - unhandled_terms (optional): the exact set of question parts the plan cannot apply,
 #   compared casefolded; scored only for cases that list it.
+# A case with several acceptable answers gives `expect_any` (a list of expectations)
+# instead of `expect`; it passes when any one matches, and the report names which.
+# - note (optional): why the expectation is what it is; copied into the report.
 # Names and wording differ from the few-shot examples in planner/prompt.py.
 
 - id: trend_drug_year_range
@@ -122,7 +128,7 @@
     cohorts:
       - {condition: non-small cell lung cancer, statuses: [RECRUITING]}
     dimension: country
-    # No number in the question: the LLM flags ranking_intent and code sets the
+    # No number in the question: the LLM sets ranking_direction "most" and code sets the
     # configured DEFAULT_TOP_N_FOR_RANKING (15).
     top_n: 15
 
@@ -176,3 +182,88 @@
       - {drug: lorlatinib}
     dimension: phase
     unhandled_terms: [second-line, monotherapy]
+
+- id: misspelled_drug_phase
+  class: robustness
+  question: pembrolizumb by phase
+  expect:
+    outcome: plan
+    cohorts:
+      # Rule 1: names are copied verbatim, misspellings included; the planner never
+      # corrects a name it would have to guess.
+      - {drug: pembrolizumb}
+    dimension: phase
+
+- id: colloquial_abbreviation_comparison
+  class: robustness
+  question: pembro vs nivo phases
+  note: >-
+    Verbatim names are the designed behaviour: rule 1 exists so the LLM never
+    substitutes a name it guessed, so a plan with drug=pembro and drug=nivo by phase is
+    the correct planner output. Listing them in unhandled_terms would be wrong, because
+    they are applied as filters. The user-facing gap ("pembro" matches almost nothing)
+    belongs to a zero-match "did you mean" step at retrieval time (README section 9),
+    not to the planner.
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: pembro}
+      - {drug: nivo}
+    dimension: phase
+
+- id: condition_abbreviation
+  class: robustness
+  question: How many NSCLC trials started each year?
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: NSCLC}
+    dimension: start_year
+
+- id: multi_intent
+  class: ambiguous
+  question: Show atezolizumab trials by phase and also which countries run them
+  expect:
+    outcome: clarification
+
+- id: chinese_question
+  class: robustness
+  question: 帕博利珠单抗每年的试验数量
+  note: >-
+    "Pembrolizumab trials per year" in Chinese. Rule 1 forbids translating a name, so a
+    plan is only useful if the model maps the Chinese name to the registry name;
+    declining or asking back is also acceptable. A plan that copies the Chinese name
+    verbatim is a miss: it would match no registry record.
+  expect_any:
+    - outcome: plan
+      cohorts:
+        - {drug: pembrolizumab}
+      dimension: start_year
+    - outcome: unsupported
+    - outcome: clarification
+
+- id: fewest_is_not_ranking
+  class: geographic
+  question: Which countries have the fewest recruiting melanoma trials?
+  note: >-
+    The id predates the fix and is kept because the cached paraphrases are keyed by it.
+    Until 2026-10-18 the expectation was "no ranking" (top_n null), because the boolean
+    ranking_intent could only mean "most" and gpt-5-mini set it for "fewest", showing
+    the 15 largest countries. "fewest" is now its own direction, trimmed to the bottom N.
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: melanoma, statuses: [RECRUITING]}
+    dimension: country
+    ranking_direction: fewest
+    top_n: null
+    bottom_n: 15
+
+- id: since_year_open_end
+  class: trend
+  question: Number of osimertinib trials per year since 2015
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: osimertinib, start_year_from: 2015, start_year_to: null}
+    dimension: start_year

@@ -43,7 +43,7 @@ def make_draft(**fields: Any) -> LlmPlanDraft:
         "relation": None,
         "chart_hint": None,
         "top_n": None,
-        "ranking_intent": False,
+        "ranking_direction": None,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,

@@ -50,6 +50,13 @@ class ChartType(StrEnum):
     HISTOGRAM = "histogram"
 
 
+class RankingDirection(StrEnum):
+    """Which end of a ranking the question asks for: the most trials or the fewest."""
+
+    MOST = "most"
+    FEWEST = "fewest"
+
+
 MatchMode = Literal["intervention_name", "broad"]
 
 # Bounds on numeric plan values. A dimension has at most a few hundred buckets, so a
@@ -100,6 +107,10 @@ class QueryPlan(BaseModel):
     chart_hint: ChartType | None = None
     time_granularity: Literal["year", "month"] | None = None
     top_n: int | None = None
+    bottom_n: int | None = Field(
+        default=None,
+        description="Keep the N known buckets with the fewest trials; exclusive with top_n.",
+    )
     match_mode: MatchMode = "intervention_name"
 
 
@@ -129,9 +140,12 @@ class LlmPlanDraft(BaseModel):
     dimension: Dimension | None = Field(description="The attribute to group trials by.")
     relation: Relation | None = Field(description="The relation to draw as a network.")
     chart_hint: ChartType | None = Field(description="Only when the user names a chart type.")
-    top_n: int | None = Field(description="Only when the user asks for a number of top values.")
-    ranking_intent: bool = Field(
-        description="True only when the question asks for the most, top or leading values. "
+    top_n: int | None = Field(
+        description="Only when the user gives a number of values to show (top or bottom)."
+    )
+    ranking_direction: RankingDirection | None = Field(
+        description="'most' when the question asks for the most, top or leading values; "
+        "'fewest' only for fewest, least or lowest; null when it asks for no ranking. "
         "Never a number: code chooses how many values to show."
     )
     match_mode: MatchMode = Field(

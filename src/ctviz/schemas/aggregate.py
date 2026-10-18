@@ -123,8 +123,9 @@ class GroupedCohorts(BaseModel):
 
     `key_order` is the display order of every bucket key across all cohorts (the
     dimension's own order, Unknown last), so cohorts line up on one axis. `top_n` is set
-    when a bucket limit was requested; it lists what was removed. `cohorts_overlap` is
-    set when there are two or more cohorts and every one was fetched record by record.
+    when a bucket limit (top or bottom N) was requested; it lists what was removed.
+    `cohorts_overlap` is set when there are two or more cohorts and every one was fetched
+    record by record.
     """
 
     dimension: Dimension

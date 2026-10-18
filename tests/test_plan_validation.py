@@ -105,6 +105,27 @@ def test_top_n_with_relation_rejected() -> None:
     assert_rejected(plan, PlanErrorReason.TOP_N_REQUIRES_DIMENSION)
 
 
+@pytest.mark.parametrize("bottom_n", [0, -3, MAX_TOP_N + 1])
+def test_bottom_n_out_of_range_rejected(bottom_n: int) -> None:
+    plan = make_plan(dimension=Dimension.COUNTRY, bottom_n=bottom_n)
+    assert_rejected(plan, PlanErrorReason.INVALID_TOP_N)
+
+
+def test_bottom_n_in_range_accepted() -> None:
+    plan = make_plan(dimension=Dimension.COUNTRY, bottom_n=MAX_TOP_N)
+    assert validate_plan(plan) == plan
+
+
+def test_bottom_n_with_relation_rejected() -> None:
+    plan = make_plan(relation=Relation.SPONSOR_DRUG, bottom_n=10)
+    assert_rejected(plan, PlanErrorReason.TOP_N_REQUIRES_DIMENSION)
+
+
+def test_top_n_and_bottom_n_together_rejected() -> None:
+    plan = make_plan(dimension=Dimension.COUNTRY, top_n=5, bottom_n=5)
+    assert_rejected(plan, PlanErrorReason.INVALID_TOP_N)
+
+
 def test_start_year_range_reversed_rejected() -> None:
     plan = QueryPlan(
         cohorts=[

@@ -177,6 +177,22 @@ class TestTitles:
         )
         assert response.meta.top_n == result.top_n
 
+    def test_bottom_n_in_title(self) -> None:
+        records = fixture_records("studies_pembrolizumab_page")
+        plan = QueryPlan(
+            cohorts=[Cohort(label="pembrolizumab", filters=Filters(drug="pembrolizumab"))],
+            dimension=Dimension.COUNTRY,
+            bottom_n=15,
+        )
+        result = group_cohorts(
+            [("pembrolizumab", records)], Dimension.COUNTRY, bottom_n=15, as_of=AS_OF
+        )
+        response = respond(plan, result, "q", [len(records)])
+        assert response.visualization.title == (
+            "Trials by location country for pembrolizumab (bottom 15)"
+        )
+        assert response.meta.top_n == result.top_n
+
 
 class TestStructure:
     def test_bar_encoding(self) -> None:

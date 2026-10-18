@@ -1274,6 +1274,7 @@
         "chart_hint": null,
         "time_granularity": null,
         "top_n": null,
+        "bottom_n": null,
         "match_mode": "intervention_name"
       },
       "planned_by": "structured_fields",

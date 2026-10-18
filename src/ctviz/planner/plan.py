@@ -27,7 +27,7 @@ from ctviz.planner.llm import LlmCallOutcome, LlmClient, log_llm_answer
 from ctviz.planner.prompt import build_messages
 from ctviz.planner.validation import validate_plan
 from ctviz.retrieval.query_builder import build_params
-from ctviz.schemas.plan import Cohort, Filters, LlmPlanDraft, QueryPlan
+from ctviz.schemas.plan import Cohort, Filters, LlmPlanDraft, QueryPlan, RankingDirection
 from ctviz.schemas.request import QueryRequest, cohort_label
 from ctviz.schemas.response import FieldOverride, Interpretation
 
@@ -113,7 +113,7 @@ async def plan_by_llm(
         try:
             query_plan, overrides = merge_draft(draft, request)
             query_plan, ranking_top_n = apply_ranking_default(
-                query_plan, draft, default_top_n_for_ranking
+                query_plan, draft, request, default_top_n_for_ranking
             )
             check_plan(query_plan)
         except (PlanValidationError, InvalidFilterError, ValidationError) as error:
@@ -215,17 +215,30 @@ def merge_draft(
 
 
 def apply_ranking_default(
-    query_plan: QueryPlan, draft: LlmPlanDraft, default_top_n: int
+    query_plan: QueryPlan, draft: LlmPlanDraft, request: QueryRequest, default_top_n: int
 ) -> tuple[QueryPlan, int | None]:
-    """Set top_n to the configured default for a ranking question that gives no number.
+    """Turn the draft's ranking direction into top_n or bottom_n.
 
-    The LLM only flags the intent; the number is chosen here (invariant 1). A top_n from
-    the question or the request wins. Networks are never trimmed (the validator rejects
-    top_n with a relation). Returns the plan and the default applied, or None.
+    The LLM only flags the direction; the number is chosen here (invariant 1):
+    - "most": top_n, from the question if it gave a number, else the configured default.
+    - "fewest": bottom_n, likewise. The draft's top_n is the number the user gave, so
+      with "fewest" it moves to bottom_n. A `top_n` sent in the request is an explicit
+      "top" and wins: the plan keeps it and gets no bottom_n.
+    Networks are never trimmed (the validator rejects top_n/bottom_n with a relation).
+    Returns the plan and the default applied, or None when no default was used.
     """
-    if not draft.ranking_intent or query_plan.top_n is not None or query_plan.dimension is None:
+    direction = draft.ranking_direction
+    if direction is None or query_plan.dimension is None:
         return query_plan, None
-    return query_plan.model_copy(update={"top_n": default_top_n}), default_top_n
+    if direction == RankingDirection.MOST:
+        if query_plan.top_n is not None:
+            return query_plan, None
+        return query_plan.model_copy(update={"top_n": default_top_n}), default_top_n
+    if "top_n" in request.explicit_fields():
+        return query_plan, None
+    if query_plan.top_n is not None:
+        return query_plan.model_copy(update={"top_n": None, "bottom_n": query_plan.top_n}), None
+    return query_plan.model_copy(update={"bottom_n": default_top_n}), default_top_n
 
 
 def clean_terms(terms: list[str]) -> list[str]:

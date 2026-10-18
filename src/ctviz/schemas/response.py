@@ -9,7 +9,14 @@ from typing import Literal
 from pydantic import BaseModel, Field, JsonValue
 
 from ctviz.schemas.citation import Citation
-from ctviz.schemas.plan import ChartType, Cohort, LlmPlanDraft, MatchMode, QueryPlan
+from ctviz.schemas.plan import (
+    ChartType,
+    Cohort,
+    LlmPlanDraft,
+    MatchMode,
+    QueryPlan,
+    RankingDirection,
+)
 
 
 class CountUnit(StrEnum):
@@ -324,8 +331,9 @@ class Interpretation(BaseModel):
     rejected_attempts: list[str] = Field(default_factory=list)
     ranking_top_n: int | None = Field(
         default=None,
-        description="top_n chosen by code (the configured default) because the question "
-        "asked for a ranking without giving a number; None otherwise.",
+        description="top_n or bottom_n chosen by code (the configured default) because the "
+        "question asked for a ranking (most or fewest) without giving a number; None "
+        "otherwise. The plan's top_n / bottom_n says which end.",
     )
     unhandled_terms: list[str] = Field(
         default_factory=list,
@@ -388,13 +396,18 @@ class CohortStats(BaseModel):
 
 
 class TopNSummary(BaseModel):
-    """What a `top_n` limit removed from the chart.
+    """What a `top_n` or `bottom_n` limit removed from the chart.
 
     The Unknown bucket is never removed. `trials_omitted` counts, per cohort, the trials
     that appear only in omitted buckets (so they are not visible anywhere in the chart).
     """
 
-    top_n: int
+    top_n: int = Field(description="Number of known buckets kept (at the `direction` end).")
+    direction: RankingDirection = Field(
+        default=RankingDirection.MOST,
+        description="'most': the N buckets with the most trials were kept (top_n); "
+        "'fewest': the N with the fewest (bottom_n).",
+    )
     omitted_keys: list[str]
     trials_omitted: dict[str, int] = Field(description="Cohort label -> omitted trials.")
 

@@ -46,7 +46,7 @@ from ctviz.retrieval_route import (
     retrieve_cohort,
 )
 from ctviz.schemas.aggregate import CountedBucket, CountedCohort, Graph, GroupedCohorts
-from ctviz.schemas.plan import Cohort, Dimension, QueryPlan
+from ctviz.schemas.plan import Cohort, Dimension, QueryPlan, RankingDirection
 from ctviz.schemas.response import (
     CohortStats,
     DataQuality,
@@ -375,13 +375,19 @@ def status_trend_warnings(plan: QueryPlan) -> list[str]:
 def ranking_assumptions(
     interpretation: Interpretation, result: GroupedCohorts | Graph
 ) -> list[str]:
-    """State that the planner chose top_n because the question asked for a ranking."""
-    top_n = interpretation.ranking_top_n
-    if top_n is None or not isinstance(result, GroupedCohorts) or result.top_n is None:
+    """State that the planner chose top_n or bottom_n because the question asked for a ranking."""
+    count = interpretation.ranking_top_n
+    if count is None or not isinstance(result, GroupedCohorts) or result.top_n is None:
         return []
     omitted = len(result.top_n.omitted_keys)
+    if result.top_n.direction == RankingDirection.FEWEST:
+        return [
+            f"Question asked for the fewest; showing bottom {count} (configurable); "
+            f"{omitted} buckets omitted; Unknown and Unrecognized buckets are not ranked but "
+            "still shown; values with no matching trials have no bucket and cannot appear"
+        ]
     return [
-        f"Question asked for a ranking; showing top {top_n} (configurable); "
+        f"Question asked for a ranking; showing top {count} (configurable); "
         f"{omitted} buckets omitted"
     ]
 
@@ -522,6 +528,7 @@ def aggregate(
         ],
         plan.dimension,
         top_n=plan.top_n,
+        bottom_n=plan.bottom_n,
         as_of=as_of,
     )
 

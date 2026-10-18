@@ -259,6 +259,13 @@ class TestGroupCohortsWithCountedInput:
         assert grouped.top_n.trials_omitted == {"all": 1_500}
         assert grouped.key_order == ["Phase 2", "Not Applicable", UNKNOWN_BUCKET_KEY]
 
+    def test_bottom_n_on_counted_cohort_keeps_the_smallest_counted_buckets(self) -> None:
+        grouped = group_cohorts([("all", phase_cohort())], Dimension.PHASE, bottom_n=2, as_of=AS_OF)
+        assert grouped.top_n is not None
+        assert grouped.top_n.omitted_keys == ["Phase 2", "Not Applicable"]
+        assert grouped.top_n.trials_omitted == {"all": 3_200}
+        assert grouped.key_order == ["Phase 1", "Phase 1/Phase 2", UNKNOWN_BUCKET_KEY]
+
     def test_by_count_order_uses_api_counts(self) -> None:
         def status_record(nct_id: str, status: OverallStatus) -> TrialRecord:
             return make_record(nct_id, overall_status=status)

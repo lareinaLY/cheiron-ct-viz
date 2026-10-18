@@ -19,6 +19,7 @@ from ctviz.schemas.plan import (
     Dimension,
     Filters,
     LlmPlanDraft,
+    RankingDirection,
     Relation,
 )
 from ctviz.schemas.trial import OverallStatus, Phase
@@ -41,7 +42,8 @@ several cohorts use a dimension."""
 FILTERS = """\
 All filters are optional and combined with AND.
 - `drug`: an intervention name. With match_mode `intervention_name` (the default) it
-  must appear in a trial's intervention names; use match_mode `broad` only when the user
+  must appear in a trial's intervention names or its intervention MeSH terms; use
+  match_mode `broad` only when the user
   asks for any mention of the drug.
 - `condition`, `sponsor`, `country`: free text, matched by the registry's own search.
 - `phases`: only when the user restricts the trials to phases ("phase 3 trials").
@@ -64,9 +66,12 @@ RULES = """\
    one cohort per group, each with the shared filters plus its own value.
 4. Choose the dimension or relation that answers the question. Leave `chart_hint` null
    unless the user names a chart type, and `top_n` null unless the user gives a number
-   ("top 10"); results are already sorted by count. Never choose a number yourself.
-   Set `ranking_intent` true only when the question asks for the most, top or leading
-   values ("which countries have the most trials"), otherwise false.
+   of values to show ("top 10", "the 5 with the fewest"); results are already sorted by
+   count. Never choose a number yourself.
+   Set `ranking_direction` to "most" only when the question asks for the most, top or
+   leading values ("which countries have the most trials"), to "fewest" only when it
+   asks for the fewest, least or lowest values ("which countries have the fewest
+   trials"), otherwise null.
 5. If the question cannot be answered by counting trials with these filters and
    groupings (for example efficacy, outcomes, survival, adverse events, costs, or
    anything about individual patients), set `unsupported_reason` to one sentence saying
@@ -143,7 +148,7 @@ def example(question: str, *cohorts: Filters, **fields: Any) -> tuple[str, LlmPl
         "relation": None,
         "chart_hint": None,
         "top_n": None,
-        "ranking_intent": False,
+        "ranking_direction": None,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
@@ -187,13 +192,13 @@ FEW_SHOT_EXAMPLES: list[tuple[str, LlmPlanDraft]] = [
         Filters(condition="Alzheimer's disease", statuses=[OverallStatus.RECRUITING]),
         dimension=Dimension.COUNTRY,
         top_n=10,
-        ranking_intent=True,
+        ranking_direction=RankingDirection.MOST,
     ),
     example(
         "Which drugs are most often combined with cisplatin in trials started since 2020?",
         Filters(drug="cisplatin", start_year_from=2020),
         relation=Relation.DRUG_DRUG_COOCCURRENCE,
-        ranking_intent=True,
+        ranking_direction=RankingDirection.MOST,
     ),
     example(
         "What is the median overall survival in osimertinib trials?",

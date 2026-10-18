@@ -17,6 +17,7 @@ from ctviz.schemas.plan import (
     Dimension,
     Filters,
     LlmPlanDraft,
+    RankingDirection,
     Relation,
 )
 from ctviz.schemas.request import QueryRequest
@@ -54,7 +55,7 @@ def draft(*cohorts: Filters, **fields: Any) -> LlmPlanDraft:
         "relation": None,
         "chart_hint": None,
         "top_n": None,
-        "ranking_intent": False,
+        "ranking_direction": None,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
@@ -157,8 +158,16 @@ class TestExplicitFieldsOverride:
         assert result.overrides == []
 
 
-class TestRankingIntent:
-    COUNTRIES = draft(Filters(condition="NSCLC"), dimension=Dimension.COUNTRY, ranking_intent=True)
+class TestRankingDirection:
+    # Supersedes the boolean `ranking_intent`: the draft now says which end is asked
+    # for, because "fewest" read as a ranking showed the largest buckets (planner eval
+    # 2026-10-18). The "most" tests below are unchanged apart from the field.
+    COUNTRIES = draft(
+        Filters(condition="NSCLC"),
+        dimension=Dimension.COUNTRY,
+        ranking_direction=RankingDirection.MOST,
+    )
+    FEWEST = COUNTRIES.model_copy(update={"ranking_direction": RankingDirection.FEWEST})
 
     async def test_ranking_without_a_number_gets_the_default_top_n(self) -> None:
         result = await run_plan(
@@ -188,7 +197,7 @@ class TestRankingIntent:
         assert result.ranking_top_n is None
 
     async def test_no_ranking_no_top_n(self) -> None:
-        llm = FakeLlm(self.COUNTRIES.model_copy(update={"ranking_intent": False}))
+        llm = FakeLlm(self.COUNTRIES.model_copy(update={"ranking_direction": None}))
         result = await run_plan(QueryRequest(query="Where are NSCLC trials?"), llm)
         assert result.plan.top_n is None
         assert result.ranking_top_n is None
@@ -197,12 +206,59 @@ class TestRankingIntent:
         network = draft(
             Filters(drug="cisplatin"),
             relation=Relation.DRUG_DRUG_COOCCURRENCE,
-            ranking_intent=True,
+            ranking_direction=RankingDirection.MOST,
         )
         result = await run_plan(QueryRequest(query="most often combined with"), FakeLlm(network))
         assert result.plan.top_n is None
         assert result.ranking_top_n is None
         assert result.rejected_attempts == []
+
+    async def test_most_never_sets_bottom_n(self) -> None:
+        result = await run_plan(
+            QueryRequest(query="Which countries have the most?"), FakeLlm(self.COUNTRIES)
+        )
+        assert result.plan.bottom_n is None
+
+    async def test_fewest_without_a_number_gets_the_default_bottom_n(self) -> None:
+        result = await run_plan(
+            QueryRequest(query="Which countries have the fewest?"), FakeLlm(self.FEWEST)
+        )
+        assert result.plan.bottom_n == 15
+        assert result.plan.top_n is None
+        assert result.ranking_top_n == 15
+
+    async def test_fewest_default_comes_from_configuration(self) -> None:
+        request = QueryRequest(query="Which countries have the fewest?")
+        result = await plan(request, FakeLlm(self.FEWEST), today=TODAY, default_top_n_for_ranking=4)
+        assert result.plan.bottom_n == 4
+        assert result.ranking_top_n == 4
+
+    async def test_fewest_with_a_number_in_the_question_uses_it_as_bottom_n(self) -> None:
+        # The draft's top_n is "the number the user gave"; with "fewest" it counts from
+        # the bottom.
+        llm = FakeLlm(self.FEWEST.model_copy(update={"top_n": 5}))
+        result = await run_plan(QueryRequest(query="The 5 countries with the fewest"), llm)
+        assert result.plan.bottom_n == 5
+        assert result.plan.top_n is None
+        assert result.ranking_top_n is None
+
+    async def test_explicit_top_n_wins_over_fewest(self) -> None:
+        request = QueryRequest(query="Which countries have the fewest?", top_n=7)
+        result = await run_plan(request, FakeLlm(self.FEWEST))
+        assert result.plan.top_n == 7
+        assert result.plan.bottom_n is None
+        assert result.ranking_top_n is None
+
+    async def test_fewest_relation_is_never_trimmed(self) -> None:
+        network = draft(
+            Filters(drug="cisplatin"),
+            relation=Relation.DRUG_DRUG_COOCCURRENCE,
+            ranking_direction=RankingDirection.FEWEST,
+        )
+        result = await run_plan(QueryRequest(query="least often combined with"), FakeLlm(network))
+        assert result.plan.top_n is None
+        assert result.plan.bottom_n is None
+        assert result.ranking_top_n is None
 
 
 class TestRetryOnValidationFailure:

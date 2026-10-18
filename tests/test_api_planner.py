@@ -14,7 +14,7 @@ from ctviz.api.app import create_app
 from ctviz.config import Settings
 from ctviz.errors import LlmInfrastructureError, PlannerError, PlannerErrorCode
 from ctviz.planner.llm import FallbackChain, LlmAnswer
-from ctviz.schemas.plan import Dimension, Filters, LlmPlanDraft
+from ctviz.schemas.plan import Dimension, Filters, LlmPlanDraft, RankingDirection
 from ctviz.schemas.response import ResponseMode, VisualizationResponse
 from tests.factories import load_fixture_studies
 
@@ -29,7 +29,7 @@ def make_draft(**fields: Any) -> LlmPlanDraft:
         "relation": None,
         "chart_hint": None,
         "top_n": None,
-        "ranking_intent": False,
+        "ranking_direction": None,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
@@ -143,7 +143,7 @@ def test_unsupported_question_is_a_structured_error(mock_api: respx.MockRouter) 
 
 
 def test_ranking_default_is_stated_in_meta(mock_api: respx.MockRouter) -> None:
-    draft = make_draft(dimension=Dimension.COUNTRY, ranking_intent=True)
+    draft = make_draft(dimension=Dimension.COUNTRY, ranking_direction=RankingDirection.MOST)
     response = post(FakeLlm(draft), {"query": "Which countries have the most trials?"})
     assert response.status_code == 200, response.text
     meta = VisualizationResponse.model_validate(response.json()).meta
@@ -157,8 +157,29 @@ def test_ranking_default_is_stated_in_meta(mock_api: respx.MockRouter) -> None:
     )
 
 
+def test_fewest_default_is_stated_in_meta(mock_api: respx.MockRouter) -> None:
+    draft = make_draft(dimension=Dimension.COUNTRY, ranking_direction=RankingDirection.FEWEST)
+    response = post(FakeLlm(draft), {"query": "Which countries have the fewest trials?"})
+    assert response.status_code == 200, response.text
+    body = VisualizationResponse.model_validate(response.json())
+    meta = body.meta
+    assert meta.interpretation.plan.bottom_n == 15
+    assert meta.interpretation.ranking_top_n == 15
+    assert meta.top_n is not None
+    assert meta.top_n.direction == RankingDirection.FEWEST
+    omitted = len(meta.top_n.omitted_keys)
+    assert omitted > 0
+    assert (
+        "Question asked for the fewest; showing bottom 15 (configurable); "
+        f"{omitted} buckets omitted; Unknown and Unrecognized buckets are not ranked but "
+        "still shown; values with no matching trials have no bucket and cannot appear"
+        in meta.assumptions
+    )
+    assert body.visualization.title.endswith(" (bottom 15)")
+
+
 def test_ranking_default_is_configurable(mock_api: respx.MockRouter) -> None:
-    draft = make_draft(dimension=Dimension.COUNTRY, ranking_intent=True)
+    draft = make_draft(dimension=Dimension.COUNTRY, ranking_direction=RankingDirection.MOST)
     app = create_app(settings().model_copy(update={"default_top_n_for_ranking": 2}), FakeLlm(draft))
     with TestClient(app) as client:
         response = client.post("/query", json={"query": "Which countries have the most?"})

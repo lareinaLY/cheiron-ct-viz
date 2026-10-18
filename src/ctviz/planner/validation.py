@@ -12,8 +12,9 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
 
     Rejects: neither dimension nor relation; both set; a relation combined with two or
     more cohorts (comparisons need a dimension); a chart_hint incompatible with the
-    dimension or relation (e.g. bar_chart for a relation); a top_n outside 1..MAX_TOP_N,
-    or combined with a relation (top_n trims buckets, and networks have none); a start
+    dimension or relation (e.g. bar_chart for a relation); a top_n or bottom_n outside
+    1..MAX_TOP_N, both set, or either combined with a relation (they trim buckets, and
+    networks have none); a start
     year outside MIN_START_YEAR..MAX_START_YEAR, or a cohort whose start_year_from is
     after its start_year_to; two cohorts with the same label or the
     same filters (results are keyed by label, and identical cohorts compare nothing).
@@ -43,19 +44,25 @@ def validate_plan(plan: QueryPlan) -> QueryPlan:
 
 
 def check_top_n(plan: QueryPlan) -> None:
-    """Raise PlanValidationError if top_n cannot be applied as written."""
-    if plan.top_n is None:
-        return
-    if not 1 <= plan.top_n <= MAX_TOP_N:
+    """Raise PlanValidationError if top_n or bottom_n cannot be applied as written."""
+    if plan.top_n is not None and plan.bottom_n is not None:
         raise PlanValidationError(
             PlanErrorReason.INVALID_TOP_N,
-            f"top_n must be between 1 and {MAX_TOP_N}, got {plan.top_n}.",
+            "top_n and bottom_n cannot both be set; a ranking keeps one end.",
         )
-    if plan.relation is not None:
-        raise PlanValidationError(
-            PlanErrorReason.TOP_N_REQUIRES_DIMENSION,
-            f"top_n limits the buckets of a dimension; relation {plan.relation} has none.",
-        )
+    for name, value in (("top_n", plan.top_n), ("bottom_n", plan.bottom_n)):
+        if value is None:
+            continue
+        if not 1 <= value <= MAX_TOP_N:
+            raise PlanValidationError(
+                PlanErrorReason.INVALID_TOP_N,
+                f"{name} must be between 1 and {MAX_TOP_N}, got {value}.",
+            )
+        if plan.relation is not None:
+            raise PlanValidationError(
+                PlanErrorReason.TOP_N_REQUIRES_DIMENSION,
+                f"{name} limits the buckets of a dimension; relation {plan.relation} has none.",
+            )
 
 
 def check_year_ranges(plan: QueryPlan) -> None:

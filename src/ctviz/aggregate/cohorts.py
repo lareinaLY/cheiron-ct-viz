@@ -1,4 +1,4 @@
-"""Group several cohorts on one shared bucket axis, optionally limited to the top N."""
+"""Group several cohorts on one shared bucket axis, optionally limited to the top or bottom N."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from ctviz.schemas.aggregate import (
     GroupedCohorts,
     GroupResult,
 )
-from ctviz.schemas.plan import Dimension
+from ctviz.schemas.plan import Dimension, RankingDirection
 from ctviz.schemas.response import CohortPairOverlap, CohortsOverlap, TopNSummary
 from ctviz.schemas.trial import TrialRecord
 
@@ -36,6 +36,7 @@ def group_cohorts(
     dimension: Dimension,
     *,
     top_n: int | None = None,
+    bottom_n: int | None = None,
     citation_cap: int = DEFAULT_CITATION_CAP,
     as_of: date | None = None,
 ) -> GroupedCohorts:
@@ -56,8 +57,14 @@ def group_cohorts(
       `top_n` in the result lists the omitted keys and, per cohort, the trials visible
       only in omitted buckets (for a counted cohort: the summed counts of its omitted
       buckets, exact because every API-countable dimension is single-valued).
+    - `bottom_n` is the same with the N known keys with the fewest trials (ties follow
+      `key_order`). Values with no matching trials have no bucket, so they cannot be among
+      the bottom N; the warning says so even when nothing is omitted. `top_n` in the
+      result carries `direction` "fewest".
     - `cohorts_overlap` reports trials found in more than one cohort (see `cohorts_overlap`).
     """
+    if top_n is not None and bottom_n is not None:
+        raise ValueError(f"top_n and bottom_n are exclusive; got {top_n} and {bottom_n}.")
     as_of = as_of or date.today()
     spec = DIMENSIONS[dimension]
     grouped = [
@@ -67,7 +74,7 @@ def group_cohorts(
     combined = combined_buckets(cohorts, [result for _, _, result in grouped], spec, as_of)
     key_order = [bucket.key for bucket in combined]
     overlap = cohorts_overlap(cohorts)
-    if top_n is None:
+    if top_n is None and bottom_n is None:
         return GroupedCohorts(
             dimension=dimension,
             cohorts=[CohortGroup(label=label, result=result) for label, _, result in grouped],
@@ -75,7 +82,11 @@ def group_cohorts(
             cohorts_overlap=overlap,
         )
 
-    omitted = omitted_keys(combined, top_n)
+    direction = RankingDirection.MOST if top_n is not None else RankingDirection.FEWEST
+    keep = top_n if top_n is not None else bottom_n
+    if keep is None:
+        raise ValueError("A ranked grouping needs top_n or bottom_n.")
+    omitted = omitted_keys(combined, keep, direction)
     trials_omitted = {
         label: hidden_trials(source, result, spec, set(omitted))
         for label, source, result in grouped
@@ -85,12 +96,14 @@ def group_cohorts(
         cohorts=[
             CohortGroup(
                 label=label,
-                result=drop_buckets(result, spec, top_n, omitted, trials_omitted[label]),
+                result=drop_buckets(result, spec, keep, direction, omitted, trials_omitted[label]),
             )
             for label, _, result in grouped
         ],
         key_order=[key for key in key_order if key not in omitted],
-        top_n=TopNSummary(top_n=top_n, omitted_keys=omitted, trials_omitted=trials_omitted),
+        top_n=TopNSummary(
+            top_n=keep, direction=direction, omitted_keys=omitted, trials_omitted=trials_omitted
+        ),
         cohorts_overlap=overlap,
     )
 
@@ -177,19 +190,22 @@ def distinct_records(records: Iterable[TrialRecord]) -> list[TrialRecord]:
     return list(unique.values())
 
 
-def omitted_keys(ordered_buckets: list[Bucket], top_n: int) -> list[str]:
-    """Known keys outside the top N by count, in display order.
+def omitted_keys(
+    ordered_buckets: list[Bucket], keep: int, direction: RankingDirection
+) -> list[str]:
+    """Known keys outside the top (or bottom) N by count, in display order.
 
     Unknown and Unrecognized are never omitted: they describe data quality, not a value
-    competing for the top N.
+    competing for the ranking. Ties follow the display order in both directions.
     """
     known = [
         (index, b)
         for index, b in enumerate(ordered_buckets)
         if not (b.is_unknown or b.is_unrecognized)
     ]
-    ranked = sorted(known, key=lambda item: (-item[1].count, item[0]))
-    kept = {bucket.key for _, bucket in ranked[:top_n]}
+    sign = -1 if direction == RankingDirection.MOST else 1
+    ranked = sorted(known, key=lambda item: (sign * item[1].count, item[0]))
+    kept = {bucket.key for _, bucket in ranked[:keep]}
     return [bucket.key for _, bucket in known if bucket.key not in kept]
 
 
@@ -205,16 +221,31 @@ def count_hidden_trials(
 
 
 def drop_buckets(
-    result: GroupResult, spec: DimensionSpec, top_n: int, omitted: list[str], hidden: int
+    result: GroupResult,
+    spec: DimensionSpec,
+    keep: int,
+    direction: RankingDirection,
+    omitted: list[str],
+    hidden: int,
 ) -> GroupResult:
-    """Remove omitted buckets and state what was removed (invariant 3: nothing is silent)."""
-    if not omitted:
+    """Remove omitted buckets and state what was removed (invariant 3: nothing is silent).
+
+    A bottom-N result is always annotated, even with nothing omitted: values with no
+    matching trials have no bucket, so "fewest" is only among values with at least one.
+    """
+    if not omitted and direction == RankingDirection.MOST:
         return result
+    end = "top" if direction == RankingDirection.MOST else "bottom"
     warning = (
-        f"Showing the top {top_n} {spec.label} values by trial count; {len(omitted)} "
+        f"Showing the {end} {keep} {spec.label} values by trial count; {len(omitted)} "
         f"{spec.label} values omitted; {hidden} trials appear only in omitted values "
         "and are not shown."
     )
+    if direction == RankingDirection.FEWEST:
+        warning += (
+            " Values with no matching trials have no bucket and cannot appear among the "
+            "fewest; Unknown and Unrecognized are not ranked and are still shown."
+        )
     return result.model_copy(
         update={
             "buckets": [b for b in result.buckets if b.key not in set(omitted)],

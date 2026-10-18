@@ -227,6 +227,8 @@ def chart_title(plan: QueryPlan) -> str:
     )
     if plan.top_n is not None:
         title += f" (top {plan.top_n})"
+    if plan.bottom_n is not None:
+        title += f" (bottom {plan.bottom_n})"
     return title
 
 

@@ -11,7 +11,7 @@ from ctviz.planner import validate_plan
 from ctviz.planner.plan import merge_draft
 from ctviz.planner.prompt import FEW_SHOT_EXAMPLES, build_messages, build_system_prompt
 from ctviz.retrieval.query_builder import build_params
-from ctviz.schemas.plan import ChartType, Dimension, LlmPlanDraft, Relation
+from ctviz.schemas.plan import ChartType, Dimension, LlmPlanDraft, RankingDirection, Relation
 from ctviz.schemas.request import QueryRequest
 from ctviz.schemas.trial import OverallStatus, Phase
 from ctviz.spec.chart import CHART_DESCRIPTIONS
@@ -75,17 +75,19 @@ def test_prompt_states_the_faithfulness_rules(prompt: str) -> None:
 
 
 def test_prompt_states_the_ranking_rule(prompt: str) -> None:
-    assert "ranking_intent" in prompt
-    for word in ("most", "top", "leading"):
+    # Supersedes "fewest must not appear in the prompt": "fewest" questions are now a
+    # ranking of their own (`ranking_direction` "fewest", trimmed to the bottom N), after
+    # gpt-5-mini read "fewest" as "most" in the 2026-10-18 planner eval.
+    assert "ranking_direction" in prompt
+    assert "ranking_intent" not in prompt
+    for word in ("most", "top", "leading", "fewest", "least", "lowest"):
         assert word in prompt
-    # top_n keeps the largest buckets, so a "fewest" question must not be trimmed.
-    assert "fewest" not in prompt
 
 
 def test_a_few_shot_example_flags_a_ranking_without_a_number() -> None:
     drafts = [draft for _, draft in FEW_SHOT_EXAMPLES]
-    assert any(d.ranking_intent and d.top_n is not None for d in drafts)
-    assert any(not d.ranking_intent and d.dimension is not None for d in drafts)
+    assert any(d.ranking_direction == RankingDirection.MOST and d.top_n is not None for d in drafts)
+    assert any(d.ranking_direction is None and d.dimension is not None for d in drafts)
 
 
 def test_few_shot_examples_cover_the_query_classes() -> None:
