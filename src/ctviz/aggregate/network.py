@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from itertools import combinations, product
 
+from ctviz.aggregate.drug_terms import hub_assumptions
 from ctviz.aggregate.group import DEFAULT_CITATION_CAP
 from ctviz.aggregate.mesh_filter import MeshVerdict
 from ctviz.aggregate.registry import (
@@ -93,8 +94,13 @@ def build_network(
     citation_cap: int = DEFAULT_CITATION_CAP,
     max_nodes: int | None = None,
     min_edge_weight: int = 1,
+    queried_drug: str | None = None,
 ) -> Graph:
     """Build an undirected graph for `relation`.
+
+    `queried_drug` is the cohort's drug filter: for a relation with drug nodes, trials
+    that matched it by name only (no MeSH term containing it) are stated as a hub
+    undercount (`drug_terms.hub_assumptions`).
 
     Drugs are the study-level intervention MeSH terms (keyed by MeSH id when present).
     Sponsors are lead sponsors; conditions are the raw condition strings.
@@ -175,8 +181,14 @@ def build_network(
             *spec.assumptions,
             *exclusion_assumptions(summary),
             *drug_class_assumptions(summary, screening),
+            *(
+                hub_assumptions(records, queried_drug)
+                if queried_drug is not None and NodeType.DRUG in (spec.left_type, spec.right_type)
+                else []
+            ),
         ],
         warnings=[
+            *spec.warnings,
             *edge_warnings(spec, without_edges, len(records)),
             *trim_warnings(summary),
         ],

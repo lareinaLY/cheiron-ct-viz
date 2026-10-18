@@ -15,7 +15,7 @@ from ctviz.schemas.plan import ChartType, Cohort, LlmPlanDraft, MatchMode, Query
 class CountUnit(StrEnum):
     """What one unit of `count` means."""
 
-    TRIALS = "trials"
+    REGISTERED_STUDIES = "registered studies (interventional and observational, any status)"
 
 
 class DataQuality(StrEnum):
@@ -327,7 +327,20 @@ class Interpretation(BaseModel):
         description="top_n chosen by code (the configured default) because the question "
         "asked for a ranking without giving a number; None otherwise.",
     )
+    unhandled_terms: list[str] = Field(
+        default_factory=list,
+        description="Parts of the question the plan does not apply (no filter, dimension or "
+        "relation expresses them), as flagged by the LLM. Each is also a 'Not applied' "
+        "warning: the counts include trials regardless of these terms.",
+    )
     planning_ms: float | None = Field(default=None, description="Planner wall-clock time.")
+
+
+class MatchedTerm(BaseModel):
+    """One intervention MeSH term containing a cohort's drug name, and its trial count."""
+
+    term: str
+    trials: int = Field(ge=0)
 
 
 class CohortStats(BaseModel):
@@ -358,6 +371,19 @@ class CohortStats(BaseModel):
         description="total_matched minus the sum of the bucket counts; 0 when the counts "
         "reconcile. A nonzero value made the cohort fall back to fetching. Null when no "
         "bucket was counted.",
+    )
+    drug_matched_terms: list[MatchedTerm] | None = Field(
+        default=None,
+        description="Distinct intervention MeSH terms in the counted records whose name "
+        "contains the cohort's drug filter (case-insensitive), with trial counts, most "
+        "first. More than one term usually means several molecules (conjugates, "
+        "biosimilars, tracers). Null without a drug filter, or on the count_per_bucket "
+        "route, where the records are not read.",
+    )
+    withdrawn: int | None = Field(
+        default=None,
+        description="Counted studies whose overallStatus is WITHDRAWN (never enrolled). "
+        "Null on the count_per_bucket route, where the records are not read.",
     )
 
 
@@ -396,7 +422,11 @@ class Meta(BaseModel):
     """Everything a reader needs to trust or question the chart (invariant 3: nothing is silent)."""
 
     interpretation: Interpretation
-    count_unit: CountUnit
+    count_unit: CountUnit = Field(
+        description="What one unit of `count` is: a study registered on ClinicalTrials.gov "
+        "of any study type (interventional, observational, expanded access) and any overall "
+        "status, including withdrawn studies, unless a filter narrows it."
+    )
     filters_applied: list[Cohort]
     match_mode: MatchMode
     search_semantics: dict[str, str] = Field(

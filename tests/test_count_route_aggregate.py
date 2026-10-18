@@ -120,7 +120,13 @@ class TestGroupCounted:
         assert unknown.is_unknown is True
         assert unknown.count == 300
         assert unknown.citations[0].value is None
-        assert any("300 of 5000 trials have no phase" in w for w in result.warnings)
+        # Supersedes "300 of 5000 trials have no phase": Unknown now holds only
+        # interventional (or untyped) studies, and the warning says so.
+        assert any(
+            "300 of 5000 studies are interventional (or have no recognized study type) and "
+            "list no phase" in w
+            for w in result.warnings
+        )
 
     def test_same_order_and_labels_as_fetch_route(self) -> None:
         records = [r for b in phase_cohort().buckets for r in b.records]

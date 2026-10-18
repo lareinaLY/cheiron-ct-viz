@@ -139,6 +139,7 @@ async def plan_by_llm(
             overrides=overrides,
             rejected_attempts=rejected,
             ranking_top_n=ranking_top_n,
+            unhandled_terms=clean_terms(draft.unhandled_terms),
         )
     raise PlannerError(
         PlannerErrorCode.PLANNING_FAILED,
@@ -225,6 +226,18 @@ def apply_ranking_default(
     if not draft.ranking_intent or query_plan.top_n is not None or query_plan.dimension is None:
         return query_plan, None
     return query_plan.model_copy(update={"top_n": default_top_n}), default_top_n
+
+
+def clean_terms(terms: list[str]) -> list[str]:
+    """The LLM's unhandled terms, stripped, without blanks and case-insensitive repeats."""
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        stripped = term.strip()
+        if stripped and stripped.casefold() not in seen:
+            seen.add(stripped.casefold())
+            cleaned.append(stripped)
+    return cleaned
 
 
 def record_override(

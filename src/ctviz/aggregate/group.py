@@ -192,7 +192,9 @@ def bucket_warnings(
     """Report Unknown, estimated, in-progress and future buckets (invariant 3)."""
     warnings = []
     unknown = sum(b.count for b in buckets if b.is_unknown)
-    if unknown:
+    if unknown and spec.unknown_warning is not None:
+        warnings.append(spec.unknown_warning.format(unknown=unknown, total=total))
+    elif unknown:
         warnings.append(
             f"{unknown} of {total} trials have no {spec.label}; "
             f"they are counted in the '{UNKNOWN_BUCKET_KEY}' bucket."

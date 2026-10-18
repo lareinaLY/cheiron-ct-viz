@@ -47,6 +47,7 @@ def make_draft(**fields: Any) -> LlmPlanDraft:
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
+        "unhandled_terms": [],
     }
     values.update(fields)
     return LlmPlanDraft(**values)
@@ -399,3 +400,22 @@ def without_question(payload: dict[str, Any]) -> dict[str, Any]:
     copy = json.loads(json.dumps(payload))
     del copy["meta"]["interpretation"]["question"]
     return copy
+
+
+# Whether Essie treats a backslash as an escape is unconfirmed (docs/api_findings.md §14),
+# so, like a double quote, it is rejected; so are C0 control characters such as newline.
+CONTROL_INJECTIONS = [
+    pytest.param("drug", "x\\", id="drug-trailing-backslash-escapes-closing-quote"),
+    pytest.param("condition", "lung\ncancer", id="condition-newline"),
+    pytest.param("sponsor", "Merck\x00", id="sponsor-nul"),
+]
+
+
+@pytest.mark.parametrize(("field", "value"), CONTROL_INJECTIONS)
+def test_backslash_and_control_characters_are_rejected_without_upstream_call(
+    mock_api: respx.MockRouter, field: str, value: str
+) -> None:
+    response = post(None, {"query": "q", field: value, "dimension": "phase"})
+    error = assert_structured_error(response, 422, "invalid_filter_value")
+    assert field in error.message
+    assert not mock_api["studies"].called

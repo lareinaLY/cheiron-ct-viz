@@ -47,7 +47,15 @@ LIMITATIONS = """\
 - Latency is wall-clock time from one machine, including the network and any retry."""
 
 QUESTIONS_PATH = Path(__file__).resolve().parent.parent / "tests" / "eval" / "questions.yaml"
-FIELDS = ("outcome", "cohort_count", "filters", "grouping", "granularity", "top_n")
+FIELDS = (
+    "outcome",
+    "cohort_count",
+    "filters",
+    "grouping",
+    "granularity",
+    "top_n",
+    "unhandled_terms",
+)
 OUTCOME_BY_CODE = {
     PlannerErrorCode.UNSUPPORTED_QUESTION: "unsupported",
     PlannerErrorCode.CLARIFICATION_NEEDED: "clarification",
@@ -111,8 +119,16 @@ def granularity(dimension: str | None) -> str | None:
     return spec.time_unit if spec.kind == DimensionKind.TEMPORAL else None
 
 
-def score(result: CaseResult, expect: dict[str, Any], query_plan: QueryPlan | None) -> None:
-    """Fill `result.scores` and `result.misses` for one case."""
+def score(
+    result: CaseResult,
+    expect: dict[str, Any],
+    query_plan: QueryPlan | None,
+    unhandled_terms: list[str],
+) -> None:
+    """Fill `result.scores` and `result.misses` for one case.
+
+    unhandled_terms is scored only for cases that list it, as an exact set (casefolded).
+    """
 
     def check(name: str, expected: Any, actual: Any) -> None:
         matched = expected == actual
@@ -133,6 +149,12 @@ def score(result: CaseResult, expect: dict[str, Any], query_plan: QueryPlan | No
     if expected_unit is not None:
         check("granularity", expected_unit, granularity(query_plan.dimension))
     check("top_n", expect.get("top_n"), query_plan.top_n)
+    if "unhandled_terms" in expect:
+        check(
+            "unhandled_terms",
+            sorted(term.casefold() for term in expect["unhandled_terms"]),
+            sorted(term.casefold() for term in unhandled_terms),
+        )
 
 
 async def run_case(
@@ -141,6 +163,7 @@ async def run_case(
     """Plan one question and score it."""
     started = time.perf_counter()
     query_plan: QueryPlan | None = None
+    unhandled_terms: list[str] = []
     retries = 0
     detail: str | None = None
     try:
@@ -152,6 +175,7 @@ async def run_case(
         )
         query_plan, outcome = interpretation.plan, "plan"
         retries = len(interpretation.rejected_attempts)
+        unhandled_terms = interpretation.unhandled_terms
     except PlannerError as error:
         outcome = OUTCOME_BY_CODE.get(error.code, f"error:{error.code.value}")
         detail = " ".join([str(error), *(f"[{s}]" for s in error.suggestions)])
@@ -166,7 +190,7 @@ async def run_case(
         retries=retries,
         detail=detail,
     )
-    score(result, case["expect"], query_plan)
+    score(result, case["expect"], query_plan, unhandled_terms)
     return result
 
 

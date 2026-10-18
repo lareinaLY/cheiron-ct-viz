@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ctviz.errors import SourceRecordError
 from ctviz.schemas.trial import (
+    PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY,
     UNKNOWN_BUCKET_KEY,
     UNRECOGNIZED_BUCKET_KEY,
     AgencyClass,
@@ -79,6 +80,7 @@ JSON_TYPE_NAMES: dict[type, str] = {
     list: "a list",
     str: "a string",
     int: "an integer",
+    float: "a number",
 }
 
 
@@ -94,9 +96,11 @@ def json_type_name(value: object) -> str:
 
 
 def has_json_type(value: object, expected: type) -> bool:
-    """isinstance, except that JSON booleans are not integers."""
-    if expected is int and isinstance(value, bool):
+    """isinstance, except that JSON booleans are not numbers and `float` means any number."""
+    if expected in (int, float) and isinstance(value, bool):
         return False
+    if expected is float:
+        return isinstance(value, int | float)
     return isinstance(value, expected)
 
 
@@ -162,6 +166,21 @@ class StudyReader:
         except ValueError:
             return self.keep_unrecognized(value, path, record_field)
 
+    def count(self, path: str, record_field: str) -> int | UnrecognizedValue | None:
+        """A non-negative whole number; a negative or fractional one is a value-domain
+        failure kept as UnrecognizedValue. A JSON integer written as 40.0 is 40.
+
+        A non-number (string, object) is still a structural failure.
+        """
+        value = self.get(path, float)
+        if value is None:
+            return None
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        if isinstance(value, int) and value >= 0:
+            return value
+        return self.keep_unrecognized(str(value), path, record_field)
+
     def keep_unrecognized(self, value: str, path: str, record_field: str) -> UnrecognizedValue:
         """Record a value-domain failure and return its marker."""
         self.unrecognized.append(
@@ -174,13 +193,20 @@ class StudyReader:
         raise SourceRecordError(self.nct_id, path, value, problem)
 
 
-def phase_bucket(phases: list[Phase | UnrecognizedValue]) -> str:
+def phase_bucket(
+    phases: list[Phase | UnrecognizedValue],
+    study_type: StudyType | UnrecognizedValue | None = None,
+) -> str:
     """One mutually exclusive label per trial; multi-phase trials get a combined label.
 
     A trial listing any unrecognized phase cannot be named faithfully, so it goes to the
-    Unrecognized bucket as a whole.
+    Unrecognized bucket as a whole. A phase-less observational or expanded-access study
+    has no phase by design, so it gets its own bucket; Unknown is kept for the rest
+    (interventional studies, or an unknown study type) because their phase is missing.
     """
     if not phases:
+        if study_type in (StudyType.OBSERVATIONAL, StudyType.EXPANDED_ACCESS):
+            return PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY
         return UNKNOWN_BUCKET_KEY
     known = [phase for phase in phases if isinstance(phase, Phase)]
     if len(known) < len(phases):
@@ -355,6 +381,13 @@ def normalize_study(raw: object) -> TrialRecord:
     start_date, start_date_precision = parse_start_date(reader)
     sponsor_path = SOURCE_PATHS["lead_sponsor"]
 
+    study_type = reader.enum(
+        StudyType,
+        reader.get(SOURCE_PATHS["study_type"], str),
+        SOURCE_PATHS["study_type"],
+        "study_type",
+    )
+
     try:
         return TrialRecord(
             nct_id=nct_id,
@@ -365,14 +398,9 @@ def normalize_study(raw: object) -> TrialRecord:
                 SOURCE_PATHS["overall_status"],
                 "overall_status",
             ),
-            study_type=reader.enum(
-                StudyType,
-                reader.get(SOURCE_PATHS["study_type"], str),
-                SOURCE_PATHS["study_type"],
-                "study_type",
-            ),
+            study_type=study_type,
             phases=phases,
-            phase_bucket=phase_bucket(phases),
+            phase_bucket=phase_bucket(phases, study_type),
             start_date=start_date,
             start_date_raw=reader.get(SOURCE_PATHS["start_date"], str),
             start_date_precision=start_date_precision,
@@ -385,7 +413,7 @@ def normalize_study(raw: object) -> TrialRecord:
             ),
             collaborators=parse_collaborators(reader),
             country_locations=parse_country_locations(reader),
-            enrollment=reader.get(SOURCE_PATHS["enrollment"], int),
+            enrollment=reader.count(SOURCE_PATHS["enrollment"], "enrollment"),
             enrollment_type=reader.enum(
                 EnrollmentType,
                 reader.get(SOURCE_PATHS["enrollment_type"], str),

@@ -40,7 +40,9 @@ PHASE_COUNTS: dict[str, int] = {
     "Phase 3": 1_100,
     "Phase 4": 400,
     "Not Applicable": 6_000,
-    UNKNOWN_BUCKET_KEY: 3_563,
+    # Phase-less studies split by study type (docs/decisions.md); the total is unchanged.
+    "Not applicable (observational / expanded access)": 1_000,
+    UNKNOWN_BUCKET_KEY: 2_563,
 }
 PHASE_TOTAL = sum(PHASE_COUNTS.values())  # 16,913
 
@@ -53,6 +55,7 @@ PHASES_BY_KEY: dict[str, list[str] | None] = {
     "Phase 3": ["PHASE3"],
     "Phase 4": ["PHASE4"],
     "Not Applicable": ["NA"],
+    "Not applicable (observational / expanded access)": None,
     UNKNOWN_BUCKET_KEY: None,
 }
 
@@ -61,7 +64,12 @@ type Sample = Callable[[str, int], dict[str, Any]]
 
 def phase_sample(key: str, index: int) -> dict[str, Any]:
     nct_id = f"NCT{list(PHASES_BY_KEY).index(key):04d}{index:04d}"
-    return make_raw_study(nct_id, phases=PHASES_BY_KEY[key])
+    study_type = (
+        "OBSERVATIONAL"
+        if key == "Not applicable (observational / expanded access)"
+        else "INTERVENTIONAL"
+    )
+    return make_raw_study(nct_id, phases=PHASES_BY_KEY[key], study_type=study_type)
 
 
 def year_sample(key: str, index: int) -> dict[str, Any]:
@@ -250,6 +258,32 @@ class TestCountPerBucket:
         assert len(api.bucket_requests()) == len(PHASE_COUNTS)
         assert counts_by_key(response) == PHASE_COUNTS
 
+    async def test_record_level_disclosures_are_null_with_a_reason(
+        self, mock_api: respx.MockRouter
+    ) -> None:
+        install(
+            mock_api,
+            FakeApi(
+                Dimension.PHASE,
+                PHASE_COUNTS,
+                total=PHASE_TOTAL,
+                sample=phase_sample,
+                cohort_clause=intervention_clause("pembrolizumab"),
+            ),
+        )
+        plan = QueryPlan(
+            cohorts=[Cohort(label="pembrolizumab", filters=Filters(drug="pembrolizumab"))],
+            dimension=Dimension.PHASE,
+        )
+        meta = (await run(plan)).meta
+
+        assert meta.cohorts[0].drug_matched_terms is None
+        assert meta.cohorts[0].withdrawn is None
+        assert any(
+            "drug_matched_terms and withdrawn are null" in a and "not read" in a
+            for a in meta.assumptions
+        )
+
     async def test_citations_are_a_sample_of_each_bucket(self, mock_api: respx.MockRouter) -> None:
         install(
             mock_api, FakeApi(Dimension.PHASE, PHASE_COUNTS, total=PHASE_TOTAL, sample=phase_sample)
@@ -399,7 +433,8 @@ class TestNotCounted:
         assert response.meta.retrieval_route == RetrievalRoute.FETCH
         assert api.bucket_requests() == []
         [warning] = [w for w in response.meta.warnings if "count_per_bucket" in w]
-        assert "9 requests" in warning
+        # Was 9 before the phase-less observational bucket was added (10 phase buckets now).
+        assert "10 requests" in warning
         assert "MAX_COUNT_REQUESTS (3)" in warning
 
 

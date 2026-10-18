@@ -309,7 +309,9 @@ class CtGovClient:
             await self._limiter.acquire()
             try:
                 response = await self._http.get(path, params=params)
-            except httpx.TransportError as error:
+            except httpx.RequestError as error:
+                # Any request-level failure (transport, decoding, too many redirects) is
+                # retried and then reported as upstream, never an unstructured 500.
                 failure = f"network error: {error!r}"
                 if attempt == max_retries:
                     raise UpstreamError(f"{path}: {failure} after {max_retries} retries") from error

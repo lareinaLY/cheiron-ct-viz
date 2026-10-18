@@ -52,10 +52,28 @@ class TestPhaseBucket:
         assert record.phases == [Phase.NA]
         assert record.phase_bucket == "Not Applicable"
 
-    def test_missing_phases_on_observational_is_unknown(self) -> None:
+    # Supersedes "missing phases on observational is Unknown": phase does not exist for
+    # observational studies, so it is a deterministic bucket, not missing data.
+    def test_missing_phases_on_observational_is_not_applicable(self) -> None:
         record = normalize_study(make_raw_study(phases=None, study_type="OBSERVATIONAL"))
         assert record.phases == []
+        assert record.phase_bucket == "Not applicable (observational / expanded access)"
+
+    def test_missing_phases_on_expanded_access_is_not_applicable(self) -> None:
+        record = normalize_study(make_raw_study(phases=None, study_type="EXPANDED_ACCESS"))
+        assert record.phase_bucket == "Not applicable (observational / expanded access)"
+
+    def test_missing_phases_on_interventional_is_unknown(self) -> None:
+        record = normalize_study(make_raw_study(phases=None, study_type="INTERVENTIONAL"))
         assert record.phase_bucket == "Unknown"
+
+    def test_missing_phases_with_unrecognized_study_type_is_unknown(self) -> None:
+        record = normalize_study(make_raw_study(phases=None, study_type="NEW_TYPE"))
+        assert record.phase_bucket == "Unknown"
+
+    def test_observational_with_a_phase_keeps_the_phase(self) -> None:
+        record = normalize_study(make_raw_study(phases=["PHASE2"], study_type="OBSERVATIONAL"))
+        assert record.phase_bucket == "Phase 2"
 
     def test_empty_phase_list_is_unknown(self) -> None:
         assert normalize_study(make_raw_study(phases=[])).phase_bucket == "Unknown"

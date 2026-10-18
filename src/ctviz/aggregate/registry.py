@@ -22,6 +22,7 @@ from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
 from ctviz.schemas.response import NodeType
 from ctviz.schemas.trial import (
+    PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY,
     UNKNOWN_BUCKET_KEY,
     UNRECOGNIZED_BUCKET_KEY,
     AgencyClass,
@@ -70,6 +71,38 @@ DRUG_NODE_FILTER = MeshNodeFilter(trees=load_mesh_trees(), comparators=NETWORK_C
 # Lower bound of each enrollment bin, in order. The last bin is open-ended.
 ENROLLMENT_BIN_LOWER_BOUNDS = (0, 1, 50, 100, 500, 1000)
 
+# Display labels for enum buckets; the bucket key and the citation keep the registry code.
+# Wording follows the ClinicalTrials.gov website. The registry's UNKNOWN status ("status
+# not verified for over two years") is a real value, so its label says so to keep it apart
+# from the Unknown (missing) bucket.
+OVERALL_STATUS_LABELS: dict[OverallStatus, str] = {
+    OverallStatus.ACTIVE_NOT_RECRUITING: "Active, not recruiting",
+    OverallStatus.COMPLETED: "Completed",
+    OverallStatus.ENROLLING_BY_INVITATION: "Enrolling by invitation",
+    OverallStatus.NOT_YET_RECRUITING: "Not yet recruiting",
+    OverallStatus.RECRUITING: "Recruiting",
+    OverallStatus.SUSPENDED: "Suspended",
+    OverallStatus.TERMINATED: "Terminated",
+    OverallStatus.WITHDRAWN: "Withdrawn (never enrolled)",
+    OverallStatus.AVAILABLE: "Available (expanded access)",
+    OverallStatus.NO_LONGER_AVAILABLE: "No longer available (expanded access)",
+    OverallStatus.TEMPORARILY_NOT_AVAILABLE: "Temporarily not available (expanded access)",
+    OverallStatus.APPROVED_FOR_MARKETING: "Approved for marketing (expanded access)",
+    OverallStatus.WITHHELD: "Withheld",
+    OverallStatus.UNKNOWN: "Unknown status (registry value)",
+}
+AGENCY_CLASS_LABELS: dict[AgencyClass, str] = {
+    AgencyClass.NIH: "NIH",
+    AgencyClass.FED: "U.S. federal (non-NIH)",
+    AgencyClass.OTHER_GOV: "Other government",
+    AgencyClass.INDIV: "Individual",
+    AgencyClass.INDUSTRY: "Industry",
+    AgencyClass.NETWORK: "Network (cooperative group)",
+    AgencyClass.AMBIG: "Ambiguous (registry value)",
+    AgencyClass.OTHER: "Other (academic, hospital, foundation)",
+    AgencyClass.UNKNOWN: "Unknown class (registry value)",
+}
+
 PHASE_RANK = {
     phase: rank
     for rank, phase in enumerate(
@@ -114,6 +147,11 @@ COUNTABLE_PHASE_SETS: tuple[tuple[Phase, ...], ...] = (
 PHASES_BY_BUCKET: dict[str, tuple[Phase, ...]] = {
     phase_bucket(list(phases)): phases for phases in COUNTABLE_PHASE_SETS
 }
+# Study types whose phase-less records form PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY; the API
+# clause and the normalizer rule must select the same records.
+PHASE_LESS_STUDY_TYPES_CLAUSE = "AREA[StudyType](OBSERVATIONAL OR EXPANDED_ACCESS)"
+# Sorts after Not Applicable (the highest PHASE_RANK) and before Unknown.
+PHASE_NOT_APPLICABLE_STUDY_TYPE_RANK = len(PHASE_RANK)
 YEAR_KEY = re.compile(r"\d{4}")
 
 
@@ -139,8 +177,11 @@ def phase_api_filter(key: str) -> str:
     """Exactly this phase set: every listed phase present and every other phase absent.
 
     `AREA[Phase]X` matches any element of the phases list, so "Phase 2" alone would also
-    match Phase 1/Phase 2 trials (docs/api_findings.md §4).
+    match Phase 1/Phase 2 trials (docs/api_findings.md §4). The phase-less
+    observational / expanded-access bucket is selected by study type.
     """
+    if key == PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY:
+        return f"AREA[Phase]MISSING AND {PHASE_LESS_STUDY_TYPES_CLAUSE}"
     phases = PHASES_BY_BUCKET[key]
     present = " AND ".join(f"AREA[Phase]{phase.value}" for phase in phases)
     others = " OR ".join(phase.value for phase in Phase if phase not in phases)
@@ -228,6 +269,7 @@ class DimensionSpec:
     time_unit: Literal["year", "yearmonth"] | None = None
     assumptions: tuple[str, ...] = field(default_factory=tuple)
     api_count: ApiCount | None = None
+    unknown_warning: str | None = None
 
 
 def field_path(base: str, leaf: str, index: int | None) -> str:
@@ -268,6 +310,11 @@ def single(
     return DimensionValue(key=key, label=key, citations=(cite(record, path, value),))
 
 
+def labeled(record: TrialRecord, code: str, label: str, path: str) -> DimensionValue:
+    """A one-citation enum value keyed and cited by its registry code, shown by `label`."""
+    return DimensionValue(key=code, label=label, citations=(cite(record, path, code),))
+
+
 def unrecognized(record: TrialRecord, path: str, value_raw: str | list[str]) -> DimensionValue:
     """The Unrecognized bucket entry for a value outside the known enum, citing it verbatim."""
     return DimensionValue(
@@ -287,6 +334,21 @@ def extract_phase(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
     """The trial's single phase bucket, citing the raw phases list."""
     if record.phase_bucket == UNKNOWN_BUCKET_KEY:
         return []
+    if record.phase_bucket == PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY:
+        return [
+            DimensionValue(
+                key=record.phase_bucket,
+                label=record.phase_bucket,
+                citations=(
+                    cite(
+                        record,
+                        record.source_paths["study_type"],
+                        raw_value(record.study_type) if record.study_type is not None else None,
+                    ),
+                ),
+                rank=(PHASE_NOT_APPLICABLE_STUDY_TYPE_RANK,),
+            )
+        ]
     phases_raw = [raw_value(phase) for phase in record.phases]
     if record.phase_bucket == UNRECOGNIZED_BUCKET_KEY:
         return [unrecognized(record, path(None), phases_raw)]
@@ -385,7 +447,7 @@ def extract_sponsor_class(record: TrialRecord, path: PathFor) -> list[DimensionV
     agency_class = record.lead_sponsor.agency_class
     if isinstance(agency_class, UnrecognizedValue):
         return [unrecognized(record, path(None), agency_class.raw)]
-    return [single(record, agency_class.value, path(None), agency_class.value)]
+    return [labeled(record, agency_class.value, AGENCY_CLASS_LABELS[agency_class], path(None))]
 
 
 def extract_lead_sponsor(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
@@ -414,8 +476,8 @@ def extract_overall_status(record: TrialRecord, path: PathFor) -> list[Dimension
         return []
     if isinstance(record.overall_status, UnrecognizedValue):
         return [unrecognized(record, path(None), record.overall_status.raw)]
-    value = record.overall_status.value
-    return [single(record, value, path(None), value)]
+    status = record.overall_status
+    return [labeled(record, status.value, OVERALL_STATUS_LABELS[status], path(None))]
 
 
 def extract_condition(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
@@ -460,9 +522,14 @@ def enrollment_bin(count: int) -> tuple[int, str]:
 
 
 def extract_enrollment_bucket(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
-    """The enrollment bin, citing the raw count; estimated counts are flagged."""
+    """The enrollment bin, citing the raw count; estimated counts are flagged.
+
+    A negative or fractional count has no bin, so it goes to Unrecognized.
+    """
     if record.enrollment is None:
         return []
+    if isinstance(record.enrollment, UnrecognizedValue):
+        return [unrecognized(record, path(None), record.enrollment.raw)]
     index, key = enrollment_bin(record.enrollment)
     value = DimensionValue(
         key=key,
@@ -480,7 +547,8 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         title_label="phase",
         description=(
             "Trial phase (Early Phase 1, Phase 1 to 4, Not Applicable); multi-phase "
-            "trials such as 'Phase 1/Phase 2' form their own bucket. For 'by phase' or "
+            "trials such as 'Phase 1/Phase 2' form their own bucket, and observational or "
+            "expanded-access studies without a phase form another. For 'by phase' or "
             "'phase breakdown'."
         ),
         kind=DimensionKind.CATEGORICAL,
@@ -494,8 +562,14 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         ),
         api_count=ApiCount(
             api_filter=phase_api_filter,
-            missing_filter="AREA[Phase]MISSING",
-            keys=tuple(PHASES_BY_BUCKET),
+            missing_filter=f"AREA[Phase]MISSING AND NOT {PHASE_LESS_STUDY_TYPES_CLAUSE}",
+            keys=(*PHASES_BY_BUCKET, PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY),
+        ),
+        unknown_warning=(
+            "{unknown} of {total} studies are interventional (or have no recognized study "
+            f"type) and list no phase; they are counted in the '{UNKNOWN_BUCKET_KEY}' bucket. "
+            "Observational and expanded-access studies without a phase are in "
+            f"'{PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY}'."
         ),
     ),
     Dimension.START_YEAR: DimensionSpec(
@@ -667,8 +741,10 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
 class RelationSpec:
     """Declaration of one relation: two dimensions whose values become linked nodes.
 
-    `label` names the relation in chart titles; `description` is rendered into the
-    planner prompt.
+    `label` names the relation in prose; `title` is the chart title template, with
+    `{cohort}` replaced by the cohort label; `description` is rendered into the planner
+    prompt. `warnings` are stated on every response for the relation, because they
+    qualify what an edge means rather than any particular data.
 
     When both sides are the same dimension, edges are the unordered pairs of distinct
     values within a trial; otherwise every left value links to every right value.
@@ -676,6 +752,7 @@ class RelationSpec:
     """
 
     label: str
+    title: str
     left: Dimension
     left_type: NodeType
     right: Dimension
@@ -683,6 +760,7 @@ class RelationSpec:
     description: str
     assumptions: tuple[str, ...] = field(default_factory=tuple)
     node_filters: dict[NodeType, MeshNodeFilter] = field(default_factory=dict)
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def same_dimension(self) -> bool:
@@ -693,6 +771,7 @@ class RelationSpec:
 RELATIONS: dict[Relation, RelationSpec] = {
     Relation.SPONSOR_DRUG: RelationSpec(
         label="lead sponsor-drug",
+        title="Lead sponsor-drug network for {cohort}",
         description=(
             "Network linking lead sponsors to the drugs (intervention MeSH terms) in "
             "their trials. For 'which sponsors work on which drugs'."
@@ -710,9 +789,13 @@ RELATIONS: dict[Relation, RelationSpec] = {
     ),
     Relation.DRUG_DRUG_COOCCURRENCE: RelationSpec(
         label="drug co-occurrence",
+        title=(
+            "Drugs listed in the same trial record as {cohort} "
+            "(any arm; co-listing is not co-administration)"
+        ),
         description=(
-            "Network of drugs tested together in the same trial. For 'what is X combined "
-            "with' or 'drug combinations'."
+            "Network of drugs listed in the same trial record (any arm, including "
+            "comparators). For 'which drugs appear in trials together with X'."
         ),
         left=Dimension.INTERVENTION_MESH,
         left_type=NodeType.DRUG,
@@ -720,9 +803,15 @@ RELATIONS: dict[Relation, RelationSpec] = {
         right_type=NodeType.DRUG,
         assumptions=(DRUG_NODE_NOTE, NODE_TYPE_NOTE),
         node_filters={NodeType.DRUG: DRUG_NODE_FILTER},
+        warnings=(
+            "An edge means both drugs are listed in the same trial record, not that they "
+            "are co-administered: comparator arms, either-or options (e.g. cisplatin or "
+            "carboplatin), separate arms and observational studies are included.",
+        ),
     ),
     Relation.CONDITION_DRUG: RelationSpec(
         label="condition-drug",
+        title="Condition-drug network for {cohort}",
         description=(
             "Network linking conditions to the drugs studied for them. For 'which drugs "
             "are tested for which conditions'."

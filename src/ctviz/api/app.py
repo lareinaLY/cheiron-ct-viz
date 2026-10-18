@@ -239,6 +239,18 @@ def register_error_handlers(app: FastAPI) -> None:
             ],
         )
 
+    @app.exception_handler(Exception)
+    async def unexpected(request: Request, error: Exception) -> JSONResponse:
+        # Last resort so every failure is still an ErrorResponse; the details stay in the
+        # log, because an unexpected message may expose internals.
+        logger.exception("Unexpected error while answering %s", request.url.path)
+        return error_response(
+            500,
+            "internal_error",
+            "An unexpected internal error occurred; the request was not answered.",
+            ["Retry later; if this persists, report it with the time of the request."],
+        )
+
     @app.exception_handler(ApiRequestError)
     async def rejected(request: Request, error: ApiRequestError) -> JSONResponse:
         logger.error("Query rejected by ClinicalTrials.gov: %s", error)

@@ -33,6 +33,7 @@ def make_draft(**fields: Any) -> LlmPlanDraft:
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
+        "unhandled_terms": [],
     }
     values.update(fields)
     return LlmPlanDraft(**values)
@@ -189,3 +190,27 @@ def test_every_provider_failing_is_a_502(mock_api: respx.MockRouter) -> None:
     assert response.json()["code"] == "llm_unavailable"
     assert "openai" in response.json()["message"] and "deepseek" in response.json()["message"]
     assert not mock_api.routes[1].called
+
+
+def test_unhandled_terms_are_warned_first_and_echoed_in_interpretation(
+    mock_api: respx.MockRouter,
+) -> None:
+    draft = make_draft(unhandled_terms=["combination", "first-line"])
+    response = post(
+        FakeLlm(draft), {"query": "first-line pembrolizumab combination trials by phase"}
+    )
+    assert response.status_code == 200, response.text
+    meta = VisualizationResponse.model_validate(response.json()).meta
+    assert meta.interpretation.unhandled_terms == ["combination", "first-line"]
+    assert meta.warnings[:2] == [
+        "Not applied: 'combination' — no such filter exists; counts include all matching trials.",
+        "Not applied: 'first-line' — no such filter exists; counts include all matching trials.",
+    ]
+
+
+def test_no_unhandled_terms_means_no_not_applied_warning(mock_api: respx.MockRouter) -> None:
+    response = post(FakeLlm(make_draft()), {"query": "pembrolizumab trials by phase"})
+    assert response.status_code == 200, response.text
+    meta = VisualizationResponse.model_validate(response.json()).meta
+    assert meta.interpretation.unhandled_terms == []
+    assert not any(w.startswith("Not applied:") for w in meta.warnings)

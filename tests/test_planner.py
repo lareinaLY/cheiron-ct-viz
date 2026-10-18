@@ -58,6 +58,7 @@ def draft(*cohorts: Filters, **fields: Any) -> LlmPlanDraft:
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
+        "unhandled_terms": [],
     }
     values.update(fields)
     return LlmPlanDraft(**values)
@@ -300,3 +301,32 @@ class TestRulesFallback:
         with pytest.raises(ValueError, match="OPENAI_API_KEY") as error:
             build_llm(settings)
         assert "你的key" not in str(error.value)
+
+
+class TestUnhandledTerms:
+    async def test_unhandled_terms_are_recorded_in_the_interpretation(self) -> None:
+        llm = FakeLlm(
+            draft(
+                Filters(drug="pembrolizumab"),
+                dimension=Dimension.PHASE,
+                unhandled_terms=["combination", "first-line"],
+            )
+        )
+        result = await run_plan(QueryRequest(query="first-line pembrolizumab combos"), llm)
+        assert result.unhandled_terms == ["combination", "first-line"]
+
+    async def test_unhandled_terms_are_stripped_deduplicated_and_blank_dropped(self) -> None:
+        llm = FakeLlm(
+            draft(
+                Filters(drug="pembrolizumab"),
+                dimension=Dimension.PHASE,
+                unhandled_terms=[" combination ", "", "Combination", "monotherapy"],
+            )
+        )
+        result = await run_plan(QueryRequest(query="q"), llm)
+        assert result.unhandled_terms == ["combination", "monotherapy"]
+
+    async def test_rules_plan_has_no_unhandled_terms(self) -> None:
+        request = QueryRequest(query="q", drug="pembrolizumab", dimension=Dimension.PHASE)
+        result = await run_plan(request, None)
+        assert result.unhandled_terms == []

@@ -26,6 +26,9 @@ PHASE_KEYS = [
     "Phase 3",
     "Phase 4",
     "Not Applicable",
+    # Added with the study-type split of phase-less records (docs/decisions.md): a
+    # deterministic bucket for studies where phase does not exist.
+    "Not applicable (observational / expanded access)",
 ]
 
 
@@ -89,8 +92,20 @@ class TestPhase:
         clause = api_count(Dimension.PHASE).api_filter("Not Applicable")
         assert clause.startswith("AREA[Phase]NA AND NOT AREA[Phase](EARLY_PHASE1 OR ")
 
+    # Supersedes "missing phase is AREA[Phase]MISSING": phase-less observational and
+    # expanded-access studies have their own bucket, so Unknown excludes them.
     def test_missing_phase_is_counted_with_missing(self) -> None:
-        assert api_count(Dimension.PHASE).missing_filter == "AREA[Phase]MISSING"
+        assert api_count(Dimension.PHASE).missing_filter == (
+            "AREA[Phase]MISSING AND NOT AREA[StudyType](OBSERVATIONAL OR EXPANDED_ACCESS)"
+        )
+
+    def test_phase_less_observational_bucket_selects_study_type(self) -> None:
+        clause = api_count(Dimension.PHASE).api_filter(
+            "Not applicable (observational / expanded access)"
+        )
+        assert clause == (
+            "AREA[Phase]MISSING AND AREA[StudyType](OBSERVATIONAL OR EXPANDED_ACCESS)"
+        )
 
     def test_unknown_key_is_rejected(self) -> None:
         with pytest.raises(KeyError):
@@ -132,7 +147,10 @@ class TestBucketFilters:
     def test_enum_dimension_lists_every_key_then_unknown(self) -> None:
         filters = bucket_filters(api_count(Dimension.PHASE), year_range=None)
         assert [key for key, _ in filters] == [*PHASE_KEYS, UNKNOWN_BUCKET_KEY]
-        assert filters[-1] == (UNKNOWN_BUCKET_KEY, "AREA[Phase]MISSING")
+        assert filters[-1] == (
+            UNKNOWN_BUCKET_KEY,
+            "AREA[Phase]MISSING AND NOT AREA[StudyType](OBSERVATIONAL OR EXPANDED_ACCESS)",
+        )
 
     def test_year_dimension_lists_every_year_in_range_then_unknown(self) -> None:
         filters = bucket_filters(api_count(Dimension.START_YEAR), year_range=(2019, 2021))

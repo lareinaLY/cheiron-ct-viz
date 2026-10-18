@@ -18,6 +18,10 @@ UNKNOWN_BUCKET_KEY = "Unknown"
 # API added after this code was written). Distinct from Unknown, which means missing.
 UNRECOGNIZED_BUCKET_KEY = "Unrecognized"
 
+# Phase bucket for a phase-less observational or expanded-access study: phase does not
+# exist for these study types, so it is a known value derived from studyType, not missing.
+PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY = "Not applicable (observational / expanded access)"
+
 
 class Phase(StrEnum):
     """Trial phase as listed in `protocolSection.designModule.phases`."""
@@ -216,7 +220,7 @@ class TrialRecord(BaseModel):
     country_locations: list[CountryLocation] = Field(
         default_factory=list, description="Distinct countries in first-seen order."
     )
-    enrollment: int | None = None
+    enrollment: int | UnrecognizedValue | None = None
     enrollment_type: EnrollmentType | UnrecognizedValue | None = None
     unrecognized_values: list[UnrecognizedField] = Field(
         default_factory=list,

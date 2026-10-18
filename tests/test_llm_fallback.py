@@ -40,6 +40,7 @@ def draft(**fields: Any) -> LlmPlanDraft:
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
+        "unhandled_terms": [],
     }
     values.update(fields)
     return LlmPlanDraft(**values)

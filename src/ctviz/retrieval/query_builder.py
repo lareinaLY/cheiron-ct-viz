@@ -146,11 +146,28 @@ def search_semantics(filters: Filters, match_mode: MatchMode) -> dict[str, str]:
     return semantics
 
 
+def reject_escapes(field: str, value: str) -> None:
+    """Raise InvalidFilterError for a backslash or a C0 control character.
+
+    Whether Essie treats a backslash as an escape is unconfirmed (docs/api_findings.md
+    §14): inside a quoted value it could escape the closing quote. Control characters
+    (newline, NUL, ...) are never part of a name and their handling is untested.
+    """
+    if "\\" in value:
+        raise InvalidFilterError(field, value, "backslashes (\\) cannot be searched")
+    if any(ord(character) < 0x20 for character in value):
+        raise InvalidFilterError(
+            field, value, "control characters (newline, tab, NUL, ...) cannot be searched"
+        )
+
+
 def non_blank(field: str, value: str) -> str:
-    """The trimmed value; a blank value would silently match everything."""
+    """The trimmed value; a blank value would silently match everything. Values with a
+    backslash or a control character left after trimming are rejected (`reject_escapes`)."""
     trimmed = value.strip()
     if not trimmed:
         raise InvalidFilterError(field, value, "value is blank")
+    reject_escapes(field, trimmed)
     return trimmed
 
 

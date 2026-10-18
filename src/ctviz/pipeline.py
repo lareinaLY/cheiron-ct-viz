@@ -20,7 +20,8 @@ from enum import StrEnum
 from typing import Any
 
 from ctviz.aggregate import build_network, counted_sample_problems, group_cohorts
-from ctviz.aggregate.registry import DIMENSIONS
+from ctviz.aggregate.drug_terms import matched_terms
+from ctviz.aggregate.registry import DIMENSIONS, DimensionKind
 from ctviz.config import CountRoutePolicy, DataQualityThresholds, NetworkLimits
 from ctviz.errors import (
     RateLimitError,
@@ -50,14 +51,18 @@ from ctviz.schemas.response import (
     CohortStats,
     DataQuality,
     Interpretation,
+    MatchedTerm,
     RetrievalRoute,
     VisualizationResponse,
 )
 from ctviz.schemas.retrieval import CountResult, FetchResult
-from ctviz.schemas.trial import TrialRecord
+from ctviz.schemas.trial import OverallStatus, TrialRecord
 from ctviz.spec import build_response
 
 logger = logging.getLogger(__name__)
+
+# Matched drug terms named in the warning sentence; meta.cohorts lists all of them.
+MATCHED_TERMS_SHOWN = 5
 
 
 class SkipBand(StrEnum):
@@ -225,6 +230,8 @@ async def execute(
             timing_ms={},
             warnings=[
                 *data_quality_warnings(cohorts, data_quality, thresholds),
+                *unhandled_term_warnings(interpretation),
+                *status_trend_warnings(plan),
                 *data_timestamp_warnings(timestamp_problem),
                 *(w for data in cohorts for w in retrieval_warnings(data, len(cohorts))),
             ],
@@ -337,6 +344,32 @@ def planning_assumptions(interpretation: Interpretation) -> list[str]:
         for problem in interpretation.rejected_attempts
     )
     return messages
+
+
+def unhandled_term_warnings(interpretation: Interpretation) -> list[str]:
+    """Name each part of the question the plan does not apply, so the counts are not read
+    as answering it (invariant 3). Placed before every warning except degraded data."""
+    return [
+        f"Not applied: '{term}' — no such filter exists; counts include all matching trials."
+        for term in interpretation.unhandled_terms
+    ]
+
+
+def status_trend_warnings(plan: QueryPlan) -> list[str]:
+    """Warn that a status filter on a time axis cannot show a trend.
+
+    Status is today's status: trials that started years ago have mostly left
+    "recruiting" (or any other status), so a status-filtered time series always leans
+    toward recent years whatever the real activity was.
+    """
+    if plan.dimension is None or DIMENSIONS[plan.dimension].kind != DimensionKind.TEMPORAL:
+        return []
+    if not any(cohort.filters.statuses for cohort in plan.cohorts):
+        return []
+    return [
+        "Status reflects today; older trials have left this status, so earlier years are "
+        "under-represented. This is not a trend in activity."
+    ]
 
 
 def ranking_assumptions(
@@ -478,6 +511,7 @@ def aggregate(
             plan.relation,
             max_nodes=limits.max_nodes,
             min_edge_weight=limits.min_edge_weight,
+            queried_drug=cohorts[0].cohort.filters.drug,
         )
     if plan.dimension is None:
         raise ValueError("A validated plan has a dimension or a relation.")
@@ -511,7 +545,23 @@ def cohort_stats(data: CohortData) -> CohortStats:
         retrieval_route=data.route,
         count_requests=attempt.requests if attempt is not None else None,
         count_remainder=attempt.remainder if attempt is not None else None,
+        drug_matched_terms=drug_matched_terms(data),
+        withdrawn=None if fetch is None else withdrawn_count(data.records),
     )
+
+
+def drug_matched_terms(data: CohortData) -> list[MatchedTerm] | None:
+    """The cohort's MeSH terms containing its drug filter; None without a drug filter or
+    on the count_per_bucket route (only bucket samples were read)."""
+    drug = data.cohort.filters.drug
+    if drug is None or data.fetch is None:
+        return None
+    return matched_terms(data.records, drug)
+
+
+def withdrawn_count(records: Sequence[TrialRecord]) -> int:
+    """Records whose overall status is WITHDRAWN: registered, but never enrolled."""
+    return sum(1 for record in records if record.overall_status == OverallStatus.WITHDRAWN)
 
 
 def merged_search_semantics(plan: QueryPlan) -> dict[str, str]:
@@ -568,7 +618,31 @@ def retrieval_warnings(data: CohortData, cohort_count: int) -> list[str]:
         )
         messages.extend(f"Skipped {error}" for error in data.skipped)
     messages.extend(unrecognized_warnings(data.records))
+    messages.extend(cohort_content_warnings(data))
     return [prefixed(data, cohort_count, message) for message in messages]
+
+
+def cohort_content_warnings(data: CohortData) -> list[str]:
+    """What the counted records contain that the filters do not say: several molecules
+    behind one drug name, and withdrawn studies that never enrolled."""
+    messages: list[str] = []
+    drug = data.cohort.filters.drug
+    terms = drug_matched_terms(data) or []
+    if drug is not None and len(terms) > 1:
+        shown = ", ".join(f"{term.term} ({term.trials:,})" for term in terms[:MATCHED_TERMS_SHOWN])
+        more = ", ..." if len(terms) > MATCHED_TERMS_SHOWN else ""
+        messages.append(
+            f"'{drug}' matched {len(terms)} distinct intervention terms: {shown}{more} — these "
+            "are different molecules (conjugates, biosimilars, tracers); narrow the name if "
+            "you mean one."
+        )
+    withdrawn = withdrawn_count(data.records)
+    if withdrawn:
+        messages.append(
+            f"{withdrawn} withdrawn studies (never enrolled) are included in these counts; add "
+            "a status filter to exclude them."
+        )
+    return messages
 
 
 def counted_sample_warnings(data: CohortData) -> list[str]:
@@ -649,7 +723,9 @@ def counted_assumptions(
         f"API's total of {data.total_count:,}. Citations are a sample: up to the "
         f"{policy.citation_sample_size} most recently registered trials "
         f"({RETRIEVAL_SORT_FIELD} {RETRIEVAL_SORT_DIRECTION}) of each bucket; each bucket's "
-        "citation_count_total is its full count."
+        "citation_count_total is its full count.",
+        "meta.cohorts[].drug_matched_terms and withdrawn are null: the API counted each "
+        "bucket, so the cohort's records were not read.",
     ]
     cached = [bucket for bucket in count.buckets if bucket.cached_at is not None]
     if cached:

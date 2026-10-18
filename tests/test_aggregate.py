@@ -18,6 +18,7 @@ from ctviz.schemas.trial import (
     OverallStatus,
     Phase,
     Sponsor,
+    StudyType,
     TrialRecord,
 )
 from tests.factories import country, make_record, mesh
@@ -766,3 +767,33 @@ class TestFutureBuckets:
     def test_non_temporal_dimension_is_never_future(self) -> None:
         result = group_by(phase_records(), Dimension.PHASE, as_of=AS_OF)
         assert all(b.is_future is False for b in result.buckets)
+
+
+class TestPhaseOfPhaseLessStudies:
+    """Phase-less observational / expanded-access studies are a deterministic bucket."""
+
+    NA_OBS = "Not applicable (observational / expanded access)"
+
+    def records(self) -> list[TrialRecord]:
+        return [
+            make_record("NCT1", phases=[Phase.NA], phase_bucket="Not Applicable"),
+            make_record("NCT2", study_type=StudyType.OBSERVATIONAL, phase_bucket=self.NA_OBS),
+            make_record("NCT3", study_type=StudyType.INTERVENTIONAL, phase_bucket="Unknown"),
+        ]
+
+    def test_bucket_cites_the_study_type_and_sits_before_unknown(self) -> None:
+        result = group_by(self.records(), Dimension.PHASE)
+        assert [b.key for b in result.buckets] == ["Not Applicable", self.NA_OBS, "Unknown"]
+        bucket = result.buckets[1]
+        assert not bucket.is_unknown
+        citation = bucket.citations[0]
+        assert citation.field_path == "protocolSection.designModule.studyType"
+        assert citation.value == "OBSERVATIONAL"
+
+    def test_unknown_warning_names_interventional_studies_only(self) -> None:
+        result = group_by(self.records(), Dimension.PHASE)
+        assert (
+            "1 of 3 studies are interventional (or have no recognized study type) and list "
+            "no phase; they are counted in the 'Unknown' bucket. Observational and "
+            f"expanded-access studies without a phase are in '{self.NA_OBS}'."
+        ) in result.warnings

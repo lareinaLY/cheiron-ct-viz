@@ -143,3 +143,7 @@ class LlmPlanDraft(BaseModel):
     clarification: Clarification | None = Field(
         description="Set when the question has two plausible readings."
     )
+    unhandled_terms: list[str] = Field(
+        description="Words or phrases of the question that no filter, dimension or "
+        "relation expresses, copied from the question; empty when every part is mapped."
+    )

@@ -243,9 +243,10 @@
       "overrides": [],
       "rejected_attempts": [],
       "ranking_top_n": null,
+      "unhandled_terms": [],
       "planning_ms": null
     },
-    "count_unit": "trials",
+    "count_unit": "registered studies (interventional and observational, any status)",
     "filters_applied": [
       {
         "label": "pembrolizumab",
@@ -300,7 +301,9 @@
         "reconciled": true,
         "retrieval_route": "fetch",
         "count_requests": null,
-        "count_remainder": null
+        "count_remainder": null,
+        "drug_matched_terms": null,
+        "withdrawn": null
       },
       {
         "label": "pembrolizumab, Phase 1 or Phase 2",
@@ -312,7 +315,9 @@
         "reconciled": true,
         "retrieval_route": "fetch",
         "count_requests": null,
-        "count_remainder": null
+        "count_remainder": null,
+        "drug_matched_terms": null,
+        "withdrawn": null
       }
     ],
     "data_quality": "normal",

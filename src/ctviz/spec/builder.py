@@ -108,7 +108,7 @@ def build_response(
     covered = sum((stats.coverage or 0.0) * stats.total_matched for stats in cohort_stats)
     meta = Meta(
         interpretation=resolve_interpretation(plan, question, interpretation),
-        count_unit=CountUnit.TRIALS,
+        count_unit=CountUnit.REGISTERED_STUDIES,
         filters_applied=plan.cohorts,
         match_mode=plan.match_mode,
         search_semantics=search_semantics,
@@ -218,7 +218,7 @@ def chart_title(plan: QueryPlan) -> str:
     """Deterministic title from the plan, e.g. 'Trials by phase for pembrolizumab'."""
     labels = [cohort.label for cohort in plan.cohorts]
     if plan.relation is not None:
-        return f"{capitalize(RELATIONS[plan.relation].label)} network for {labels[0]}"
+        return RELATIONS[plan.relation].title.format(cohort=labels[0])
     if plan.dimension is None:
         raise ValueError("A validated plan has a dimension or a relation.")
     subject = f"Trials by {DIMENSIONS[plan.dimension].title_label}"

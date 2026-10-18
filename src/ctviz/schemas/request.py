@@ -103,7 +103,12 @@ def cohort_label(filters: Filters) -> str:
     """A readable, deterministic label, e.g. 'non-small cell lung cancer, recruiting'."""
     parts = [value.strip() for value in (filters.drug, filters.condition) if value]
     if filters.sponsor:
-        parts.append(f"sponsored by {filters.sponsor.strip()}")
+        sponsor = filters.sponsor.strip()
+        # query.spons also matches collaborators and any organization name containing the
+        # words, so the label says so (a lead-sponsor chart counts far fewer trials).
+        parts.append(
+            f"sponsored by {sponsor} (lead sponsor or collaborator; name contains '{sponsor}')"
+        )
     if filters.country:
         parts.append(f"in {filters.country.strip()}")
     if filters.phases:

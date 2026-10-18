@@ -14,7 +14,9 @@ EXAMPLE_NCT_IDS = 3
 CONSEQUENCES: dict[str, str] = {
     "phases": f"phase charts count them in the '{UNRECOGNIZED_BUCKET_KEY}' bucket",
     "overall_status": f"status charts count them in the '{UNRECOGNIZED_BUCKET_KEY}' bucket",
-    "study_type": "study type is not used for grouping",
+    "study_type": (
+        f"if they also list no phase, phase charts count them in '{UNKNOWN_BUCKET_KEY}'"
+    ),
     "lead_sponsor": f"sponsor class charts count them in the '{UNRECOGNIZED_BUCKET_KEY}' bucket",
     "collaborators": "collaborator class is not used for grouping",
     "interventions": (
@@ -23,6 +25,10 @@ CONSEQUENCES: dict[str, str] = {
     "start_date": f"start year and start month charts count them in '{UNKNOWN_BUCKET_KEY}'",
     "start_date_type": "they are counted in their period but marked neither actual nor estimated",
     "enrollment_type": "they are binned by enrollment count but not marked as estimated",
+    "enrollment": (
+        "negative or fractional counts have no enrollment bin, so enrollment charts count "
+        f"them in the '{UNRECOGNIZED_BUCKET_KEY}' bucket"
+    ),
 }
 
 LIST_INDEX = re.compile(r"\[\d+\]")
