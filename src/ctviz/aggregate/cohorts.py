@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from datetime import date
+from itertools import combinations
 
 from ctviz.aggregate.counted import group_counted
 from ctviz.aggregate.group import (
@@ -22,7 +24,7 @@ from ctviz.schemas.aggregate import (
     GroupResult,
 )
 from ctviz.schemas.plan import Dimension
-from ctviz.schemas.response import TopNSummary
+from ctviz.schemas.response import CohortPairOverlap, CohortsOverlap, TopNSummary
 from ctviz.schemas.trial import TrialRecord
 
 # A cohort's trials as fetched (fetch route), or its buckets as counted by the API.
@@ -54,6 +56,7 @@ def group_cohorts(
       `top_n` in the result lists the omitted keys and, per cohort, the trials visible
       only in omitted buckets (for a counted cohort: the summed counts of its omitted
       buckets, exact because every API-countable dimension is single-valued).
+    - `cohorts_overlap` reports trials found in more than one cohort (see `cohorts_overlap`).
     """
     as_of = as_of or date.today()
     spec = DIMENSIONS[dimension]
@@ -63,11 +66,13 @@ def group_cohorts(
     ]
     combined = combined_buckets(cohorts, [result for _, _, result in grouped], spec, as_of)
     key_order = [bucket.key for bucket in combined]
+    overlap = cohorts_overlap(cohorts)
     if top_n is None:
         return GroupedCohorts(
             dimension=dimension,
             cohorts=[CohortGroup(label=label, result=result) for label, _, result in grouped],
             key_order=key_order,
+            cohorts_overlap=overlap,
         )
 
     omitted = omitted_keys(combined, top_n)
@@ -86,7 +91,31 @@ def group_cohorts(
         ],
         key_order=[key for key in key_order if key not in omitted],
         top_n=TopNSummary(top_n=top_n, omitted_keys=omitted, trials_omitted=trials_omitted),
+        cohorts_overlap=overlap,
     )
+
+
+def cohorts_overlap(cohorts: Sequence[tuple[str, CohortSource]]) -> CohortsOverlap | None:
+    """NCT IDs shared by each pair of cohorts, and by any two cohorts overall.
+
+    None for a single cohort (nothing to overlap) and when any cohort was counted by the
+    API: its trials are known only through per-bucket samples, so shared trials cannot be
+    found.
+    """
+    if len(cohorts) < 2 or any(isinstance(source, CountedCohort) for _, source in cohorts):
+        return None
+    ids = {
+        label: {record.nct_id for record in source}
+        for label, source in cohorts
+        if not isinstance(source, CountedCohort)
+    }
+    pairs = [
+        CohortPairOverlap(cohorts=[a, b], shared_trials=len(ids[a] & ids[b]))
+        for a, b in combinations(ids, 2)
+    ]
+    cohort_count = Counter(nct_id for nct_ids in ids.values() for nct_id in nct_ids)
+    total_shared = sum(1 for count in cohort_count.values() if count > 1)
+    return CohortsOverlap(pairs=pairs, total_shared=total_shared)
 
 
 def group_source(

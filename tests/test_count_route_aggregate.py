@@ -274,3 +274,13 @@ class TestGroupCohortsWithCountedInput:
         )
         grouped = group_cohorts([("all", cohort)], Dimension.OVERALL_STATUS, as_of=AS_OF)
         assert grouped.key_order == ["COMPLETED", "RECRUITING"]
+
+
+class TestCohortsOverlapOnCountRoute:
+    def test_overlap_is_not_computed_when_a_cohort_was_counted(self) -> None:
+        # Counted cohorts carry only per-bucket samples, not every NCT ID.
+        fetched = [phase_record("NCT10", Phase.PHASE1)]
+        grouped = group_cohorts(
+            [("big", phase_cohort()), ("small", fetched)], Dimension.PHASE, as_of=AS_OF
+        )
+        assert grouped.cohorts_overlap is None

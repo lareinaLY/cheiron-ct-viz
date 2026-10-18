@@ -219,6 +219,7 @@
     ],
     "data_quality": "normal",
     "top_n": null,
+    "cohorts_overlap": null,
     "network": null,
     "estimated_count": 0,
     "unknown_date_type_count": null,

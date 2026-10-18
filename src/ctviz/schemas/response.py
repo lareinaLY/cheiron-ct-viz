@@ -373,6 +373,25 @@ class TopNSummary(BaseModel):
     trials_omitted: dict[str, int] = Field(description="Cohort label -> omitted trials.")
 
 
+class CohortPairOverlap(BaseModel):
+    """Trials matched by both cohorts of one pair."""
+
+    cohorts: list[str] = Field(min_length=2, max_length=2, description="The two cohort labels.")
+    shared_trials: int = Field(ge=0)
+
+
+class CohortsOverlap(BaseModel):
+    """Trials that match more than one cohort and are therefore counted in each.
+
+    Cohorts are "trials involving X", not disjoint groups: a combination trial of X and Y
+    is in both. `pairs` lists every pair of cohorts (including pairs sharing 0 trials);
+    `total_shared` counts distinct trials in two or more cohorts.
+    """
+
+    pairs: list[CohortPairOverlap]
+    total_shared: int = Field(ge=0)
+
+
 class Meta(BaseModel):
     """Everything a reader needs to trust or question the chart (invariant 3: nothing is silent)."""
 
@@ -403,6 +422,12 @@ class Meta(BaseModel):
         description="'degraded' when many retrieved records were unreadable and skipped.",
     )
     top_n: TopNSummary | None = None
+    cohorts_overlap: CohortsOverlap | None = Field(
+        default=None,
+        description="Trials shared between cohorts (fetch route; 0 when checked and none). "
+        "Null for a single cohort, for networks, and when any cohort used the "
+        "count_per_bucket route (only samples of its trials are known; an assumption says so).",
+    )
     network: NetworkSummary | None = Field(
         default=None, description="Exclusions and readability caps; networks only."
     )

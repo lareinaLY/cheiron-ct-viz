@@ -6,7 +6,13 @@ from pydantic import BaseModel, Field
 
 from ctviz.schemas.citation import Citation
 from ctviz.schemas.plan import Dimension, Relation
-from ctviz.schemas.response import NetworkEdge, NetworkNode, NetworkSummary, TopNSummary
+from ctviz.schemas.response import (
+    CohortsOverlap,
+    NetworkEdge,
+    NetworkNode,
+    NetworkSummary,
+    TopNSummary,
+)
 from ctviz.schemas.trial import TrialRecord
 
 
@@ -117,10 +123,12 @@ class GroupedCohorts(BaseModel):
 
     `key_order` is the display order of every bucket key across all cohorts (the
     dimension's own order, Unknown last), so cohorts line up on one axis. `top_n` is set
-    when a bucket limit was requested; it lists what was removed.
+    when a bucket limit was requested; it lists what was removed. `cohorts_overlap` is
+    set when there are two or more cohorts and every one was fetched record by record.
     """
 
     dimension: Dimension
     cohorts: list[CohortGroup] = Field(min_length=1)
     key_order: list[str]
     top_n: TopNSummary | None = None
+    cohorts_overlap: CohortsOverlap | None = None

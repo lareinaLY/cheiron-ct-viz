@@ -317,12 +317,25 @@
     ],
     "data_quality": "normal",
     "top_n": null,
+    "cohorts_overlap": {
+      "pairs": [
+        {
+          "cohorts": [
+            "pembrolizumab",
+            "pembrolizumab, Phase 1 or Phase 2"
+          ],
+          "shared_trials": 1
+        }
+      ],
+      "total_shared": 1
+    },
     "network": null,
     "estimated_count": 0,
     "unknown_date_type_count": null,
     "data_timestamp": "2026-10-16T09:00:05",
     "assumptions": [
-      "Multi-phase trials form their own bucket (e.g. 'Phase 1/Phase 2'); phase buckets are mutually exclusive."
+      "Multi-phase trials form their own bucket (e.g. 'Phase 1/Phase 2'); phase buckets are mutually exclusive.",
+      "1 trials match more than one cohort and are counted in each; cohorts are not disjoint."
     ],
     "warnings": [],
     "timing_ms": {}

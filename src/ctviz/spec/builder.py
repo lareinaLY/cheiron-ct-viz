@@ -80,6 +80,7 @@ def build_response(
         result_warnings = list(result.warnings)
         buckets_overlap = True
         top_n = None
+        overlap = None
         estimated_count = None
         unknown_date_type_count = None
     else:
@@ -92,6 +93,8 @@ def build_response(
         result_warnings = cohort_warnings(result)
         buckets_overlap = any(cohort.result.buckets_overlap for cohort in result.cohorts)
         top_n = result.top_n
+        overlap = result.cohorts_overlap
+        result_assumptions.extend(overlap_assumptions(result, cohort_stats))
         estimated_count = summed_if_known(
             [cohort.result.estimated_count for cohort in result.cohorts]
         )
@@ -117,6 +120,7 @@ def build_response(
         retrieval_route=retrieval_route,
         cohorts=list(cohort_stats),
         top_n=top_n,
+        cohorts_overlap=overlap,
         estimated_count=estimated_count,
         unknown_date_type_count=unknown_date_type_count,
         data_timestamp=data_timestamp,
@@ -130,6 +134,35 @@ def build_response(
         if max_response_bytes is not None:
             fit_network_budget(response, max_response_bytes, reduced_edge_citation_cap)
     return response
+
+
+def overlap_assumptions(result: GroupedCohorts, cohort_stats: Sequence[CohortStats]) -> list[str]:
+    """State that compared cohorts share trials, or why the overlap is unknown.
+
+    A grouped bar chart reads as a comparison of disjoint groups, but a trial matching
+    several cohorts (e.g. a combination trial) is counted in each.
+    """
+    if len(result.cohorts) < 2:
+        return []
+    overlap = result.cohorts_overlap
+    if overlap is None:
+        return [
+            "meta.cohorts_overlap is null: at least one cohort was counted per bucket by "
+            "the API (count_per_bucket route), which returns only sample trials, so trials "
+            "shared between cohorts could not be identified; cohorts may not be disjoint."
+        ]
+    if overlap.total_shared == 0:
+        return []
+    line = (
+        f"{overlap.total_shared} trials match more than one cohort and are counted in each; "
+        "cohorts are not disjoint."
+    )
+    if any(stats.truncated for stats in cohort_stats):
+        line += (
+            " The overlap is computed over the retrieved records only; the record cap cut "
+            "at least one cohort, so more trials may be shared."
+        )
+    return [line]
 
 
 def fit_network_budget(

@@ -1332,6 +1332,7 @@
     ],
     "data_quality": "normal",
     "top_n": null,
+    "cohorts_overlap": null,
     "network": {
       "excluded_terms": [
         {

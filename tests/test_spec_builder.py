@@ -19,6 +19,7 @@ import pytest
 from ctviz.aggregate import build_network, group_cohorts
 from ctviz.normalize import normalize_study
 from ctviz.retrieval.query_builder import search_semantics
+from ctviz.schemas.aggregate import CountedBucket, CountedCohort
 from ctviz.schemas.plan import ChartType, Cohort, Dimension, Filters, QueryPlan, Relation
 from ctviz.schemas.response import CohortStats, FieldType, VisualizationResponse
 from ctviz.schemas.trial import Phase, TrialRecord
@@ -299,3 +300,79 @@ class TestFutureBuckets:
     def test_future_warning_reaches_meta(self) -> None:
         warnings = time_series_start_year().meta.warnings
         assert any("in the future (estimated); buckets 2027…" in w for w in warnings)
+
+
+class TestCohortsOverlapMeta:
+    def two_cohort_response(
+        self, cohort_b: list[TrialRecord], *, truncated: bool = False
+    ) -> VisualizationResponse:
+        cohort_a = fixture_records("studies_pembrolizumab_page")
+        plan = QueryPlan(
+            cohorts=[
+                Cohort(label="a", filters=Filters(drug="pembrolizumab")),
+                Cohort(label="b", filters=Filters(drug="nivolumab")),
+            ],
+            dimension=Dimension.PHASE,
+        )
+        result = group_cohorts([("a", cohort_a), ("b", cohort_b)], Dimension.PHASE, as_of=AS_OF)
+        response = respond(plan, result, "compare", [len(cohort_a), len(cohort_b)])
+        if not truncated:
+            return response
+        cohort_stats = [s.model_copy(update={"truncated": True}) for s in response.meta.cohorts]
+        return build_response(
+            plan,
+            result,
+            question="compare",
+            cohort_stats=cohort_stats,
+            search_semantics={},
+            data_timestamp=DATA_TIMESTAMP,
+            timing_ms={},
+        )
+
+    def test_shared_trials_reach_meta_with_one_assumption(self) -> None:
+        shared = fixture_records("studies_pembrolizumab_page")[:2]
+        meta = self.two_cohort_response(shared).meta
+        assert meta.cohorts_overlap is not None
+        assert meta.cohorts_overlap.total_shared == 2
+        assert meta.cohorts_overlap.pairs[0].cohorts == ["a", "b"]
+        assert meta.cohorts_overlap.pairs[0].shared_trials == 2
+        assert (
+            "2 trials match more than one cohort and are counted in each; cohorts are not "
+            "disjoint." in meta.assumptions
+        )
+
+    def test_no_overlap_reports_zero_and_no_assumption(self) -> None:
+        meta = self.two_cohort_response(fixture_records("studies_multi_country")).meta
+        assert meta.cohorts_overlap is not None
+        assert meta.cohorts_overlap.total_shared == 0
+        assert not any("more than one cohort" in a for a in meta.assumptions)
+
+    def test_truncated_fetch_says_overlap_covers_retrieved_records_only(self) -> None:
+        shared = fixture_records("studies_pembrolizumab_page")[:2]
+        meta = self.two_cohort_response(shared, truncated=True).meta
+        assert any(
+            "more than one cohort" in a and "retrieved records" in a for a in meta.assumptions
+        )
+
+    def test_single_cohort_has_null_overlap(self) -> None:
+        assert bar_phase().meta.cohorts_overlap is None
+
+    def test_counted_cohort_gives_null_overlap_with_reason(self) -> None:
+        plan = QueryPlan(
+            cohorts=[
+                Cohort(label="big", filters=Filters(condition="breast cancer")),
+                Cohort(label="small", filters=Filters(drug="pembrolizumab")),
+            ],
+            dimension=Dimension.PHASE,
+        )
+        small = fixture_records("studies_pembrolizumab_page")
+        sample = [r for r in small if r.phase_bucket == "Phase 2"][:1]
+        counted = CountedCohort(
+            total_count=5_000, buckets=[CountedBucket(key="Phase 2", count=5_000, records=sample)]
+        )
+        result = group_cohorts([("big", counted), ("small", small)], Dimension.PHASE, as_of=AS_OF)
+        meta = respond(plan, result, "compare", [5_000, len(small)]).meta
+        assert meta.cohorts_overlap is None
+        assert any(
+            "cohorts_overlap is null" in a and "count_per_bucket" in a for a in meta.assumptions
+        )

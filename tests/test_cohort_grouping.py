@@ -157,3 +157,55 @@ class TestTopN:
         assert result.top_n.omitted_keys == []
         assert result.top_n.trials_omitted == {"a": 0}
         assert result.cohorts[0].result == group_by(self.records(), Dimension.COUNTRY, as_of=AS_OF)
+
+
+class TestCohortsOverlap:
+    """Trials matching several cohorts are counted in each; the overlap is reported."""
+
+    def test_two_cohorts_sharing_two_of_five_trials(self) -> None:
+        cohort_a = [with_phase(f"NCT{i}", Phase.PHASE2) for i in range(1, 6)]
+        cohort_b = [with_phase("NCT4", Phase.PHASE2), with_phase("NCT5", Phase.PHASE2)]
+        cohort_b.append(with_phase("NCT9", Phase.PHASE3))
+        result = group_cohorts([("a", cohort_a), ("b", cohort_b)], Dimension.PHASE, as_of=AS_OF)
+        assert result.cohorts_overlap is not None
+        assert [(p.cohorts, p.shared_trials) for p in result.cohorts_overlap.pairs] == [
+            (["a", "b"], 2)
+        ]
+        assert result.cohorts_overlap.total_shared == 2
+
+    def test_disjoint_cohorts_report_zero_not_null(self) -> None:
+        cohort_a = [with_phase("NCT1", Phase.PHASE2)]
+        cohort_b = [with_phase("NCT2", Phase.PHASE2)]
+        result = group_cohorts([("a", cohort_a), ("b", cohort_b)], Dimension.PHASE, as_of=AS_OF)
+        assert result.cohorts_overlap is not None
+        assert result.cohorts_overlap.total_shared == 0
+        assert [p.shared_trials for p in result.cohorts_overlap.pairs] == [0]
+
+    def test_trial_in_three_cohorts_is_one_shared_trial(self) -> None:
+        shared = with_phase("NCT1", Phase.PHASE2)
+        result = group_cohorts(
+            [("a", [shared]), ("b", [shared, with_phase("NCT2", None)]), ("c", [shared])],
+            Dimension.PHASE,
+            as_of=AS_OF,
+        )
+        assert result.cohorts_overlap is not None
+        assert [(p.cohorts, p.shared_trials) for p in result.cohorts_overlap.pairs] == [
+            (["a", "b"], 1),
+            (["a", "c"], 1),
+            (["b", "c"], 1),
+        ]
+        assert result.cohorts_overlap.total_shared == 1
+
+    def test_duplicate_within_one_cohort_is_not_shared(self) -> None:
+        record = with_phase("NCT1", Phase.PHASE2)
+        result = group_cohorts(
+            [("a", [record, record]), ("b", [with_phase("NCT2", Phase.PHASE2)])],
+            Dimension.PHASE,
+            as_of=AS_OF,
+        )
+        assert result.cohorts_overlap is not None
+        assert result.cohorts_overlap.total_shared == 0
+
+    def test_single_cohort_has_no_overlap(self) -> None:
+        result = group_cohorts([("a", [with_phase("NCT1", Phase.PHASE2)])], Dimension.PHASE)
+        assert result.cohorts_overlap is None
