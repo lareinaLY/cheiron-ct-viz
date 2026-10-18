@@ -21,7 +21,7 @@ from ctviz.schemas.trial import (
     StudyType,
     TrialRecord,
 )
-from tests.factories import country, make_record, mesh
+from tests.factories import country, make_record, mesh, messages
 
 AS_OF = date(2026, 10, 17)
 
@@ -161,11 +161,11 @@ class TestCountry:
 
     def test_unknown_reported_in_warnings(self) -> None:
         result = group_by(self.records(), Dimension.COUNTRY, as_of=AS_OF)
-        assert any("1 of 3" in warning for warning in result.warnings)
+        assert any("1 of 3" in warning for warning in messages(result.warnings))
 
     def test_overlap_explained_in_assumptions(self) -> None:
         result = group_by(self.records(), Dimension.COUNTRY, as_of=AS_OF)
-        assert result.assumptions
+        assert messages(result.assumptions)
 
 
 class TestStartYear:
@@ -259,7 +259,7 @@ class TestStartMonth:
         assert unknown.count == 1
         (citation,) = unknown.citations
         assert citation.value == "2026"
-        assert result.warnings
+        assert messages(result.warnings)
 
     def test_year_only_date_counts_for_years(self) -> None:
         records = [
@@ -340,11 +340,11 @@ class TestInterventionMesh:
 
     def test_trials_without_mesh_reported_with_count(self) -> None:
         result = group_by(self.records(), Dimension.INTERVENTION_MESH, as_of=AS_OF)
-        assert any("1 of 3" in warning for warning in result.warnings)
+        assert any("1 of 3" in warning for warning in messages(result.warnings))
 
     def test_non_drug_mesh_terms_noted(self) -> None:
         result = group_by(self.records(), Dimension.INTERVENTION_MESH, as_of=AS_OF)
-        assert any("non-drug" in assumption for assumption in result.assumptions)
+        assert any("non-drug" in assumption for assumption in messages(result.assumptions))
 
     def test_primary_citation_is_study_level_mesh_term(self) -> None:
         result = group_by(self.records(), Dimension.INTERVENTION_MESH, as_of=AS_OF)
@@ -437,13 +437,13 @@ class TestSponsorDrugNetwork:
 
     def test_lead_sponsor_only_and_non_drug_nodes_noted(self) -> None:
         graph = build_network(self.records(), Relation.SPONSOR_DRUG)
-        assert any("lead sponsor" in assumption for assumption in graph.assumptions)
-        assert any("non-drug" in assumption for assumption in graph.assumptions)
+        assert any("lead sponsor" in assumption for assumption in messages(graph.assumptions))
+        assert any("non-drug" in assumption for assumption in messages(graph.assumptions))
 
     def test_trial_without_sponsor_or_drug_reported(self) -> None:
         records = [*self.records(), make_record("NCT4", intervention_mesh_terms=[])]
         graph = build_network(records, Relation.SPONSOR_DRUG)
-        assert any("1 of 4" in warning for warning in graph.warnings)
+        assert any("1 of 4" in warning for warning in messages(graph.warnings))
         assert {node.size for node in graph.nodes if node.label == "pembrolizumab"} == {3}
 
 
@@ -679,7 +679,7 @@ class TestUnknownDateType:
 
     def test_warning_when_present(self) -> None:
         result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
-        matches = [w for w in result.warnings if "no ACTUAL/ESTIMATED type" in w]
+        matches = [w for w in messages(result.warnings) if "no ACTUAL/ESTIMATED type" in w]
         assert len(matches) == 1
         assert matches[0].startswith("2 trials")
 
@@ -687,12 +687,12 @@ class TestUnknownDateType:
         records = [dated("NCT1", date(2020, 3, 1), "actual")]
         result = group_by(records, Dimension.START_YEAR, as_of=AS_OF)
         assert result.unknown_date_type_count == 0
-        assert not any("ACTUAL/ESTIMATED" in w for w in result.warnings)
+        assert not any("ACTUAL/ESTIMATED" in w for w in messages(result.warnings))
 
     def test_not_applicable_to_non_temporal_dimensions(self) -> None:
         result = group_by(self.records(), Dimension.PHASE, as_of=AS_OF)
         assert result.unknown_date_type_count is None
-        assert all(b.unknown_date_type_count == 0 for b in result.buckets)
+        assert all(b.unknown_date_type_count is None for b in result.buckets)
 
     def test_year_only_month_value_in_unknown_bucket_not_double_reported(self) -> None:
         records = [dated("NCT1", date(2026, 1, 1), "unknown", precision="year")]
@@ -753,7 +753,7 @@ class TestFutureBuckets:
 
     def test_one_warning_names_the_trials_and_the_first_future_bucket(self) -> None:
         result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
-        future = [w for w in result.warnings if "in the future" in w]
+        future = [w for w in messages(result.warnings) if "in the future" in w]
         assert future == [
             "2 trials have start dates in the future (estimated); buckets 2027… are "
             "projections, not activity."
@@ -762,7 +762,7 @@ class TestFutureBuckets:
     def test_no_future_warning_without_future_buckets(self) -> None:
         records = [make_record("NCT1", start_date=date(2025, 3, 1), start_date_raw="2025-03")]
         result = group_by(records, Dimension.START_YEAR, as_of=AS_OF)
-        assert not any("in the future" in w for w in result.warnings)
+        assert not any("in the future" in w for w in messages(result.warnings))
 
     def test_non_temporal_dimension_is_never_future(self) -> None:
         result = group_by(phase_records(), Dimension.PHASE, as_of=AS_OF)
@@ -796,4 +796,4 @@ class TestPhaseOfPhaseLessStudies:
             "1 of 3 studies are interventional (or have no recognized study type) and list "
             "no phase; they are counted in the 'Unknown' bucket. Observational and "
             f"expanded-access studies without a phase are in '{self.NA_OBS}'."
-        ) in result.warnings
+        ) in messages(result.warnings)

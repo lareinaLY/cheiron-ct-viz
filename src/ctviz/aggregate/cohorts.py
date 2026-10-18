@@ -11,11 +11,12 @@ from ctviz.aggregate.counted import group_counted
 from ctviz.aggregate.group import (
     DEFAULT_CITATION_CAP,
     BucketTally,
+    cap_citations,
     group_by,
     sort_tallies,
     to_bucket,
 )
-from ctviz.aggregate.registry import DIMENSIONS, DimensionSpec, distinct_values
+from ctviz.aggregate.registry import DIMENSIONS, DimensionKind, DimensionSpec, distinct_values
 from ctviz.schemas.aggregate import (
     Bucket,
     CohortGroup,
@@ -24,8 +25,17 @@ from ctviz.schemas.aggregate import (
     GroupResult,
 )
 from ctviz.schemas.plan import Dimension, RankingDirection
-from ctviz.schemas.response import CohortPairOverlap, CohortsOverlap, TopNSummary
+from ctviz.schemas.response import (
+    CohortPairOverlap,
+    CohortsOverlap,
+    Notice,
+    NoticeCode,
+    TopNSummary,
+)
 from ctviz.schemas.trial import TrialRecord
+from ctviz.text import plural, verb
+
+OTHER_BUCKET_KEY = "Other"
 
 # A cohort's trials as fetched (fetch route), or its buckets as counted by the API.
 type CohortSource = Sequence[TrialRecord] | CountedCohort
@@ -52,11 +62,16 @@ def group_cohorts(
       ranking can differ, and only for trials shared between cohorts).
     - `top_n` keeps the N known keys with the most trials in that union (ties follow
       `key_order`) and keeps the Unknown and Unrecognized buckets. Kept buckets stay in
-      `key_order`, their counts unchanged. No "Other" bucket is made: for overlapping
-      dimensions its count would double-count trials. Each cohort gets a warning, and
-      `top_n` in the result lists the omitted keys and, per cohort, the trials visible
-      only in omitted buckets (for a counted cohort: the summed counts of its omitted
-      buckets, exact because every API-countable dimension is single-valued).
+      `key_order`, their counts unchanged. Each cohort gets a warning, and `top_n` in the
+      result lists the omitted keys and, per cohort, the trials visible only in omitted
+      buckets (for a counted cohort: the summed counts of its omitted buckets, exact
+      because every API-countable dimension is single-valued). How many omitted values
+      tie with the last kept one is counted and warned on.
+    - On a dimension with `other_bucket` (single-valued, not temporal), each cohort with
+      omitted trials gets an "Other (N values)" bucket (`is_other`) after the kept
+      values: the exact number of its trials in the omitted values, citations capped as
+      usual. Overlapping dimensions get none (its count would double-count trials); an
+      assumption says which applies.
     - `bottom_n` is the same with the N known keys with the fewest trials (ties follow
       `key_order`). Values with no matching trials have no bucket, so they cannot be among
       the bottom N; the warning says so even when nothing is omitted. `top_n` in the
@@ -86,26 +101,128 @@ def group_cohorts(
     keep = top_n if top_n is not None else bottom_n
     if keep is None:
         raise ValueError("A ranked grouping needs top_n or bottom_n.")
-    omitted = omitted_keys(combined, keep, direction)
+    kept, omitted_buckets = ranking(combined, keep, direction)
+    omitted = [bucket.key for bucket in omitted_buckets]
+    cutoff = kept[-1].count if kept else None
+    ties = sum(1 for bucket in omitted_buckets if bucket.count == cutoff)
     trials_omitted = {
         label: hidden_trials(source, result, spec, set(omitted))
         for label, source, result in grouped
     }
+    results = [
+        drop_buckets(result, spec, keep, direction, omitted, trials_omitted[label])
+        for label, _, result in grouped
+    ]
+    if spec.other_bucket and omitted:
+        results = [
+            with_other_bucket(dropped, full, omitted, citation_cap)
+            for dropped, (_, _, full) in zip(results, grouped, strict=True)
+        ]
+    has_other = any(bucket.is_other for result in results for bucket in result.buckets)
     return GroupedCohorts(
         dimension=dimension,
         cohorts=[
-            CohortGroup(
-                label=label,
-                result=drop_buckets(result, spec, keep, direction, omitted, trials_omitted[label]),
-            )
-            for label, _, result in grouped
+            CohortGroup(label=label, result=result)
+            for (label, _, _), result in zip(grouped, results, strict=True)
         ],
-        key_order=[key for key in key_order if key not in omitted],
+        key_order=ranked_key_order(combined, set(omitted), has_other),
         top_n=TopNSummary(
-            top_n=keep, direction=direction, omitted_keys=omitted, trials_omitted=trials_omitted
+            top_n=keep,
+            direction=direction,
+            omitted_keys=omitted,
+            trials_omitted=trials_omitted,
+            cutoff_count=cutoff,
+            omitted_ties=ties,
         ),
         cohorts_overlap=overlap,
+        assumptions=other_bucket_assumptions(spec, omitted, has_other),
+        warnings=tie_warnings(ties, cutoff),
     )
+
+
+def ranked_key_order(combined: list[Bucket], omitted: set[str], has_other: bool) -> list[str]:
+    """Kept known keys in display order, then Other, then Unrecognized and Unknown."""
+    flagged = [b.key for b in combined if b.is_unknown or b.is_unrecognized]
+    known = [b.key for b in combined if b.key not in omitted and b.key not in flagged]
+    return [*known, *([OTHER_BUCKET_KEY] if has_other else []), *flagged]
+
+
+def other_label(omitted: Sequence[str]) -> str:
+    """'Other (36 values)': the same text in every cohort, so the bars share one axis slot."""
+    return f"Other ({plural(len(omitted), 'value')})"
+
+
+def with_other_bucket(
+    dropped: GroupResult, full: GroupResult, omitted: list[str], citation_cap: int
+) -> GroupResult:
+    """Add the cohort's Other bucket (its trials in omitted values) before Unrecognized/Unknown.
+
+    Exact because the dimension is single-valued: each trial is in one omitted bucket at
+    most, so the counts add up to distinct trials. No bucket when the cohort has none.
+    """
+    omitted_set = set(omitted)
+    parts = [bucket for bucket in full.buckets if bucket.key in omitted_set]
+    count = sum(bucket.count for bucket in parts)
+    if count == 0:
+        return dropped
+    estimates = [bucket.estimated_count for bucket in parts]
+    other = Bucket(
+        key=OTHER_BUCKET_KEY,
+        label=other_label(omitted),
+        count=count,
+        estimated_count=(
+            None if any(e is None for e in estimates) else sum(e or 0 for e in estimates)
+        ),
+        unknown_date_type_count=None,
+        is_other=True,
+        citations=cap_citations(
+            [citation for bucket in parts for citation in bucket.citations], citation_cap
+        ),
+        cited_trials_total=sum(bucket.cited_trials_total for bucket in parts),
+        citation_count_total=sum(bucket.citation_count_total for bucket in parts),
+    )
+    known = [b for b in dropped.buckets if not (b.is_unknown or b.is_unrecognized)]
+    flagged = [b for b in dropped.buckets if b.is_unknown or b.is_unrecognized]
+    return dropped.model_copy(update={"buckets": [*known, other, *flagged]})
+
+
+def other_bucket_assumptions(
+    spec: DimensionSpec, omitted: list[str], has_other: bool
+) -> list[Notice]:
+    """Say what the Other bar counts, or why there is none."""
+    if not omitted:
+        return []
+    if has_other:
+        text = (
+            f"The '{other_label(omitted)}' bar counts the trials in the {len(omitted)} omitted "
+            f"{spec.label} values; each trial has one {spec.label}, so the count is exact and "
+            "no trial is counted twice."
+        )
+    elif spec.kind == DimensionKind.TEMPORAL:
+        text = (
+            f"No 'Other' bar: omitted {spec.label} periods have no single position on a time "
+            "axis; meta.top_n.trials_omitted gives the trials that appear only in them."
+        )
+    else:
+        text = (
+            f"No 'Other' bar: a trial can count in several {spec.label} values, so summing "
+            "the omitted values would double-count trials; meta.top_n.trials_omitted gives "
+            "the trials that appear only in omitted values."
+        )
+    return [Notice.of(NoticeCode.OTHER_BUCKET, text)]
+
+
+def tie_warnings(ties: int, cutoff: int | None) -> list[Notice]:
+    """Report omitted values that tie with the last shown one (left out by display order)."""
+    if not ties:
+        return []
+    return [
+        Notice.of(
+            NoticeCode.TOPN_TIES,
+            f"{ties} more {'value' if ties == 1 else 'values'} {verb(ties, 'shares', 'share')} "
+            f"the cutoff count of {cutoff} and {verb(ties, 'is', 'are')} not shown.",
+        )
+    ]
 
 
 def cohorts_overlap(cohorts: Sequence[tuple[str, CohortSource]]) -> CohortsOverlap | None:
@@ -163,12 +280,17 @@ def combined_buckets(
             tally = tallies.setdefault(
                 bucket.key,
                 BucketTally(
-                    bucket.key, bucket.label, bucket.is_unknown, bucket.is_unrecognized, bucket.rank
+                    bucket.key,
+                    bucket.label,
+                    bucket.is_unknown,
+                    bucket.is_unrecognized,
+                    bucket.rank,
+                    bucket.is_not_applicable,
                 ),
             )
             tally.count += bucket.count
     return [
-        to_bucket(tally, 0, incomplete=False, is_future=False)
+        to_bucket(tally, 0, spec, incomplete=False, is_future=False)
         for tally in sort_tallies(list(tallies.values()), spec.order)
     ]
 
@@ -190,12 +312,12 @@ def distinct_records(records: Iterable[TrialRecord]) -> list[TrialRecord]:
     return list(unique.values())
 
 
-def omitted_keys(
+def ranking(
     ordered_buckets: list[Bucket], keep: int, direction: RankingDirection
-) -> list[str]:
-    """Known keys outside the top (or bottom) N by count, in display order.
+) -> tuple[list[Bucket], list[Bucket]]:
+    """(kept, omitted) known buckets: kept in rank order, omitted in display order.
 
-    Unknown and Unrecognized are never omitted: they describe data quality, not a value
+    Unknown and Unrecognized are in neither: they describe data quality, not a value
     competing for the ranking. Ties follow the display order in both directions.
     """
     known = [
@@ -205,8 +327,9 @@ def omitted_keys(
     ]
     sign = -1 if direction == RankingDirection.MOST else 1
     ranked = sorted(known, key=lambda item: (sign * item[1].count, item[0]))
-    kept = {bucket.key for _, bucket in ranked[:keep]}
-    return [bucket.key for _, bucket in known if bucket.key not in kept]
+    kept = [bucket for _, bucket in ranked[:keep]]
+    kept_keys = {bucket.key for bucket in kept}
+    return kept, [bucket for _, bucket in known if bucket.key not in kept_keys]
 
 
 def count_hidden_trials(
@@ -249,6 +372,6 @@ def drop_buckets(
     return result.model_copy(
         update={
             "buckets": [b for b in result.buckets if b.key not in set(omitted)],
-            "warnings": [*result.warnings, warning],
+            "warnings": [*result.warnings, Notice.of(NoticeCode.TOP_N_APPLIED, warning)],
         }
     )

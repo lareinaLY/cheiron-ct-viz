@@ -10,15 +10,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
 from importlib.resources import files
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Security
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import APIKeyQuery, HTTPAuthorizationCredentials, HTTPBearer
 
 from ctviz import pipeline
 from ctviz.config import Settings
@@ -50,6 +52,25 @@ from ctviz.schemas.request import QueryRequest
 from ctviz.schemas.response import ErrorResponse, VisualizationResponse
 
 logger = logging.getLogger(__name__)
+
+# auto_error=False: a missing credential is only an error when DEMO_TOKEN is set.
+BEARER = HTTPBearer(auto_error=False)
+TOKEN_QUERY = APIKeyQuery(name="token", auto_error=False)
+
+
+class RequestTimeoutError(Exception):
+    """The request did not finish within REQUEST_DEADLINE_SECONDS."""
+
+    def __init__(self, deadline_seconds: float) -> None:
+        super().__init__(
+            f"The request did not finish within {deadline_seconds:g} s "
+            "(REQUEST_DEADLINE_SECONDS) and was abandoned; no chart was produced."
+        )
+
+
+class UnauthorizedError(Exception):
+    """DEMO_TOKEN is set and the request did not carry it."""
+
 
 DIMENSION_NAMES = ", ".join(d.value for d in Dimension)
 RELATION_NAMES = ", ".join(r.value for r in Relation)
@@ -91,6 +112,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
         502: "ClinicalTrials.gov or the LLM provider failed, the API rejected the query, or "
         "too many retrieved records were unreadable to return a trustworthy chart.",
         503: "ClinicalTrials.gov is rate-limiting this server; retry later.",
+        504: "The request did not finish within REQUEST_DEADLINE_SECONDS.",
+        401: "DEMO_TOKEN is set and the request did not carry it.",
     }.items()
 }
 
@@ -103,8 +126,26 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
     structured fields are planned). Tests pass a fake.
     The enum drift check (`settings.enum_drift_check`) runs as a background task, so a
     slow or failing /studies/enums never delays startup; it is cancelled at shutdown.
+    /query runs at most `max_concurrent_queries` at once and is abandoned after
+    `request_deadline_seconds` (the wait for a slot included); with `demo_token` set it
+    needs that token.
     """
     settings = settings or Settings()
+    slots = asyncio.Semaphore(settings.max_concurrent_queries)
+
+    def require_token(
+        bearer: Annotated[HTTPAuthorizationCredentials | None, Security(BEARER)],
+        token: Annotated[str | None, Security(TOKEN_QUERY)],
+    ) -> None:
+        """Check DEMO_TOKEN when it is set; any request passes when it is not."""
+        expected = settings.demo_token
+        if expected is None:
+            return
+        given = bearer.credentials if bearer is not None else token
+        if given is None or not secrets.compare_digest(
+            given.encode(), expected.get_secret_value().encode()
+        ):
+            raise UnauthorizedError("This server requires a demo token.")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -142,7 +183,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         html = files("ctviz").joinpath("demo", "index.html").read_text(encoding="utf-8")
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
-    @app.post("/query", responses=ERROR_RESPONSES)
+    @app.post("/query", responses=ERROR_RESPONSES, dependencies=[Depends(require_token)])
     async def query(
         body: QueryRequest,
         client: Annotated[CtGovClient, Depends(get_client)],
@@ -153,19 +194,23 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         `query` alone is enough when the LLM planner is configured; structured fields
         override what the LLM reads from it.
         """
-        interpretation = await plan(
-            body,
-            llm,
-            today=date.today(),
-            default_top_n_for_ranking=settings.default_top_n_for_ranking,
-        )
-        return await pipeline.execute(
-            interpretation,
-            client=client,
-            network_limits=settings.network_limits(),
-            data_quality_thresholds=settings.data_quality_thresholds(),
-            count_route=settings.count_route_policy(),
-        )
+        try:
+            async with asyncio.timeout(settings.request_deadline_seconds), slots:
+                interpretation = await plan(
+                    body,
+                    llm,
+                    today=date.today(),
+                    default_top_n_for_ranking=settings.default_top_n_for_ranking,
+                )
+                return await pipeline.execute(
+                    interpretation,
+                    client=client,
+                    network_limits=settings.network_limits(),
+                    data_quality_thresholds=settings.data_quality_thresholds(),
+                    count_route=settings.count_route_policy(),
+                )
+        except TimeoutError as error:
+            raise RequestTimeoutError(settings.request_deadline_seconds) from error
 
     return app
 
@@ -225,6 +270,28 @@ def register_error_handlers(app: FastAPI) -> None:
             for item in error.errors()
         ]
         return error_response(422, "invalid_request", "; ".join(problems), problems)
+
+    @app.exception_handler(RequestTimeoutError)
+    async def timed_out(request: Request, error: RequestTimeoutError) -> JSONResponse:
+        logger.warning("Request abandoned: %s", error)
+        return error_response(
+            504,
+            "request_timeout",
+            str(error),
+            [
+                "Retry later: another long request may be using the API pacing.",
+                "Or narrow the question (fewer cohorts, a filter) so fewer records are read.",
+            ],
+        )
+
+    @app.exception_handler(UnauthorizedError)
+    async def unauthorized(request: Request, error: UnauthorizedError) -> JSONResponse:
+        return error_response(
+            401,
+            "unauthorized",
+            str(error),
+            ["Send 'Authorization: Bearer <token>' or add ?token=<token> to the URL."],
+        )
 
     @app.exception_handler(RateLimitError)
     async def rate_limited(request: Request, error: RateLimitError) -> JSONResponse:

@@ -73,6 +73,19 @@ class LlmInfrastructureError(PlannerError):
         self.problem = problem
 
 
+# A raw value in an error message is cut to this many characters: a list-valued title or a
+# whole object would otherwise make one warning line arbitrarily long (engineering M5).
+MAX_VALUE_REPR_LENGTH = 120
+
+
+def short_repr(value: object) -> str:
+    """repr(value), cut to MAX_VALUE_REPR_LENGTH characters with a trailing ellipsis."""
+    text = repr(value)
+    if len(text) <= MAX_VALUE_REPR_LENGTH:
+        return text
+    return text[: MAX_VALUE_REPR_LENGTH - 1] + "…"
+
+
 class SourceRecordError(ValueError):
     """A raw study has a value the normalizer cannot interpret faithfully.
 
@@ -80,7 +93,7 @@ class SourceRecordError(ValueError):
     """
 
     def __init__(self, nct_id: str, field_path: str, value: object, problem: str) -> None:
-        super().__init__(f"{nct_id}: {field_path} = {value!r}: {problem}")
+        super().__init__(f"{nct_id}: {field_path} = {short_repr(value)}: {problem}")
         self.nct_id = nct_id
         self.field_path = field_path
         self.value = value

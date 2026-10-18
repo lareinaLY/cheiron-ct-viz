@@ -1,19 +1,35 @@
 {
   "visualization": {
     "type": "time_series",
-    "title": "Trials by start year for pembrolizumab, started 2014 or later",
+    "title": "Studies by start year for pembrolizumab, started 2014 or later",
     "encoding": {
       "x": {
         "field": "key",
         "type": "temporal",
         "title": "Start year",
-        "sort": null,
+        "sort": [
+          "2014",
+          "2015",
+          "2016",
+          "2017",
+          "2018",
+          "2019",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024",
+          "2025",
+          "2026",
+          "2027",
+          "Unknown"
+        ],
         "time_unit": "year"
       },
       "y": {
         "field": "count",
         "type": "quantitative",
-        "title": "Trials",
+        "title": "Studies",
         "sort": null,
         "time_unit": null
       },
@@ -32,6 +48,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT02129556",
@@ -41,6 +59,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -54,6 +73,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT02318771",
@@ -63,6 +84,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -76,6 +98,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT03631407",
@@ -85,6 +109,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -98,6 +123,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT03834519",
@@ -107,6 +134,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -120,6 +148,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT04993677",
@@ -129,6 +159,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -142,6 +173,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT05973903",
@@ -151,6 +184,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -164,6 +198,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT06939036",
@@ -173,6 +209,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -186,6 +223,8 @@
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT09000001",
@@ -195,6 +234,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -208,6 +248,8 @@
         "is_future": true,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT07843550",
@@ -217,6 +259,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -230,6 +273,8 @@
         "is_future": false,
         "is_unknown": true,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT09000002",
@@ -239,6 +284,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       }
     ],
@@ -339,14 +385,44 @@
     "unknown_date_type_count": 1,
     "data_timestamp": "2026-10-16T09:00:05",
     "assumptions": [
-      "The 'Unknown' bucket has no position on a time axis; it is included in data with is_unknown=true and should be shown separately."
+      {
+        "code": "unknown_off_axis",
+        "severity": "info",
+        "cohort": null,
+        "message": "The 'Unknown' bucket has no position on a time axis; it is included in data with is_unknown=true and should be shown separately."
+      }
     ],
     "warnings": [
-      "1 of 10 trials have no start date; they are counted in the 'Unknown' bucket.",
-      "2 trials are counted using an estimated start date.",
-      "1 trials have a start date with no ACTUAL/ESTIMATED type (legacy records); they are counted but marked neither actual nor estimated.",
-      "Bucket '2026' is still in progress as of 2026-10-17; its count may grow.",
-      "1 trials have start dates in the future (estimated); buckets 2027… are projections, not activity."
+      {
+        "code": "unknown_bucket",
+        "severity": "info",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "message": "1 of 10 trials have no start date; they are counted in the 'Unknown' bucket."
+      },
+      {
+        "code": "estimated_dates",
+        "severity": "info",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "message": "2 trials are counted using an estimated start date."
+      },
+      {
+        "code": "untyped_dates",
+        "severity": "info",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "message": "1 trial has a start date with no ACTUAL/ESTIMATED type (legacy records); they are counted but marked neither actual nor estimated."
+      },
+      {
+        "code": "incomplete_period",
+        "severity": "info",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "message": "Bucket '2026' is still in progress as of 2026-10-17; its count may grow."
+      },
+      {
+        "code": "future_periods",
+        "severity": "warning",
+        "cohort": "pembrolizumab, started 2014 or later",
+        "message": "1 trial has start dates in the future (estimated); buckets 2027… are projections, not activity."
+      }
     ],
     "timing_ms": {}
   }

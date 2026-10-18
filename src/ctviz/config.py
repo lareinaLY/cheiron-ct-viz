@@ -19,6 +19,11 @@ DEFAULT_DEGRADED_SKIP_RATIO = 0.05
 DEFAULT_REFUSE_SKIP_RATIO = 0.5
 DEFAULT_MIN_SKIPPED_FOR_DEGRADED = 20
 DEFAULT_CITATION_SAMPLE_SIZE = 10
+# A request (planning plus execution) is abandoned with a 504 after this long; the worst
+# case without it is several minutes of retries (engineering review M7).
+DEFAULT_REQUEST_DEADLINE_SECONDS = 120.0
+# /query executions running at once; more wait for a slot (each can hold ~160 MB, H4).
+DEFAULT_MAX_CONCURRENT_QUERIES = 4
 # About 72 s of pacing at 1.2 s per request: enough for every enum dimension (phase 9,
 # status 15, sponsor class 10 buckets) and for start years spanning up to about 55 years.
 DEFAULT_MAX_COUNT_REQUESTS = 60
@@ -204,6 +209,25 @@ class Settings(BaseSettings):
     enum_drift_check: bool = Field(
         default=True,
         description="At startup, compare GET /studies/enums with our enums and log new values.",
+    )
+    request_deadline_seconds: float = Field(
+        default=DEFAULT_REQUEST_DEADLINE_SECONDS,
+        gt=0,
+        validation_alias=AliasChoices("REQUEST_DEADLINE_SECONDS", "CTVIZ_REQUEST_DEADLINE_SECONDS"),
+        description="A /query request (planning and execution, including the wait for a "
+        "slot) taking longer is answered with 504 request_timeout.",
+    )
+    max_concurrent_queries: int = Field(
+        default=DEFAULT_MAX_CONCURRENT_QUERIES,
+        gt=0,
+        validation_alias=AliasChoices("MAX_CONCURRENT_QUERIES", "CTVIZ_MAX_CONCURRENT_QUERIES"),
+        description="/query requests executed at once; the rest wait for a slot.",
+    )
+    demo_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DEMO_TOKEN", "CTVIZ_DEMO_TOKEN"),
+        description="When set, /query requires 'Authorization: Bearer <token>' or ?token=; "
+        "unset means no check.",
     )
 
     def data_quality_thresholds(self) -> DataQualityThresholds:

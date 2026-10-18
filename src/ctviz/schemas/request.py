@@ -7,10 +7,14 @@ the structured fields alone define the query: one cohort plus a dimension or rel
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ctviz.normalize.study import PHASE_LABELS
 from ctviz.schemas.plan import (
+    MAX_FILTER_TEXT_LENGTH,
+    MAX_QUERY_LENGTH,
     MAX_START_YEAR,
     MAX_TOP_N,
     MIN_START_YEAR,
@@ -44,22 +48,52 @@ class QueryRequest(BaseModel):
 
     query: str = Field(
         min_length=1,
+        max_length=MAX_QUERY_LENGTH,
         description="The user's question, interpreted by the LLM planner when one is "
         "configured. Explicit structured fields below override the LLM's reading.",
     )
-    drug: str | None = None
-    condition: str | None = None
-    sponsor: str | None = None
-    country: str | None = None
-    phases: list[Phase] = Field(default_factory=list)
-    statuses: list[OverallStatus] = Field(default_factory=list)
+    drug: str | None = Field(default=None, max_length=MAX_FILTER_TEXT_LENGTH)
+    condition: str | None = Field(default=None, max_length=MAX_FILTER_TEXT_LENGTH)
+    sponsor: str | None = Field(default=None, max_length=MAX_FILTER_TEXT_LENGTH)
+    country: str | None = Field(default=None, max_length=MAX_FILTER_TEXT_LENGTH)
+    phases: list[Phase] = Field(
+        default_factory=list,
+        max_length=len(Phase),
+        description="Any of these phases (OR); repeats are removed.",
+    )
+    statuses: list[OverallStatus] = Field(
+        default_factory=list,
+        max_length=len(OverallStatus),
+        description="Any of these overall statuses (OR); repeats are removed.",
+    )
     start_year_from: int | None = Field(default=None, ge=MIN_START_YEAR, le=MAX_START_YEAR)
     start_year_to: int | None = Field(default=None, ge=MIN_START_YEAR, le=MAX_START_YEAR)
     dimension: Dimension | None = None
     relation: Relation | None = None
     chart_hint: ChartType | None = None
-    top_n: int | None = Field(default=None, ge=1, le=MAX_TOP_N)
+    top_n: int | None = Field(
+        default=None, ge=1, le=MAX_TOP_N, description="Keep the N values with the most studies."
+    )
+    bottom_n: int | None = Field(
+        default=None,
+        ge=1,
+        le=MAX_TOP_N,
+        description="Keep the N values with the fewest studies; exclusive with top_n.",
+    )
     match_mode: MatchMode = "intervention_name"
+
+    @field_validator("phases", "statuses")
+    @classmethod
+    def without_repeats[T](cls, values: list[T]) -> list[T]:
+        """An OR list with a repeat means the same; keep the first occurrence."""
+        return list(dict.fromkeys(values))
+
+    @model_validator(mode="after")
+    def one_ranking_end(self) -> Self:
+        """A ranking keeps one end: top_n or bottom_n, not both."""
+        if self.top_n is not None and self.bottom_n is not None:
+            raise ValueError("top_n and bottom_n are exclusive; set one of them")
+        return self
 
     @field_validator("query")
     @classmethod
@@ -95,6 +129,7 @@ class QueryRequest(BaseModel):
             relation=self.relation,
             chart_hint=self.chart_hint,
             top_n=self.top_n,
+            bottom_n=self.bottom_n,
             match_mode=self.match_mode,
         )
 

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from ctviz.api.app import create_app
 from ctviz.config import Settings
 from ctviz.schemas.response import VisualizationResponse
-from tests.factories import load_fixture_studies, make_raw_study, set_path
+from tests.factories import load_fixture_studies, make_raw_study, messages, set_path
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -69,7 +69,7 @@ def test_phase_query_end_to_end(api: TestClient, mock_api: respx.MockRouter) -> 
 
     visualization, meta = body.visualization, body.meta
     assert visualization.type == "bar_chart"
-    assert visualization.title == "Trials by phase for pembrolizumab"
+    assert visualization.title == "Studies by phase for pembrolizumab"
     assert all(datum.citations for datum in visualization.data)
     assert sum(datum.count for datum in visualization.data) == len(studies)
 
@@ -79,7 +79,7 @@ def test_phase_query_end_to_end(api: TestClient, mock_api: respx.MockRouter) -> 
     assert meta.records_retrieved == len(studies) + 1
     assert meta.cohorts[0].records_skipped == 1
     assert meta.cohorts[0].reconciled is True
-    assert any("NCT09999999" in w and "PHASE9" in w for w in meta.warnings)
+    assert any("NCT09999999" in w and "PHASE9" in w for w in messages(meta.warnings))
     assert meta.data_timestamp is not None
     assert set(meta.timing_ms) == {
         "validate",
@@ -109,7 +109,7 @@ def test_missing_data_timestamp_does_not_fail_the_request(
     assert sum(
         d.count for d in VisualizationResponse.model_validate(response.json()).visualization.data
     ) == len(studies)
-    assert any("dataTimestamp" in w for w in meta.warnings)
+    assert any("dataTimestamp" in w for w in messages(meta.warnings))
 
 
 @pytest.mark.parametrize(
@@ -137,7 +137,7 @@ def test_failing_version_endpoint_does_not_fail_the_request(
     body = VisualizationResponse.model_validate(response.json())
     assert body.meta.data_timestamp is None
     assert sum(d.count for d in body.visualization.data) == len(studies)
-    (warning,) = [w for w in body.meta.warnings if "/version" in w]
+    (warning,) = [w for w in messages(body.meta.warnings) if "/version" in w]
     assert cause in warning
     assert "data_timestamp is null" in warning
 
@@ -171,7 +171,7 @@ def test_empty_result_is_explained(api: TestClient, mock_api: respx.MockRouter) 
     assert response.status_code == 200
     body = VisualizationResponse.model_validate(response.json())
     assert body.visualization.data == []
-    assert "No trials matched these filters." in body.meta.warnings
+    assert "No trials matched these filters." in messages(body.meta.warnings)
     assert body.meta.coverage is None
 
 

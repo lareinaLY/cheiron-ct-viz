@@ -96,6 +96,135 @@ class ExclusionReason(StrEnum):
     NOT_IN_CHEMICALS_AND_DRUGS_BRANCH = "not_in_chemicals_and_drugs_branch"
 
 
+class NoticeSeverity(StrEnum):
+    """How strongly a notice qualifies the chart.
+
+    - error: the counts may be wrong (only DEGRADED_DATA); show it before the chart.
+    - warning: the chart answers a narrower or different question than it seems to, or
+      part of the data is missing; show it next to the chart.
+    - info: context for reading the counts.
+    """
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
+class NoticeCode(StrEnum):
+    """What a warning or assumption is about; one code per kind of message the pipeline emits.
+
+    A renderer picks banners and icons from `code` and `severity`, never from the text.
+    """
+
+    # Data quality and retrieval.
+    DEGRADED_DATA = "degraded_data"
+    RECORD_CAP = "record_cap"
+    NOT_RECONCILED = "not_reconciled"
+    DUPLICATES_DROPPED = "duplicates_dropped"
+    SKIPPED_RECORDS = "skipped_records"
+    UNRECOGNIZED_VALUES = "unrecognized_values"
+    NO_MATCHES = "no_matches"
+    DATA_TIMESTAMP_MISSING = "data_timestamp_missing"
+    COUNT_ROUTE_FALLBACK = "count_route_fallback"
+    RETRIEVAL_ROUTE = "retrieval_route"
+    CACHE = "cache"
+    # How the question was read.
+    PLAN_SOURCE = "plan_source"
+    LLM_FALLBACK = "llm_fallback"
+    EXPLICIT_OVERRIDE = "explicit_override"
+    DRAFT_REJECTED = "draft_rejected"
+    NOT_APPLIED = "not_applied"
+    RANKING_DEFAULT = "ranking_default"
+    # What the cohort contains.
+    DRUG_MATCHED_TERMS = "drug_matched_terms"
+    DID_YOU_MEAN = "did_you_mean"
+    WITHDRAWN = "withdrawn"
+    STATUS_TREND_BIAS = "status_trend_bias"
+    COHORTS_OVERLAP = "cohorts_overlap"
+    COHORTS_OVERLAP_UNKNOWN = "cohorts_overlap_unknown"
+    COHORT_SUBSET = "cohort_subset"
+    # Buckets.
+    DIMENSION_NOTE = "dimension_note"
+    BUCKETS_OVERLAP = "buckets_overlap"
+    UNKNOWN_BUCKET = "unknown_bucket"
+    UNKNOWN_OFF_AXIS = "unknown_off_axis"
+    ESTIMATED_DATES = "estimated_dates"
+    ESTIMATED_ENROLLMENT = "estimated_enrollment"
+    UNTYPED_DATES = "untyped_dates"
+    ESTIMATES_UNDETERMINED = "estimates_undetermined"
+    INCOMPLETE_PERIOD = "incomplete_period"
+    FUTURE_PERIODS = "future_periods"
+    TOP_N_APPLIED = "top_n_applied"
+    TOPN_TIES = "topn_ties"
+    OTHER_BUCKET = "other_bucket"
+    CITATIONS_REDUCED = "citations_reduced"
+    # Networks.
+    NETWORK_NOTE = "network_note"
+    NETWORK_SEMANTICS = "network_semantics"
+    NETWORK_MISSING_VALUES = "network_missing_values"
+    NETWORK_EXCLUDED_TERMS = "network_excluded_terms"
+    NETWORK_UNMATCHED_TERMS = "network_unmatched_terms"
+    NETWORK_DRUG_CLASSES = "network_drug_classes"
+    NETWORK_HUB_UNDERCOUNT = "network_hub_undercount"
+    NETWORK_TRIMMED = "network_trimmed"
+
+
+# The severity a notice of each code has unless the emitting code raises it (e.g. a heavy
+# cohort overlap is a warning, a small one an info assumption).
+DEFAULT_SEVERITY: dict[NoticeCode, NoticeSeverity] = {
+    **dict.fromkeys(NoticeCode, NoticeSeverity.INFO),
+    NoticeCode.DEGRADED_DATA: NoticeSeverity.ERROR,
+    **dict.fromkeys(
+        (
+            NoticeCode.RECORD_CAP,
+            NoticeCode.NOT_RECONCILED,
+            NoticeCode.SKIPPED_RECORDS,
+            NoticeCode.UNRECOGNIZED_VALUES,
+            NoticeCode.NO_MATCHES,
+            NoticeCode.DATA_TIMESTAMP_MISSING,
+            NoticeCode.NOT_APPLIED,
+            NoticeCode.DID_YOU_MEAN,
+            NoticeCode.STATUS_TREND_BIAS,
+            NoticeCode.COHORT_SUBSET,
+            NoticeCode.TOPN_TIES,
+            NoticeCode.FUTURE_PERIODS,
+            NoticeCode.NETWORK_SEMANTICS,
+        ),
+        NoticeSeverity.WARNING,
+    ),
+}
+
+
+class Notice(BaseModel):
+    """One warning or assumption: machine-readable `code` and `severity`, readable `message`.
+
+    `cohort` names the cohort the notice is about (None when it is about the whole
+    response); in a comparison the message also starts with "<cohort>: ".
+    """
+
+    code: NoticeCode
+    severity: NoticeSeverity
+    cohort: str | None = None
+    message: str
+
+    @classmethod
+    def of(
+        cls,
+        code: NoticeCode,
+        message: str,
+        *,
+        cohort: str | None = None,
+        severity: NoticeSeverity | None = None,
+    ) -> Notice:
+        """A notice with the code's default severity unless `severity` is given."""
+        return cls(
+            code=code,
+            severity=severity or DEFAULT_SEVERITY[code],
+            cohort=cohort,
+            message=message,
+        )
+
+
 class FieldType(StrEnum):
     """Vega-Lite measurement type of an encoded field."""
 
@@ -104,22 +233,37 @@ class FieldType(StrEnum):
     QUANTITATIVE = "quantitative"
 
 
+ESTIMATED_COUNT_DESCRIPTION = (
+    "Studies counted here via an estimated value: an ESTIMATED start date (start_year, "
+    "start_month) or an ESTIMATED enrollment count (enrollment_bucket). Null on dimensions "
+    "without an estimate concept, and when not determined (count_per_bucket route)."
+)
+UNKNOWN_DATE_TYPE_COUNT_DESCRIPTION = (
+    "Studies placed here by a start date with no ACTUAL/ESTIMATED type (legacy records). "
+    "Null unless the dimension is a start date, and when not determined (count_per_bucket "
+    "route)."
+)
+CITED_TRIALS_TOTAL_DESCRIPTION = (
+    "Distinct studies (NCT IDs) cited before the cap. The citation cap applies to primary "
+    "citations; each kept study keeps its supporting citations."
+)
+CITATION_COUNT_TOTAL_DESCRIPTION = (
+    "Citations (primary and supporting) before the cap. Larger than cited_trials_total when "
+    "a study is cited more than once, e.g. intervention names supporting a MeSH term, or "
+    "both endpoints of an edge."
+)
+
+
 class Datum(BaseModel):
-    """One bar or point: a dimension value and the number of trials in it."""
+    """One bar or point: a dimension value and the number of studies in it."""
 
     key: str = Field(description="Dimension value as grouped, e.g. 'Phase 1/Phase 2' or '2024'.")
     label: str
     cohort: str | None = None
     count: int
-    estimated_count: int | None = Field(
-        default=0,
-        description="Trials counted here via an estimated date; null when not determined "
-        "(count_per_bucket route on a temporal dimension).",
-    )
+    estimated_count: int | None = Field(default=None, description=ESTIMATED_COUNT_DESCRIPTION)
     unknown_date_type_count: int | None = Field(
-        default=0,
-        description="Trials counted here via a date with no ACTUAL/ESTIMATED type (legacy); "
-        "null when not determined (count_per_bucket route on a temporal dimension).",
+        default=None, description=UNKNOWN_DATE_TYPE_COUNT_DESCRIPTION
     )
     incomplete: bool = Field(
         default=False, description="Period still in progress (e.g. this year)."
@@ -135,8 +279,19 @@ class Datum(BaseModel):
         description="Bucket of trials whose value is outside the known API enum (the API "
         "may have added a value); distinct from is_unknown.",
     )
+    is_not_applicable: bool = Field(
+        default=False,
+        description="Bucket of studies for which the dimension does not apply (phase 'Not "
+        "Applicable', and observational / expanded-access studies without a phase).",
+    )
+    is_other: bool = Field(
+        default=False,
+        description="The 'Other (N values)' bucket of a top_n/bottom_n chart on a "
+        "single-valued dimension: the exact number of studies in the omitted values.",
+    )
     citations: list[Citation] = Field(default_factory=list)
-    citation_count_total: int = Field(description="True number of citations before the cap.")
+    cited_trials_total: int = Field(description=CITED_TRIALS_TOTAL_DESCRIPTION)
+    citation_count_total: int = Field(description=CITATION_COUNT_TOTAL_DESCRIPTION)
 
 
 class NetworkNode(BaseModel):
@@ -147,7 +302,8 @@ class NetworkNode(BaseModel):
     type: NodeType
     size: int
     citations: list[Citation] = Field(default_factory=list)
-    citation_count_total: int
+    cited_trials_total: int = Field(description=CITED_TRIALS_TOTAL_DESCRIPTION)
+    citation_count_total: int = Field(description=CITATION_COUNT_TOTAL_DESCRIPTION)
 
 
 class NetworkEdge(BaseModel):
@@ -157,7 +313,8 @@ class NetworkEdge(BaseModel):
     target: str
     weight: int
     citations: list[Citation] = Field(default_factory=list)
-    citation_count_total: int
+    cited_trials_total: int = Field(description=CITED_TRIALS_TOTAL_DESCRIPTION)
+    citation_count_total: int = Field(description=CITATION_COUNT_TOTAL_DESCRIPTION)
 
 
 class ExcludedTerm(BaseModel):
@@ -223,6 +380,11 @@ class NetworkSummary(BaseModel):
     edge_citations_reduced: bool = Field(
         default=False,
         description="True when edge citations were cut to fit the response size budget.",
+    )
+    node_supporting_citations_dropped: bool = Field(
+        default=False,
+        description="True when, after the edge cut, nodes also dropped their supporting "
+        "citations to fit the size budget (primary citations are kept).",
     )
     response_bytes_before_reduction: int | None = None
 
@@ -410,6 +572,16 @@ class TopNSummary(BaseModel):
     )
     omitted_keys: list[str]
     trials_omitted: dict[str, int] = Field(description="Cohort label -> omitted trials.")
+    cutoff_count: int | None = Field(
+        default=None,
+        description="Study count of the last kept value (the ranking cutoff), over all "
+        "cohorts; None when no known value was kept.",
+    )
+    omitted_ties: int = Field(
+        default=0,
+        description="Omitted values whose count equals cutoff_count: they tie with a shown "
+        "value and were left out only by the display order.",
+    )
 
 
 class CohortPairOverlap(BaseModel):
@@ -475,18 +647,22 @@ class Meta(BaseModel):
         default=None, description="Exclusions and readability caps; networks only."
     )
     estimated_count: int | None = Field(
-        description="Trials counted via an estimated value, summed over cohorts; None for "
-        "networks, and when a cohort's count was not determined (count_per_bucket route on a "
-        "temporal dimension)."
+        description="Datum estimated_count summed over cohorts: "
+        + ESTIMATED_COUNT_DESCRIPTION
+        + " Null for networks."
     )
     unknown_date_type_count: int | None = Field(
-        description="Trials placed by a date with no ACTUAL/ESTIMATED type, summed over "
-        "cohorts; None unless the dimension is temporal, and when a cohort's count was not "
-        "determined (count_per_bucket route)."
+        description="Datum unknown_date_type_count summed over cohorts: "
+        + UNKNOWN_DATE_TYPE_COUNT_DESCRIPTION
     )
     data_timestamp: datetime | None = Field(description="API dataTimestamp from /version.")
-    assumptions: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
+    assumptions: list[Notice] = Field(
+        default_factory=list, description="How the counts were made; mostly severity info."
+    )
+    warnings: list[Notice] = Field(
+        default_factory=list,
+        description="What qualifies the counts. A degraded_data error is always first.",
+    )
     timing_ms: dict[str, float] = Field(default_factory=dict)
 
 

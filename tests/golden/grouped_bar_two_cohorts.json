@@ -1,7 +1,7 @@
 {
   "visualization": {
     "type": "grouped_bar_chart",
-    "title": "Trials by phase: pembrolizumab vs pembrolizumab, Phase 1 or Phase 2",
+    "title": "Studies by phase: pembrolizumab vs pembrolizumab, Phase 1 or Phase 2",
     "encoding": {
       "x": {
         "field": "label",
@@ -18,7 +18,7 @@
       "y": {
         "field": "count",
         "type": "quantitative",
-        "title": "Trials",
+        "title": "Studies",
         "sort": null,
         "time_unit": null
       },
@@ -40,12 +40,14 @@
         "label": "Phase 1",
         "cohort": "pembrolizumab",
         "count": 1,
-        "estimated_count": 0,
-        "unknown_date_type_count": 0,
+        "estimated_count": null,
+        "unknown_date_type_count": null,
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT02318771",
@@ -57,6 +59,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -64,12 +67,14 @@
         "label": "Phase 1/Phase 2",
         "cohort": "pembrolizumab",
         "count": 1,
-        "estimated_count": 0,
-        "unknown_date_type_count": 0,
+        "estimated_count": null,
+        "unknown_date_type_count": null,
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT06939036",
@@ -82,6 +87,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       },
       {
@@ -89,12 +95,14 @@
         "label": "Phase 1/Phase 2",
         "cohort": "pembrolizumab, Phase 1 or Phase 2",
         "count": 3,
-        "estimated_count": 0,
-        "unknown_date_type_count": 0,
+        "estimated_count": null,
+        "unknown_date_type_count": null,
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT06939036",
@@ -127,6 +135,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 3,
         "citation_count_total": 3
       },
       {
@@ -134,12 +143,14 @@
         "label": "Phase 2",
         "cohort": "pembrolizumab",
         "count": 2,
-        "estimated_count": 0,
-        "unknown_date_type_count": 0,
+        "estimated_count": null,
+        "unknown_date_type_count": null,
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT04993677",
@@ -160,6 +171,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 2,
         "citation_count_total": 2
       },
       {
@@ -167,12 +179,14 @@
         "label": "Phase 3",
         "cohort": "pembrolizumab",
         "count": 1,
-        "estimated_count": 0,
-        "unknown_date_type_count": 0,
+        "estimated_count": null,
+        "unknown_date_type_count": null,
         "incomplete": false,
         "is_future": false,
         "is_unknown": false,
         "is_unrecognized": false,
+        "is_not_applicable": false,
+        "is_other": false,
         "citations": [
           {
             "nct_id": "NCT03834519",
@@ -184,6 +198,7 @@
             "role": "primary"
           }
         ],
+        "cited_trials_total": 1,
         "citation_count_total": 1
       }
     ],
@@ -336,12 +351,22 @@
       "total_shared": 1
     },
     "network": null,
-    "estimated_count": 0,
+    "estimated_count": null,
     "unknown_date_type_count": null,
     "data_timestamp": "2026-10-16T09:00:05",
     "assumptions": [
-      "Multi-phase trials form their own bucket (e.g. 'Phase 1/Phase 2'); phase buckets are mutually exclusive.",
-      "1 trials match more than one cohort and are counted in each; cohorts are not disjoint."
+      {
+        "code": "dimension_note",
+        "severity": "info",
+        "cohort": null,
+        "message": "Multi-phase trials form their own bucket (e.g. 'Phase 1/Phase 2'); phase buckets are mutually exclusive."
+      },
+      {
+        "code": "cohorts_overlap",
+        "severity": "info",
+        "cohort": null,
+        "message": "1 trials match more than one cohort and are counted in each; cohorts are not disjoint."
+      }
     ],
     "warnings": [],
     "timing_ms": {}

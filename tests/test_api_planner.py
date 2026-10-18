@@ -16,7 +16,7 @@ from ctviz.errors import LlmInfrastructureError, PlannerError, PlannerErrorCode
 from ctviz.planner.llm import FallbackChain, LlmAnswer
 from ctviz.schemas.plan import Dimension, Filters, LlmPlanDraft, RankingDirection
 from ctviz.schemas.response import ResponseMode, VisualizationResponse
-from tests.factories import load_fixture_studies
+from tests.factories import load_fixture_studies, messages
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -99,7 +99,7 @@ def test_query_alone_is_planned_by_the_llm(mock_api: respx.MockRouter) -> None:
     assert interpretation.model == "fake-model"
     assert interpretation.draft == make_draft()
     assert interpretation.plan.cohorts[0].filters.drug == "pembrolizumab"
-    assert body.visualization.title == "Trials by phase for pembrolizumab"
+    assert body.visualization.title == "Studies by phase for pembrolizumab"
     sent = dict(mock_api.routes[1].calls[0].request.url.params)
     assert (
         sent["filter.advanced"]
@@ -113,7 +113,7 @@ def test_override_is_reported_in_meta(mock_api: respx.MockRouter) -> None:
     assert response.status_code == 200, response.text
     meta = VisualizationResponse.model_validate(response.json()).meta
     assert meta.interpretation.overrides[0].path == "cohorts[0].filters.drug"
-    assert any("nivolumab" in a and "pembrolizumab" in a for a in meta.assumptions)
+    assert any("nivolumab" in a and "pembrolizumab" in a for a in messages(meta.assumptions))
 
 
 def test_rules_plan_states_that_the_question_was_not_read(mock_api: respx.MockRouter) -> None:
@@ -122,7 +122,7 @@ def test_rules_plan_states_that_the_question_was_not_read(mock_api: respx.MockRo
     assert response.status_code == 200, response.text
     meta = VisualizationResponse.model_validate(response.json()).meta
     assert meta.interpretation.planned_by == "rules"
-    assert any("not interpreted" in a for a in meta.assumptions)
+    assert any("not interpreted" in a for a in messages(meta.assumptions))
 
 
 def test_query_alone_without_llm_is_a_structured_error(mock_api: respx.MockRouter) -> None:
@@ -153,7 +153,7 @@ def test_ranking_default_is_stated_in_meta(mock_api: respx.MockRouter) -> None:
     assert omitted > 0
     assert (
         "Question asked for a ranking; showing top 15 (configurable); "
-        f"{omitted} buckets omitted" in meta.assumptions
+        f"{omitted} buckets omitted" in messages(meta.assumptions)
     )
 
 
@@ -173,7 +173,7 @@ def test_fewest_default_is_stated_in_meta(mock_api: respx.MockRouter) -> None:
         "Question asked for the fewest; showing bottom 15 (configurable); "
         f"{omitted} buckets omitted; Unknown and Unrecognized buckets are not ranked but "
         "still shown; values with no matching trials have no bucket and cannot appear"
-        in meta.assumptions
+        in messages(meta.assumptions)
     )
     assert body.visualization.title.endswith(" (bottom 15)")
 
@@ -223,7 +223,7 @@ def test_unhandled_terms_are_warned_first_and_echoed_in_interpretation(
     assert response.status_code == 200, response.text
     meta = VisualizationResponse.model_validate(response.json()).meta
     assert meta.interpretation.unhandled_terms == ["combination", "first-line"]
-    assert meta.warnings[:2] == [
+    assert messages(meta.warnings)[:2] == [
         "Not applied: 'combination' — no such filter exists; counts include all matching trials.",
         "Not applied: 'first-line' — no such filter exists; counts include all matching trials.",
     ]
@@ -234,4 +234,4 @@ def test_no_unhandled_terms_means_no_not_applied_warning(mock_api: respx.MockRou
     assert response.status_code == 200, response.text
     meta = VisualizationResponse.model_validate(response.json()).meta
     assert meta.interpretation.unhandled_terms == []
-    assert not any(w.startswith("Not applied:") for w in meta.warnings)
+    assert not any(w.startswith("Not applied:") for w in messages(meta.warnings))

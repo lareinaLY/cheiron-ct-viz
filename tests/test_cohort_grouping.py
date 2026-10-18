@@ -10,7 +10,7 @@ from ctviz.aggregate import UNKNOWN_BUCKET_KEY, group_by, group_cohorts
 from ctviz.schemas.aggregate import GroupedCohorts
 from ctviz.schemas.plan import Dimension, RankingDirection
 from ctviz.schemas.trial import Phase, TrialRecord
-from tests.factories import country, make_record
+from tests.factories import country, make_record, messages
 
 AS_OF = date(2026, 10, 17)
 
@@ -105,7 +105,7 @@ class TestTopN:
 
     def test_warning_states_what_was_omitted(self) -> None:
         result = group_cohorts([("a", self.records())], Dimension.COUNTRY, top_n=2, as_of=AS_OF)
-        warning = result.cohorts[0].result.warnings[-1]
+        warning = messages(result.cohorts[0].result.warnings)[-1]
         assert "top 2" in warning
         assert "2 location country values omitted" in warning
         assert "2 trials" in warning
@@ -243,7 +243,7 @@ class TestBottomN:
 
     def test_warning_states_bottom_and_that_zero_values_cannot_appear(self) -> None:
         result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=2, as_of=AS_OF)
-        warning = result.cohorts[0].result.warnings[-1]
+        warning = messages(result.cohorts[0].result.warnings)[-1]
         assert "bottom 2" in warning
         assert "2 location country values omitted" in warning
         assert "4 trials" in warning
@@ -253,7 +253,7 @@ class TestBottomN:
         result = group_cohorts([("a", self.records())], Dimension.COUNTRY, bottom_n=50, as_of=AS_OF)
         assert result.top_n is not None
         assert result.top_n.omitted_keys == []
-        assert any("no matching trials" in w for w in result.cohorts[0].result.warnings)
+        assert any("no matching trials" in w for w in messages(result.cohorts[0].result.warnings))
 
     def test_kept_bucket_counts_unchanged(self) -> None:
         full = group_by(self.records(), Dimension.COUNTRY, as_of=AS_OF)

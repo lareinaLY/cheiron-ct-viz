@@ -23,6 +23,10 @@ CONSEQUENCES: dict[str, str] = {
         f"intervention type charts count them in the '{UNRECOGNIZED_BUCKET_KEY}' bucket"
     ),
     "start_date": f"start year and start month charts count them in '{UNKNOWN_BUCKET_KEY}'",
+    "intervention_name": (
+        f"the intervention is shown as '{UNRECOGNIZED_BUCKET_KEY}' and its supporting "
+        "citation cites the missing value"
+    ),
     "start_date_type": "they are counted in their period but marked neither actual nor estimated",
     "enrollment_type": "they are binned by enrollment count but not marked as estimated",
     "enrollment": (
@@ -67,6 +71,12 @@ def unrecognized_warning(record_field: str, value_raw: str, tally: ValueTally) -
     trials = f"{count} trial" if count == 1 else f"{count} trials"
     examples = ", ".join(tally.trials[:EXAMPLE_NCT_IDS])
     more = ", ..." if count > EXAMPLE_NCT_IDS else ""
+    if record_field == "intervention_name":
+        return (
+            f"Missing intervention name at {tally.field_path} in {trials} ({examples}{more}). "
+            f"These trials are kept and counted on every dimension; "
+            f"{CONSEQUENCES[record_field]}."
+        )
     kind = "date format" if record_field == "start_date" else "API enum value"
     return (
         f"Unrecognized value {value_raw!r} at {tally.field_path} in {trials} ({examples}{more}): "

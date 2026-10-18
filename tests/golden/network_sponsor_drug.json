@@ -15,7 +15,7 @@
       "size": {
         "field": "size",
         "type": "quantitative",
-        "title": "Trials",
+        "title": "Studies",
         "sort": null,
         "time_unit": null
       }
@@ -168,8 +168,44 @@
               "value": "Avelumab",
               "url": "https://clinicaltrials.gov/study/NCT06939036",
               "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[4].name",
+              "value": "Pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT06939036",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[5].name",
+              "value": "Retifanlimab",
+              "url": "https://clinicaltrials.gov/study/NCT06939036",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "derivedSection.interventionBrowseModule.meshes[2].term",
+              "value": "pembrolizumab",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "primary"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[0].name",
+              "value": "Radiation Therapy (RT)",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "supporting"
+            },
+            {
+              "nct_id": "NCT02318771",
+              "field_path": "protocolSection.armsInterventionsModule.interventions[1].name",
+              "value": "MK-3475",
+              "url": "https://clinicaltrials.gov/study/NCT02318771",
+              "role": "supporting"
             }
           ],
+          "cited_trials_total": 5,
           "citation_count_total": 25
         }
       },
@@ -195,6 +231,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 2,
           "citation_count_total": 2
         }
       },
@@ -255,6 +292,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -273,6 +311,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 1
         }
       },
@@ -319,6 +358,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 5
         }
       },
@@ -365,6 +405,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 5
         }
       },
@@ -425,6 +466,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -485,6 +527,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -503,6 +546,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 1
         }
       },
@@ -521,6 +565,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 1
         }
       },
@@ -581,6 +626,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -641,6 +687,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -701,6 +748,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -761,6 +809,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -821,6 +870,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 7
         }
       },
@@ -853,6 +903,7 @@
               "role": "supporting"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 3
         }
       }
@@ -893,6 +944,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 2,
           "citation_count_total": 4,
           "id": "drug:C582435--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -918,6 +970,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C000594389--sponsor:Ariceum Therapeutics GmbH"
         }
@@ -943,6 +996,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C000609138--sponsor:Ariceum Therapeutics GmbH"
         }
@@ -968,6 +1022,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C000613593--sponsor:Ariceum Therapeutics GmbH"
         }
@@ -993,6 +1048,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C486781--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -1018,6 +1074,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C531550--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -1043,6 +1100,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C540278--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -1068,6 +1126,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C582435--sponsor:Ariceum Therapeutics GmbH"
         }
@@ -1093,6 +1152,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C582435--sponsor:Seagen Inc."
         }
@@ -1118,6 +1178,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:C582435--sponsor:Sidney Kimmel Comprehensive Cancer Center at Thomas Jefferson University"
         }
@@ -1143,6 +1204,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:D000068437--sponsor:Seagen Inc."
         }
@@ -1168,6 +1230,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:D000069501--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -1193,6 +1256,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:D011239--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -1218,6 +1282,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:D011241--sponsor:Merck Sharp & Dohme LLC"
         }
@@ -1243,6 +1308,7 @@
               "role": "primary"
             }
           ],
+          "cited_trials_total": 1,
           "citation_count_total": 2,
           "id": "drug:D016190--sponsor:Seagen Inc."
         }
@@ -1369,17 +1435,43 @@
       "trials_without_shown_node": 0,
       "edge_citation_cap": 20,
       "edge_citations_reduced": false,
+      "node_supporting_citations_dropped": false,
       "response_bytes_before_reduction": null
     },
     "estimated_count": null,
     "unknown_date_type_count": null,
     "data_timestamp": "2026-10-16T09:00:05",
     "assumptions": [
-      "Sponsors are lead sponsors only; collaborators are not included.",
-      "Drug nodes are intervention MeSH terms filed under Chemicals and Drugs: supplementary concepts (ids starting with C) and descriptors with a MeSH tree number in branch D (NLM MeSH 2025 trees); non-drug interventions such as radiotherapy (E02), procedures and diagnostics are not drug nodes.",
-      "Node type 'drug' marks an intervention MeSH term: the API does not link MeSH terms to intervention types (DRUG, RADIATION, PROCEDURE, ...), so drug nodes are chosen by MeSH tree branch instead of by intervention type.",
-      "2 intervention MeSH terms outside the Chemicals and Drugs branch, or comparators without active treatment, are not drawn as nodes; most frequent: Radiation (D011827, not_in_chemicals_and_drugs_branch): 1 trial; Radiotherapy (D011878, not_in_chemicals_and_drugs_branch): 1 trial. 1 trial affected; their other values are kept. Full list in meta.network.excluded_terms.",
-      "Node size is the number of trials an entity appears in; a trial counts toward every entity it lists, so node sizes can add up to more than the number of trials."
+      {
+        "code": "network_note",
+        "severity": "info",
+        "cohort": null,
+        "message": "Sponsors are lead sponsors only; collaborators are not included."
+      },
+      {
+        "code": "network_note",
+        "severity": "info",
+        "cohort": null,
+        "message": "Drug nodes are intervention MeSH terms filed under Chemicals and Drugs: supplementary concepts (ids starting with C) and descriptors with a MeSH tree number in branch D (NLM MeSH 2025 trees); non-drug interventions such as radiotherapy (E02), procedures and diagnostics are not drug nodes."
+      },
+      {
+        "code": "network_note",
+        "severity": "info",
+        "cohort": null,
+        "message": "Node type 'drug' marks an intervention MeSH term: the API does not link MeSH terms to intervention types (DRUG, RADIATION, PROCEDURE, ...), so drug nodes are chosen by MeSH tree branch instead of by intervention type."
+      },
+      {
+        "code": "network_excluded_terms",
+        "severity": "info",
+        "cohort": null,
+        "message": "2 intervention MeSH terms outside the Chemicals and Drugs branch, or comparators without active treatment, are not drawn as nodes; most frequent: Radiation (D011827, not_in_chemicals_and_drugs_branch): 1 trial; Radiotherapy (D011878, not_in_chemicals_and_drugs_branch): 1 trial. 1 trial affected; their other values are kept. Full list in meta.network.excluded_terms."
+      },
+      {
+        "code": "network_note",
+        "severity": "info",
+        "cohort": null,
+        "message": "Node size is the number of trials an entity appears in; a trial counts toward every entity it lists, so node sizes can add up to more than the number of trials."
+      }
     ],
     "warnings": [],
     "timing_ms": {}

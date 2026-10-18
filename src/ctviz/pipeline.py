@@ -9,6 +9,7 @@ become meta warnings or assumptions here (invariants 3 and 6).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -24,7 +25,9 @@ from ctviz.aggregate.drug_terms import matched_terms
 from ctviz.aggregate.registry import DIMENSIONS, DimensionKind
 from ctviz.config import CountRoutePolicy, DataQualityThresholds, NetworkLimits
 from ctviz.errors import (
+    InvalidFilterError,
     RateLimitError,
+    RetrievalError,
     SourceRecordError,
     UpstreamDataFormatError,
     UpstreamError,
@@ -46,23 +49,33 @@ from ctviz.retrieval_route import (
     retrieve_cohort,
 )
 from ctviz.schemas.aggregate import CountedBucket, CountedCohort, Graph, GroupedCohorts
-from ctviz.schemas.plan import Cohort, Dimension, QueryPlan, RankingDirection
+from ctviz.schemas.plan import Cohort, Dimension, Filters, QueryPlan, RankingDirection
 from ctviz.schemas.response import (
     CohortStats,
     DataQuality,
     Interpretation,
     MatchedTerm,
+    Notice,
+    NoticeCode,
     RetrievalRoute,
     VisualizationResponse,
 )
 from ctviz.schemas.retrieval import CountResult, FetchResult
 from ctviz.schemas.trial import OverallStatus, TrialRecord
 from ctviz.spec import build_response
+from ctviz.text import plural
 
 logger = logging.getLogger(__name__)
 
 # Matched drug terms named in the warning sentence; meta.cohorts lists all of them.
 MATCHED_TERMS_SHOWN = 5
+# Skipped records listed one per line in meta.warnings; the rest are summed in one line
+# and logged in full (engineering review M5: the list was unbounded).
+SKIPPED_RECORDS_SHOWN = 10
+# A drug cohort this small whose records carry a MeSH term other than the typed name
+# gets one extra count request for that term ("did you mean"), e.g. 'pembro' -> 2 studies
+# whose MeSH term pembrolizumab matches 2,642.
+DID_YOU_MEAN_BELOW = 20
 
 
 class SkipBand(StrEnum):
@@ -197,8 +210,10 @@ async def execute(
         data_timestamp, timestamp_problem = await fetch_data_timestamp(client)
 
     with timer.stage("normalize"):
+        # Normalizing thousands of records is CPU work; a thread keeps the event loop
+        # (other requests, /health) responsive meanwhile.
         cohorts = [
-            normalize_cohort(cohort, retrieval, plan.dimension)
+            await asyncio.to_thread(normalize_cohort, cohort, retrieval, plan.dimension)
             for cohort, retrieval in zip(plan.cohorts, retrievals, strict=True)
         ]
 
@@ -215,8 +230,18 @@ async def execute(
 
     data_quality = assess_data_quality(cohorts, thresholds)
 
+    terms = [suggested_term(data) for data in cohorts]
+    suggestions: list[tuple[str, str]] = []
+    if any(terms):
+        with timer.stage("suggest"):
+            suggestions = [
+                await did_you_mean(data, term, plan, client)
+                for data, term in zip(cohorts, terms, strict=True)
+                if term is not None
+            ]
+
     with timer.stage("aggregate"):
-        result = aggregate(plan, cohorts, as_of, limits)
+        result = await asyncio.to_thread(aggregate, plan, cohorts, as_of, limits)
 
     with timer.stage("spec"):
         response = build_response(
@@ -231,8 +256,18 @@ async def execute(
             warnings=[
                 *data_quality_warnings(cohorts, data_quality, thresholds),
                 *unhandled_term_warnings(interpretation),
-                *status_trend_warnings(plan),
-                *data_timestamp_warnings(timestamp_problem),
+                *(
+                    Notice.of(NoticeCode.DID_YOU_MEAN, text, cohort=label)
+                    for label, text in suggestions
+                ),
+                *(
+                    Notice.of(NoticeCode.STATUS_TREND_BIAS, text)
+                    for text in status_trend_warnings(plan)
+                ),
+                *(
+                    Notice.of(NoticeCode.DATA_TIMESTAMP_MISSING, text)
+                    for text in data_timestamp_warnings(timestamp_problem)
+                ),
                 *(w for data in cohorts for w in retrieval_warnings(data, len(cohorts))),
             ],
             assumptions=[
@@ -262,9 +297,11 @@ def normalize_cohort(
 ) -> CohortData:
     """Normalize a cohort's fetched records, or each counted bucket's sample records."""
     if retrieval.count is None:
-        assert retrieval.fetch is not None
+        if retrieval.fetch is None:
+            raise ValueError("A retrieval without counts must hold fetched records.")
         return CohortData(cohort, retrieval, *normalize_all(retrieval.fetch.studies))
-    assert dimension is not None
+    if dimension is None:
+        raise ValueError("Only a dimension can be counted per bucket.")
     buckets: list[CountedBucket] = []
     records: list[TrialRecord] = []
     skipped: list[SourceRecordError] = []
@@ -304,8 +341,10 @@ async def refetch_cohort(
         attempt,
         f"sample records contradict their bucket filters: {shown}{more}",
     )
-    assert retrieval.fetch is not None
-    return CohortData(data.cohort, retrieval, *normalize_all(retrieval.fetch.studies))
+    if retrieval.fetch is None:
+        raise ValueError("A fallback retrieval always fetches records.")
+    records, skipped = await asyncio.to_thread(normalize_all, retrieval.fetch.studies)
+    return CohortData(data.cohort, retrieval, records, skipped)
 
 
 def combined_route(cohorts: Sequence[CohortData]) -> RetrievalRoute:
@@ -314,43 +353,66 @@ def combined_route(cohorts: Sequence[CohortData]) -> RetrievalRoute:
     return routes.pop() if len(routes) == 1 else RetrievalRoute.MIXED
 
 
-def planning_assumptions(interpretation: Interpretation) -> list[str]:
+def planning_assumptions(interpretation: Interpretation) -> list[Notice]:
     """How the plan was made: who read the question, and what explicit fields replaced."""
     if interpretation.planned_by == "rules":
         return [
-            "The question text was not interpreted (no LLM planner is configured); the "
-            "request's structured fields alone define the query."
+            Notice.of(
+                NoticeCode.PLAN_SOURCE,
+                "The question text was not interpreted (no LLM planner is configured); the "
+                "request's structured fields alone define the query.",
+            )
         ]
     if interpretation.planned_by == "structured_fields":
-        return ["The question text was not interpreted; the plan was supplied directly."]
+        return [
+            Notice.of(
+                NoticeCode.PLAN_SOURCE,
+                "The question text was not interpreted; the plan was supplied directly.",
+            )
+        ]
     messages = [
-        f"The plan was drafted from the question by the LLM ({interpretation.model_used} via "
-        f"{interpretation.provider}) and validated; meta.interpretation.draft holds the "
-        "draft. Counts come from the registry."
+        Notice.of(
+            NoticeCode.PLAN_SOURCE,
+            f"The plan was drafted from the question by the LLM ({interpretation.model_used} "
+            f"via {interpretation.provider}) and validated; meta.interpretation.draft holds "
+            "the draft. Counts come from the registry.",
+        )
     ]
     if interpretation.fallback_reason is not None:
         messages.append(
-            f"The primary LLM provider did not answer, so a fallback provider "
-            f"({interpretation.provider}) drafted the plan: {interpretation.fallback_reason}"
+            Notice.of(
+                NoticeCode.LLM_FALLBACK,
+                f"The primary LLM provider did not answer, so a fallback provider "
+                f"({interpretation.provider}) drafted the plan: {interpretation.fallback_reason}",
+            )
         )
     messages.extend(
-        f"The explicit request field set `{override.path}` to "
-        f"{json.dumps(override.explicit_value)}; the LLM had read "
-        f"{json.dumps(override.llm_value)} from the question."
+        Notice.of(
+            NoticeCode.EXPLICIT_OVERRIDE,
+            f"The explicit request field set `{override.path}` to "
+            f"{json.dumps(override.explicit_value)}; the LLM had read "
+            f"{json.dumps(override.llm_value)} from the question.",
+        )
         for override in interpretation.overrides
     )
     messages.extend(
-        f"An earlier LLM draft was rejected and redrafted: {problem}"
+        Notice.of(
+            NoticeCode.DRAFT_REJECTED,
+            f"An earlier LLM draft was rejected and redrafted: {problem}",
+        )
         for problem in interpretation.rejected_attempts
     )
     return messages
 
 
-def unhandled_term_warnings(interpretation: Interpretation) -> list[str]:
+def unhandled_term_warnings(interpretation: Interpretation) -> list[Notice]:
     """Name each part of the question the plan does not apply, so the counts are not read
     as answering it (invariant 3). Placed before every warning except degraded data."""
     return [
-        f"Not applied: '{term}' — no such filter exists; counts include all matching trials."
+        Notice.of(
+            NoticeCode.NOT_APPLIED,
+            f"Not applied: '{term}' — no such filter exists; counts include all matching trials.",
+        )
         for term in interpretation.unhandled_terms
     ]
 
@@ -374,22 +436,24 @@ def status_trend_warnings(plan: QueryPlan) -> list[str]:
 
 def ranking_assumptions(
     interpretation: Interpretation, result: GroupedCohorts | Graph
-) -> list[str]:
+) -> list[Notice]:
     """State that the planner chose top_n or bottom_n because the question asked for a ranking."""
     count = interpretation.ranking_top_n
     if count is None or not isinstance(result, GroupedCohorts) or result.top_n is None:
         return []
     omitted = len(result.top_n.omitted_keys)
     if result.top_n.direction == RankingDirection.FEWEST:
-        return [
+        text = (
             f"Question asked for the fewest; showing bottom {count} (configurable); "
             f"{omitted} buckets omitted; Unknown and Unrecognized buckets are not ranked but "
             "still shown; values with no matching trials have no bucket and cannot appear"
-        ]
-    return [
-        f"Question asked for a ranking; showing top {count} (configurable); "
-        f"{omitted} buckets omitted"
-    ]
+        )
+    else:
+        text = (
+            f"Question asked for a ranking; showing top {count} (configurable); "
+            f"{omitted} buckets omitted"
+        )
+    return [Notice.of(NoticeCode.RANKING_DEFAULT, text)]
 
 
 def normalize_all(
@@ -457,7 +521,7 @@ def assess_data_quality(
 
 def data_quality_warnings(
     cohorts: Sequence[CohortData], quality: DataQuality, thresholds: DataQualityThresholds
-) -> list[str]:
+) -> list[Notice]:
     """The prominent warning for a degraded result, placed first in meta.warnings."""
     if quality != DataQuality.DEGRADED:
         return []
@@ -467,9 +531,10 @@ def data_quality_warnings(
         if classify_skip_rate(data.retrieved, len(data.skipped), thresholds) == SkipBand.DEGRADED
     ]
     return [
-        prefixed(
+        cohort_notice(
             data,
             len(cohorts),
+            NoticeCode.DEGRADED_DATA,
             f"DEGRADED DATA: {len(data.skipped)} of {data.retrieved} retrieved trials "
             f"({len(data.skipped) / data.retrieved:.1%}) could not be read and are not counted "
             f"(DEGRADED_SKIP_RATIO={thresholds.degraded_skip_ratio:g}). The API's data format "
@@ -584,82 +649,182 @@ def prefixed(data: CohortData, cohort_count: int, message: str) -> str:
     return f"{data.cohort.label}: {message}" if cohort_count > 1 else message
 
 
-def retrieval_warnings(data: CohortData, cohort_count: int) -> list[str]:
+def cohort_notice(data: CohortData, cohort_count: int, code: NoticeCode, message: str) -> Notice:
+    """A notice about one cohort: `cohort` set, and the message prefixed in a comparison."""
+    return Notice.of(code, prefixed(data, cohort_count, message), cohort=data.cohort.label)
+
+
+def suggested_term(data: CohortData) -> str | None:
+    """The MeSH term to suggest for a tiny drug cohort, or None.
+
+    'pembro' matches 2 studies whose MeSH term is pembrolizumab. Only below
+    DID_YOU_MEAN_BELOW matches, only on the fetch route (the only one that reads every
+    record), and only when no matched term is the typed name itself: then the user got
+    the term they asked for. The term most matched records carry is suggested.
+    """
+    drug = data.cohort.filters.drug
+    if drug is None or data.total_count >= DID_YOU_MEAN_BELOW:
+        return None
+    terms = drug_matched_terms(data) or []
+    typed = drug.strip().casefold()
+    if not terms or any(term.term.casefold() == typed for term in terms):
+        return None
+    return terms[0].term
+
+
+async def did_you_mean(
+    data: CohortData, term: str, plan: QueryPlan, client: CtGovClient
+) -> tuple[str, str]:
+    """(cohort label, hint) naming `term` and its own study count.
+
+    The count is one countTotal request through the client's rate limiter, with the
+    cohort's other filters unchanged; it comes from the API, never estimated. When it
+    cannot be retrieved the hint says so instead of failing the request.
+    """
+    drug = data.cohort.filters.drug or ""
+    filters = data.cohort.filters.model_copy(update={"drug": term})
+    head = (
+        f"'{drug}' matched {plural(data.total_count, 'study', 'studies')}; the matched records "
+        f"carry the intervention MeSH term {term}"
+    )
+    try:
+        sample = await client.sample(study_query_params(filters, plan.match_mode), 1)
+    except (RetrievalError, InvalidFilterError) as error:
+        logger.warning("No count for suggested term %r: %s", term, error)
+        return data.cohort.label, (
+            f"{head} — did you mean that? (Its study count could not be retrieved: {error}.)"
+        )
+    total = sample.total_count
+    has_other_filters = filters.model_copy(update={"drug": None}) != Filters()
+    scope = " with the same other filters" if has_other_filters else ""
+    studies = f"{total:,} {'study' if total == 1 else 'studies'}"
+    return data.cohort.label, f"{head} ({studies}{scope}) — did you mean that?"
+
+
+def retrieval_warnings(data: CohortData, cohort_count: int) -> list[Notice]:
     """Empty results, a rejected count route, truncation, reconciliation failures,
     duplicates, skipped records and unrecognized values."""
     retrieved = data.retrieved
-    messages: list[str] = []
+    messages: list[tuple[NoticeCode, str]] = []
     if data.total_count == 0:
-        messages.append("No trials matched these filters.")
+        messages.append((NoticeCode.NO_MATCHES, "No trials matched these filters."))
     attempt = data.retrieval.attempt
     if attempt is not None and attempt.fallback_reason is not None:
         messages.append(
-            "Exact per-bucket counting (retrieval_route count_per_bucket) was not used: "
-            f"{attempt.fallback_reason}; the records were fetched instead."
+            (
+                NoticeCode.COUNT_ROUTE_FALLBACK,
+                "Exact per-bucket counting (retrieval_route count_per_bucket) was not used: "
+                f"{attempt.fallback_reason}; the records were fetched instead.",
+            )
         )
     fetch = data.fetch
     if fetch is None:
         messages.extend(counted_sample_warnings(data))
-        messages.extend(unrecognized_warnings(data.records))
-        return [prefixed(data, cohort_count, message) for message in messages]
+        messages.extend(
+            (NoticeCode.UNRECOGNIZED_VALUES, text) for text in unrecognized_warnings(data.records)
+        )
+        return [cohort_notice(data, cohort_count, code, text) for code, text in messages]
     if fetch.truncated and fetch.coverage is not None:
         messages.append(
-            f"Only the first {retrieved} of {fetch.total_count} matching trials were "
-            f"retrieved (record cap); counts cover {fetch.coverage:.1%} of matches."
+            (
+                NoticeCode.RECORD_CAP,
+                f"Only the first {retrieved} of {fetch.total_count} matching trials were "
+                f"retrieved (record cap); counts cover {fetch.coverage:.1%} of matches.",
+            )
         )
     if not fetch.reconciled:
         messages.append(
-            f"Retrieved {retrieved} trials but the API reported {fetch.total_count} matches; "
-            "the data may have changed during pagination, so counts can be off by the "
-            "difference."
+            (
+                NoticeCode.NOT_RECONCILED,
+                f"Retrieved {retrieved} trials but the API reported {fetch.total_count} "
+                "matches; the data may have changed during pagination, so counts can be off "
+                "by the difference.",
+            )
         )
     if fetch.duplicates_dropped:
         messages.append(
-            f"{fetch.duplicates_dropped} duplicate records (same NCT ID on several pages) "
-            "were dropped."
+            (
+                NoticeCode.DUPLICATES_DROPPED,
+                f"{fetch.duplicates_dropped} duplicate records (same NCT ID on several pages) "
+                "were dropped.",
+            )
         )
     if data.skipped:
         messages.append(
-            f"{len(data.skipped)} of {retrieved} retrieved trials were skipped because the "
-            "record could not be read; they are not counted."
+            (
+                NoticeCode.SKIPPED_RECORDS,
+                f"{len(data.skipped)} of {retrieved} retrieved trials were skipped because the "
+                "record could not be read; they are not counted.",
+            )
         )
-        messages.extend(f"Skipped {error}" for error in data.skipped)
-    messages.extend(unrecognized_warnings(data.records))
+        messages.extend(skipped_record_lines(data.skipped))
+    messages.extend(
+        (NoticeCode.UNRECOGNIZED_VALUES, text) for text in unrecognized_warnings(data.records)
+    )
     messages.extend(cohort_content_warnings(data))
-    return [prefixed(data, cohort_count, message) for message in messages]
+    return [cohort_notice(data, cohort_count, code, text) for code, text in messages]
 
 
-def cohort_content_warnings(data: CohortData) -> list[str]:
+def skipped_record_lines(skipped: Sequence[SourceRecordError]) -> list[tuple[NoticeCode, str]]:
+    """One line per skipped record up to SKIPPED_RECORDS_SHOWN, then one 'and N more' line.
+
+    Every skipped record is logged, so the full list survives the cap.
+    """
+    for error in skipped:
+        logger.info("Skipped record: %s", error)
+    lines = [(NoticeCode.SKIPPED_RECORDS, f"Skipped {error}") for error in skipped]
+    if len(skipped) <= SKIPPED_RECORDS_SHOWN:
+        return lines
+    more = len(skipped) - SKIPPED_RECORDS_SHOWN
+    return [
+        *lines[:SKIPPED_RECORDS_SHOWN],
+        (
+            NoticeCode.SKIPPED_RECORDS,
+            f"... and {more} more skipped records (the full list is in the server log).",
+        ),
+    ]
+
+
+def cohort_content_warnings(data: CohortData) -> list[tuple[NoticeCode, str]]:
     """What the counted records contain that the filters do not say: several molecules
     behind one drug name, and withdrawn studies that never enrolled."""
-    messages: list[str] = []
+    messages: list[tuple[NoticeCode, str]] = []
     drug = data.cohort.filters.drug
     terms = drug_matched_terms(data) or []
     if drug is not None and len(terms) > 1:
         shown = ", ".join(f"{term.term} ({term.trials:,})" for term in terms[:MATCHED_TERMS_SHOWN])
         more = ", ..." if len(terms) > MATCHED_TERMS_SHOWN else ""
         messages.append(
-            f"'{drug}' matched {len(terms)} distinct intervention terms: {shown}{more} — these "
-            "are different molecules (conjugates, biosimilars, tracers); narrow the name if "
-            "you mean one."
+            (
+                NoticeCode.DRUG_MATCHED_TERMS,
+                f"'{drug}' matched {len(terms)} distinct intervention terms: {shown}{more} — "
+                "these are different molecules (conjugates, biosimilars, tracers); narrow the "
+                "name if you mean one.",
+            )
         )
     withdrawn = withdrawn_count(data.records)
     if withdrawn:
         messages.append(
-            f"{withdrawn} withdrawn studies (never enrolled) are included in these counts; add "
-            "a status filter to exclude them."
+            (
+                NoticeCode.WITHDRAWN,
+                f"{withdrawn} withdrawn studies (never enrolled) are included in these counts; "
+                "add a status filter to exclude them.",
+            )
         )
     return messages
 
 
-def counted_sample_warnings(data: CohortData) -> list[str]:
+def counted_sample_warnings(data: CohortData) -> list[tuple[NoticeCode, str]]:
     """Unreadable sample records on the count route: still counted, only not cited."""
     if not data.skipped:
         return []
     return [
-        f"{len(data.skipped)} of {data.retrieved} sampled citation records could not be read; "
-        "the API's bucket counts still include them, but they are not cited.",
-        *(f"Skipped {error}" for error in data.skipped),
+        (
+            NoticeCode.SKIPPED_RECORDS,
+            f"{len(data.skipped)} of {data.retrieved} sampled citation records could not be "
+            "read; the API's bucket counts still include them, but they are not cited.",
+        ),
+        *skipped_record_lines(data.skipped),
     ]
 
 
@@ -669,37 +834,47 @@ def retrieval_assumptions(
     cohort_count: int,
     client: CtGovClient,
     policy: CountRoutePolicy,
-) -> list[str]:
+) -> list[Notice]:
     """State the retrieval route, which records a truncated fetch holds, why it was not
     counted per bucket, and when results came from the cache."""
     if data.retrieval.count is not None:
         messages = counted_assumptions(data, data.retrieval.count, plan, client, policy)
-        return [prefixed(data, cohort_count, message) for message in messages]
+        return [cohort_notice(data, cohort_count, code, text) for code, text in messages]
     fetch = data.fetch
-    assert fetch is not None
-    messages: list[str] = []
+    if fetch is None:
+        raise ValueError("A cohort without counts must hold fetched records.")
+    messages: list[tuple[NoticeCode, str]] = []
     if fetch.truncated:
         messages.append(
-            f"The retrieved trials are the first {data.retrieved:,} of "
-            f"{fetch.total_count:,} matches ordered by {RETRIEVAL_SORT_FIELD} "
-            f"{RETRIEVAL_SORT_DIRECTION} (the most recently registered), not a random sample; "
-            "trials sharing the cutoff date are picked in the API's unspecified tie order; "
-            "counts for the remaining matches are unknown and may be distributed differently."
+            (
+                NoticeCode.RECORD_CAP,
+                f"The retrieved trials are the first {data.retrieved:,} of "
+                f"{fetch.total_count:,} matches ordered by {RETRIEVAL_SORT_FIELD} "
+                f"{RETRIEVAL_SORT_DIRECTION} (the most recently registered), not a random sample; "
+                "trials sharing the cutoff date are picked in the API's unspecified tie order; "
+                "counts for the remaining matches are unknown and may be distributed differently.",
+            )
         )
         if plan.relation is not None:
             messages.append(
-                "Networks are built from fetched records, so the record cap applies to them."
+                (
+                    NoticeCode.RECORD_CAP,
+                    "Networks are built from fetched records, so the record cap applies to them.",
+                )
             )
         elif plan.dimension is not None and DIMENSIONS[plan.dimension].api_count is None:
             messages.append(
-                f"The {DIMENSIONS[plan.dimension].label} cannot be counted per bucket by the API "
-                "(its values are not expressible as a fixed set of API filters), so the record "
-                "cap applies."
+                (
+                    NoticeCode.RECORD_CAP,
+                    f"The {DIMENSIONS[plan.dimension].label} cannot be counted per bucket by "
+                    "the API (its values are not expressible as a fixed set of API filters), "
+                    "so the record cap applies.",
+                )
             )
     if fetch.cached_at is not None:
         stored = fetch.cached_at.strftime("%Y-%m-%d %H:%M UTC")
-        messages.append(f"Served from the local cache stored at {stored}.")
-    return [prefixed(data, cohort_count, message) for message in messages]
+        messages.append((NoticeCode.CACHE, f"Served from the local cache stored at {stored}."))
+    return [cohort_notice(data, cohort_count, code, text) for code, text in messages]
 
 
 def counted_assumptions(
@@ -708,10 +883,11 @@ def counted_assumptions(
     plan: QueryPlan,
     client: CtGovClient,
     policy: CountRoutePolicy,
-) -> list[str]:
+) -> list[tuple[NoticeCode, str]]:
     """Explain the count_per_bucket route: why it was taken, why it is exact, and that
     citations are a sample of each bucket."""
-    assert plan.dimension is not None
+    if plan.dimension is None:
+        raise ValueError("Only a dimension can be counted per bucket.")
     spec = DIMENSIONS[plan.dimension]
     threshold = count_threshold(policy, client)
     limit = (
@@ -723,22 +899,31 @@ def counted_assumptions(
     attempt = data.retrieval.attempt
     requests = attempt.requests if attempt is not None else len(count.buckets)
     messages = [
-        f"Counts are exact (retrieval_route count_per_bucket): the cohort matched "
-        f"{data.total_count:,} trials, more than {limit}, so instead of fetching records the "
-        f"API counted each {spec.label} bucket with its own filter ({requests} requests; e.g. "
-        f"'{example.key}' = {example.filter_clause}), and the bucket counts add up to the "
-        f"API's total of {data.total_count:,}. Citations are a sample: up to the "
-        f"{policy.citation_sample_size} most recently registered trials "
-        f"({RETRIEVAL_SORT_FIELD} {RETRIEVAL_SORT_DIRECTION}) of each bucket; each bucket's "
-        "citation_count_total is its full count.",
-        "meta.cohorts[].drug_matched_terms and withdrawn are null: the API counted each "
-        "bucket, so the cohort's records were not read.",
+        (
+            NoticeCode.RETRIEVAL_ROUTE,
+            f"Counts are exact (retrieval_route count_per_bucket): the cohort matched "
+            f"{data.total_count:,} trials, more than {limit}, so instead of fetching records the "
+            f"API counted each {spec.label} bucket with its own filter ({requests} requests; e.g. "
+            f"'{example.key}' = {example.filter_clause}), and the bucket counts add up to the "
+            f"API's total of {data.total_count:,}. Citations are a sample: up to the "
+            f"{policy.citation_sample_size} most recently registered trials "
+            f"({RETRIEVAL_SORT_FIELD} {RETRIEVAL_SORT_DIRECTION}) of each bucket; each bucket's "
+            "citation_count_total is its full count.",
+        ),
+        (
+            NoticeCode.RETRIEVAL_ROUTE,
+            "meta.cohorts[].drug_matched_terms and withdrawn are null: the API counted each "
+            "bucket, so the cohort's records were not read.",
+        ),
     ]
     cached = [bucket for bucket in count.buckets if bucket.cached_at is not None]
     if cached:
         oldest = min(bucket.cached_at for bucket in cached if bucket.cached_at is not None)
         messages.append(
-            f"{len(cached)} of {len(count.buckets)} bucket counts were served from the local "
-            f"cache (oldest stored at {oldest.strftime('%Y-%m-%d %H:%M UTC')})."
+            (
+                NoticeCode.CACHE,
+                f"{len(cached)} of {len(count.buckets)} bucket counts were served from the "
+                f"local cache (oldest stored at {oldest.strftime('%Y-%m-%d %H:%M UTC')}).",
+            )
         )
     return messages

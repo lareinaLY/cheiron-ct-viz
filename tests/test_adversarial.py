@@ -27,9 +27,9 @@ from ctviz.planner.llm import LlmAnswer, build_llm
 from ctviz.planner.prompt import build_system_prompt
 from ctviz.retrieval.cache import NoCache
 from ctviz.retrieval.client import CtGovClient
-from ctviz.schemas.plan import Cohort, Dimension, Filters, LlmPlanDraft, QueryPlan
+from ctviz.schemas.plan import MAX_QUERY_LENGTH, Cohort, Dimension, Filters, LlmPlanDraft, QueryPlan
 from ctviz.schemas.response import ErrorResponse, ResponseMode, VisualizationResponse
-from tests.factories import load_fixture_studies
+from tests.factories import load_fixture_studies, messages
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -135,7 +135,8 @@ def test_whitespace_only_query_is_rejected_before_the_llm(mock_api: respx.MockRo
 
 
 def test_long_query_reaches_the_llm_unchanged(mock_api: respx.MockRouter) -> None:
-    question = ("pembrolizumab trials by phase " * 200)[:5000]
+    # The longest accepted question (MAX_QUERY_LENGTH); longer ones are a 422 (M3).
+    question = ("pembrolizumab trials by phase " * 200)[:MAX_QUERY_LENGTH]
     llm = RecordingLlm(make_draft())
     response = post(llm, {"query": question})
     assert response.status_code == 200, response.text
@@ -262,7 +263,7 @@ def test_nonexistent_drug_is_an_empty_200_with_a_warning(mock_api: respx.MockRou
     body = VisualizationResponse.model_validate(response.json())
     assert all(datum.count == 0 for datum in body.visualization.data)
     assert body.meta.total_matched == 0
-    assert "No trials matched these filters." in body.meta.warnings
+    assert "No trials matched these filters." in messages(body.meta.warnings)
 
 
 # Out-of-range structured values.

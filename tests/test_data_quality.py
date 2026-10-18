@@ -21,7 +21,7 @@ from ctviz.retrieval.cache import NoCache
 from ctviz.retrieval.client import CtGovClient
 from ctviz.schemas.plan import Cohort, Dimension, Filters, QueryPlan
 from ctviz.schemas.response import ErrorResponse, VisualizationResponse
-from tests.factories import make_raw_study
+from tests.factories import make_raw_study, messages
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -137,7 +137,7 @@ class TestBandsEndToEnd:
         serve(mock_api, batch(good=20, skipped=0))
         meta = VisualizationResponse.model_validate(ask(api).json()).meta
         assert meta.data_quality == "normal"
-        assert not any("DEGRADED" in w for w in meta.warnings)
+        assert not any("DEGRADED" in w for w in messages(meta.warnings))
 
     def test_small_sample_stays_normal(self, api: TestClient, mock_api: respx.MockRouter) -> None:
         serve(mock_api, batch(good=7, skipped=3))
@@ -146,7 +146,7 @@ class TestBandsEndToEnd:
         meta = VisualizationResponse.model_validate(response.json()).meta
         assert meta.data_quality == "normal"
         assert meta.cohorts[0].records_skipped == 3
-        assert any("3 of 10 retrieved trials were skipped" in w for w in meta.warnings)
+        assert any("3 of 10 retrieved trials were skipped" in w for w in messages(meta.warnings))
 
     def test_degraded(self, api: TestClient, mock_api: respx.MockRouter) -> None:
         serve(mock_api, batch(good=380, skipped=20))
@@ -154,7 +154,7 @@ class TestBandsEndToEnd:
         assert response.status_code == 200, response.text
         body = VisualizationResponse.model_validate(response.json())
         assert body.meta.data_quality == "degraded"
-        first = body.meta.warnings[0]
+        first = messages(body.meta.warnings)[0]
         assert first.startswith("DEGRADED DATA:")
         assert "20 of 400" in first
         assert "5.0%" in first

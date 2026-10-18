@@ -14,6 +14,7 @@ from ctviz.aggregate.group import (
     DEFAULT_CITATION_CAP,
     BucketTally,
     bucket_warnings,
+    dimension_notes,
     is_future_period,
     sort_tallies,
     to_bucket,
@@ -28,6 +29,7 @@ from ctviz.aggregate.registry import (
 )
 from ctviz.schemas.aggregate import Bucket, CountedBucket, CountedCohort, GroupResult
 from ctviz.schemas.plan import Dimension
+from ctviz.schemas.response import Notice, NoticeCode
 from ctviz.schemas.trial import TrialRecord
 
 
@@ -44,11 +46,13 @@ def group_counted(
     - A bucket's count is the API's count; buckets counted 0 are not shown (the fetch
       route never shows an empty bucket either).
     - Citations are the bucket's sample records (capped at `citation_cap`), and
-      `citation_count_total` is the bucket's count: every countable dimension cites one
-      value per trial, so the bucket has exactly that many citations at the source.
+      `citation_count_total` and `cited_trials_total` are the bucket's count: every
+      countable dimension cites one value per trial, so the bucket has exactly that many
+      citations and cited trials at the source.
     - Temporal buckets keep their `incomplete` and `is_future` flags, but how many of
       their trials use an estimated or untyped date is not determined: those counts are
-      None (missing is not zero), and an assumption says so.
+      None (missing is not zero), and an assumption says so. Countable dimensions without
+      an estimate concept report None as well.
     Raises ValueError when a sample record does not belong to its bucket, or a counted
     bucket has no readable sample; the pipeline checks `counted_sample_problems` first.
     """
@@ -65,24 +69,27 @@ def group_counted(
         counted_bucket(
             tally,
             citation_cap,
-            temporal=temporal,
+            spec,
             incomplete=tally.key == current_period,
             is_future=is_future_period(tally, current_period),
         )
         for tally in sort_tallies(tallies, spec.order)
     ]
-    assumptions = list(spec.assumptions)
+    assumptions = dimension_notes(spec)
     if temporal:
         assumptions.append(
-            f"Each {spec.label} bucket was counted by the API without reading its trials, so "
-            f"how many of them use an estimated or untyped (legacy) {spec.label} is not "
-            "determined: estimated_count and unknown_date_type_count are null, not zero."
+            Notice.of(
+                NoticeCode.ESTIMATES_UNDETERMINED,
+                f"Each {spec.label} bucket was counted by the API without reading its trials, "
+                f"so how many of them use an estimated or untyped (legacy) {spec.label} is not "
+                "determined: estimated_count and unknown_date_type_count are null, not zero.",
+            )
         )
     return GroupResult(
         dimension=dimension,
         buckets=buckets,
         buckets_overlap=False,
-        estimated_count=None if temporal else 0,
+        estimated_count=None,
         unknown_date_type_count=None,
         assumptions=assumptions,
         warnings=bucket_warnings(spec, buckets, cohort.total_count, as_of),
@@ -134,15 +141,21 @@ def counted_tally(bucket: CountedBucket, spec: DimensionSpec) -> BucketTally:
 
 
 def counted_bucket(
-    tally: BucketTally, citation_cap: int, *, temporal: bool, incomplete: bool, is_future: bool
+    tally: BucketTally,
+    citation_cap: int,
+    spec: DimensionSpec,
+    *,
+    incomplete: bool,
+    is_future: bool,
 ) -> Bucket:
-    """Freeze a counted tally: the true citation total is the count, not the sample size."""
-    bucket = to_bucket(tally, citation_cap, incomplete=incomplete, is_future=is_future)
-    undetermined = None if temporal else 0
+    """Freeze a counted tally: the true totals are the count, not the sample size, and the
+    estimate counts are not determined."""
+    bucket = to_bucket(tally, citation_cap, spec, incomplete=incomplete, is_future=is_future)
     return bucket.model_copy(
         update={
             "citation_count_total": tally.count,
-            "estimated_count": undetermined,
-            "unknown_date_type_count": undetermined,
+            "cited_trials_total": tally.count,
+            "estimated_count": None,
+            "unknown_date_type_count": None,
         }
     )

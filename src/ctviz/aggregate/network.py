@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from itertools import combinations, product
 
 from ctviz.aggregate.drug_terms import hub_assumptions
-from ctviz.aggregate.group import DEFAULT_CITATION_CAP
+from ctviz.aggregate.group import DEFAULT_CITATION_CAP, cap_citations
 from ctviz.aggregate.mesh_filter import MeshVerdict
 from ctviz.aggregate.registry import (
     DIMENSIONS,
@@ -26,9 +26,12 @@ from ctviz.schemas.response import (
     NetworkNode,
     NetworkSummary,
     NodeType,
+    Notice,
+    NoticeCode,
     UnmatchedTerm,
 )
 from ctviz.schemas.trial import TrialRecord
+from ctviz.text import plural
 
 
 @dataclass
@@ -110,7 +113,11 @@ def build_network(
       filter could not match in the MeSH trees.
     - Node `size`: number of distinct trials the entity appears in.
     - Edge `weight`: number of distinct trials in which both endpoints co-occur.
-    - Edge citations list the contributing trials.
+    - Edge citations list the contributing trials. Node and edge citations are capped at
+      `citation_cap` primary citations (supporting ones stay with each cited trial);
+      `cited_trials_total` counts the distinct trials before the cap.
+    - Trials that contribute no edge are reported in two warnings: those lacking a value
+      on one side in the source, and those whose values the node filter removed.
     - Readability caps (off by default): edges below `min_edge_weight` are dropped, then
       the `max_nodes` nodes with the highest weighted degree (sum of the remaining
       incident edge weights) are kept (ties: larger size, then label), with only the
@@ -121,12 +128,13 @@ def build_network(
     nodes: dict[str, NodeTally] = {}
     edges: dict[EdgeKey, EdgeTally] = {}
     screening = Screening()
-    without_edges = 0
+    lacking_values = 0
+    filtered_out = 0
 
     for record in records:
-        left = kept_values(record, spec.left, spec.left_type, spec, screening)
-        right = (
-            left
+        left, left_raw = kept_values(record, spec.left, spec.left_type, spec, screening)
+        right, right_raw = (
+            (left, left_raw)
             if spec.same_dimension
             else kept_values(record, spec.right, spec.right_type, spec, screening)
         )
@@ -135,7 +143,12 @@ def build_network(
             add_nodes(nodes, right, spec.right_type, record.nct_id)
 
         pairs = trial_pairs(spec, left, right)
-        without_edges += int(not pairs)
+        if not pairs:
+            raw_pairs = left_raw >= 2 if spec.same_dimension else min(left_raw, right_raw) >= 1
+            if raw_pairs:
+                filtered_out += 1
+            else:
+                lacking_values += 1
         for (left_id, left_value), (right_id, right_value) in pairs:
             edge = edges.setdefault(edge_key(left_id, right_id), EdgeTally())
             if record.nct_id in edge.trials:
@@ -178,18 +191,22 @@ def build_network(
         edges=[to_edge(key, tally, citation_cap) for key, tally in sorted_edges(shown_edges)],
         summary=summary,
         assumptions=[
-            *spec.assumptions,
+            *(Notice.of(NoticeCode.NETWORK_NOTE, text) for text in spec.assumptions),
             *exclusion_assumptions(summary),
             *drug_class_assumptions(summary, screening),
             *(
-                hub_assumptions(records, queried_drug)
-                if queried_drug is not None and NodeType.DRUG in (spec.left_type, spec.right_type)
-                else []
+                Notice.of(NoticeCode.NETWORK_HUB_UNDERCOUNT, text)
+                for text in (
+                    hub_assumptions(records, queried_drug)
+                    if queried_drug is not None
+                    and NodeType.DRUG in (spec.left_type, spec.right_type)
+                    else []
+                )
             ),
         ],
         warnings=[
-            *spec.warnings,
-            *edge_warnings(spec, without_edges, len(records)),
+            *(Notice.of(NoticeCode.NETWORK_SEMANTICS, text) for text in spec.warnings),
+            *edge_warnings(spec, lacking_values, filtered_out, len(records)),
             *trim_warnings(summary),
         ],
     )
@@ -201,12 +218,13 @@ def kept_values(
     node_type: NodeType,
     spec: RelationSpec,
     screening: Screening,
-) -> list[DimensionValue]:
-    """A trial's distinct values for one side, without the ones the node filter rejects."""
+) -> tuple[list[DimensionValue], int]:
+    """A trial's distinct values for one side without the ones the node filter rejects,
+    and how many distinct values it had before the filter."""
     values = distinct_values(record, DIMENSIONS[dimension])
     node_filter = spec.node_filters.get(node_type)
     if node_filter is None:
-        return values
+        return values, len(values)
     kept: list[DimensionValue] = []
     for value in values:
         verdict = node_filter.classify(value.key, value.label)
@@ -214,7 +232,7 @@ def kept_values(
             screening.record(value, verdict, node_type, record.nct_id)
         if verdict.kept:
             kept.append(value)
-    return kept
+    return kept, len(values)
 
 
 def edge_key(left_id: str, right_id: str) -> EdgeKey:
@@ -317,57 +335,88 @@ def sorted_edges(edges: dict[EdgeKey, EdgeTally]) -> list[tuple[EdgeKey, EdgeTal
 
 
 def to_node(node_id_: str, tally: NodeTally, citation_cap: int) -> NetworkNode:
-    """Freeze a node tally, capping citations but keeping the true total."""
+    """Freeze a node tally, capping citations but keeping the true totals."""
     return NetworkNode(
         id=node_id_,
         label=tally.label,
         type=tally.type,
         size=len(tally.trials),
-        citations=tally.citations[:citation_cap],
+        citations=cap_citations(tally.citations, citation_cap),
+        cited_trials_total=len(tally.trials),
         citation_count_total=len(tally.citations),
     )
 
 
 def to_edge(pair: EdgeKey, tally: EdgeTally, citation_cap: int) -> NetworkEdge:
-    """Freeze an edge tally, capping citations but keeping the true total."""
+    """Freeze an edge tally, capping citations but keeping the true totals."""
     return NetworkEdge(
         source=pair[0],
         target=pair[1],
         weight=len(tally.trials),
         citations=tally.citations[:citation_cap],
+        cited_trials_total=len(tally.trials),
         citation_count_total=len(tally.citations),
     )
 
 
-def edge_warnings(spec: RelationSpec, without_edges: int, total: int) -> list[str]:
-    """Report trials that contribute no edge (invariant 3: nothing is silent)."""
-    if not without_edges:
-        return []
+def edge_warnings(
+    spec: RelationSpec, lacking_values: int, filtered_out: int, total: int
+) -> list[Notice]:
+    """Report trials that contribute no edge, by reason (invariant 3: nothing is silent).
+
+    A trial missing a value in the source and a trial whose values the node filter
+    removed are different facts: the first is the registry's data, the second our rule.
+    """
     left = DIMENSIONS[spec.left].label
-    if spec.same_dimension:
-        reason = f"fewer than two distinct values of {left}"
-    else:
-        reason = f"no {left} or no {DIMENSIONS[spec.right].label}"
-    return [f"{without_edges} of {total} trials have {reason} and contribute no edges."]
+    warnings: list[Notice] = []
+    if lacking_values:
+        if spec.same_dimension:
+            reason = f"fewer than two distinct values of {left}"
+        else:
+            reason = f"no {left} or no {DIMENSIONS[spec.right].label}"
+        warnings.append(
+            Notice.of(
+                NoticeCode.NETWORK_MISSING_VALUES,
+                f"{lacking_values} of {total} trials have {reason} and contribute no edges.",
+            )
+        )
+    if filtered_out:
+        filtered = DIMENSIONS[spec.right].label
+        removed = (
+            f"removed {filtered}s until fewer than two remained"
+            if spec.same_dimension
+            else f"removed all their {filtered}s"
+        )
+        warnings.append(
+            Notice.of(
+                NoticeCode.NETWORK_EXCLUDED_TERMS,
+                f"{filtered_out} of {total} trials contribute no edges because the node "
+                f"filter {removed} (see meta.network.excluded_terms).",
+            )
+        )
+    return warnings
 
 
-def exclusion_assumptions(summary: NetworkSummary) -> list[str]:
+def exclusion_assumptions(summary: NetworkSummary) -> list[Notice]:
     """State which terms the node filter dropped or could not match, with trial counts.
 
     The sentence names the most frequent terms; the full lists are in `meta.network`.
     """
-    statements = []
+    statements: list[Notice] = []
     if summary.excluded_terms:
         listed = "; ".join(
             f"{term.label} ({term.id}, {term.reason.value}): {plural(term.trials, 'trial')}"
             for term in summary.excluded_terms[:ASSUMPTION_TERM_LIMIT]
         )
         statements.append(
-            f"{plural(len(summary.excluded_terms), 'intervention MeSH term')} outside the "
-            "Chemicals and Drugs branch, or comparators without active treatment, are not "
-            f"drawn as nodes; most frequent: {listed}. "
-            f"{plural(summary.trials_with_excluded_terms, 'trial')} affected; their other "
-            "values are kept. Full list in meta.network.excluded_terms."
+            Notice.of(
+                NoticeCode.NETWORK_EXCLUDED_TERMS,
+                f"{plural(len(summary.excluded_terms), 'intervention MeSH term')} outside the "
+                "Chemicals and Drugs branch, or comparators without active treatment, are not "
+                f"drawn as nodes; most frequent: {listed}. "
+                f"{plural(summary.trials_with_excluded_terms, 'trial')} affected; their other "
+                "values are kept. Full list in meta.network.excluded_terms.",
+            )
         )
     if summary.unmatched_terms:
         listed = "; ".join(
@@ -375,14 +424,17 @@ def exclusion_assumptions(summary: NetworkSummary) -> list[str]:
             for term in summary.unmatched_terms[:ASSUMPTION_TERM_LIMIT]
         )
         statements.append(
-            f"{plural(len(summary.unmatched_terms), 'intervention MeSH term')} could not be "
-            "found by name in the MeSH trees (unmatched_in_tree) and are kept as drug nodes "
-            f"unchecked: {listed}. Full list in meta.network.unmatched_terms."
+            Notice.of(
+                NoticeCode.NETWORK_UNMATCHED_TERMS,
+                f"{plural(len(summary.unmatched_terms), 'intervention MeSH term')} could not "
+                "be found by name in the MeSH trees (unmatched_in_tree) and are kept as drug "
+                f"nodes unchecked: {listed}. Full list in meta.network.unmatched_terms.",
+            )
         )
     return statements
 
 
-def drug_class_assumptions(summary: NetworkSummary, screening: Screening) -> list[str]:
+def drug_class_assumptions(summary: NetworkSummary, screening: Screening) -> list[Notice]:
     """State how many nodes are drug classes rather than specific drugs."""
     if not summary.drug_class_nodes_total:
         return []
@@ -391,30 +443,32 @@ def drug_class_assumptions(summary: NetworkSummary, screening: Screening) -> lis
         for key, term in screening.of(MeshVerdict.DRUG_CLASS)[:ASSUMPTION_TERM_LIMIT]
     )
     return [
-        f"{plural(summary.drug_class_nodes_total, 'node')} ({summary.drug_class_nodes_shown} "
-        "shown) have type drug_class: their MeSH tree numbers are all in D26 (Pharmaceutical "
-        "Preparations) or D27 (Chemical Actions and Uses), so they name a drug class or "
-        f"dosage form, not a specific drug. Most frequent: {listed}."
+        Notice.of(
+            NoticeCode.NETWORK_DRUG_CLASSES,
+            f"{plural(summary.drug_class_nodes_total, 'node')} "
+            f"({summary.drug_class_nodes_shown} shown) have type drug_class: their MeSH tree "
+            "numbers are all in D26 (Pharmaceutical Preparations) or D27 (Chemical Actions and "
+            "Uses), so they name a drug class or dosage form, not a specific drug. Most "
+            f"frequent: {listed}.",
+        )
     ]
 
 
-def trim_warnings(summary: NetworkSummary) -> list[str]:
+def trim_warnings(summary: NetworkSummary) -> list[Notice]:
     """Report the readability caps whenever they removed anything (never trim silently)."""
     if summary.nodes_shown == summary.nodes_total and summary.edges_shown == summary.edges_total:
         return []
     return [
-        f"Network trimmed for readability: showing {summary.nodes_shown} of "
-        f"{summary.nodes_total} nodes (highest weighted degree, cap MAX_NETWORK_NODES="
-        f"{summary.max_nodes}) and {summary.edges_shown} of {summary.edges_total} edges; "
-        f"{summary.edges_below_min_weight} edges below MIN_EDGE_WEIGHT="
-        f"{summary.min_edge_weight} trials and {summary.edges_with_omitted_node} edges to "
-        f"omitted nodes are not shown. {plural(summary.trials_without_shown_edge, 'trial')} "
-        "with co-occurrences contribute no shown edge, and "
-        f"{plural(summary.trials_without_shown_node, 'trial')} appear in no shown node. "
-        "Node sizes still count every trial."
+        Notice.of(
+            NoticeCode.NETWORK_TRIMMED,
+            f"Network trimmed for readability: showing {summary.nodes_shown} of "
+            f"{summary.nodes_total} nodes (highest weighted degree, cap MAX_NETWORK_NODES="
+            f"{summary.max_nodes}) and {summary.edges_shown} of {summary.edges_total} edges; "
+            f"{summary.edges_below_min_weight} edges below MIN_EDGE_WEIGHT="
+            f"{summary.min_edge_weight} trials and {summary.edges_with_omitted_node} edges to "
+            f"omitted nodes are not shown. "
+            f"{plural(summary.trials_without_shown_edge, 'trial')} with co-occurrences "
+            f"contribute no shown edge, and {plural(summary.trials_without_shown_node, 'trial')} "
+            "appear in no shown node. Node sizes still count every trial.",
+        )
     ]
-
-
-def plural(count: int, noun: str) -> str:
-    """'1 trial', '2 trials'."""
-    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"

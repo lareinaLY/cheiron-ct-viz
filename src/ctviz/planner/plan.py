@@ -209,9 +209,15 @@ def merge_draft(
         values["relation"] = None
     if request.relation is not None and "dimension" not in explicit:
         values["dimension"] = None
+    # The draft has no bottom_n (its top_n plus ranking_direction express "fewest"), so an
+    # explicit bottom_n is the caller's ranking and clears the draft's top_n.
+    bottom_n = request.bottom_n if "bottom_n" in explicit else None
+    if bottom_n is not None and "top_n" not in explicit:
+        values["top_n"] = None
     for name in PLAN_FIELDS:
         record_override(overrides, name, getattr(draft, name), values[name])
-    return QueryPlan(cohorts=cohorts, **values), overrides
+    record_override(overrides, "bottom_n", None, bottom_n)
+    return QueryPlan(cohorts=cohorts, bottom_n=bottom_n, **values), overrides
 
 
 def apply_ranking_default(
@@ -223,12 +229,13 @@ def apply_ranking_default(
     - "most": top_n, from the question if it gave a number, else the configured default.
     - "fewest": bottom_n, likewise. The draft's top_n is the number the user gave, so
       with "fewest" it moves to bottom_n. A `top_n` sent in the request is an explicit
-      "top" and wins: the plan keeps it and gets no bottom_n.
+      "top" and wins: the plan keeps it and gets no bottom_n. A `bottom_n` sent in the
+      request wins over either direction the same way.
     Networks are never trimmed (the validator rejects top_n/bottom_n with a relation).
     Returns the plan and the default applied, or None when no default was used.
     """
     direction = draft.ranking_direction
-    if direction is None or query_plan.dimension is None:
+    if direction is None or query_plan.dimension is None or "bottom_n" in request.explicit_fields():
         return query_plan, None
     if direction == RankingDirection.MOST:
         if query_plan.top_n is not None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ctviz.schemas.trial import OverallStatus, Phase
 
@@ -65,10 +65,44 @@ MatchMode = Literal["intervention_name", "broad"]
 MAX_TOP_N = 1000
 MIN_START_YEAR = 1900
 MAX_START_YEAR = 2100
+# Input size limits (engineering review M3): a question is a sentence or two, a filter
+# value a name; anything longer is a mistake or abuse that would be billed as LLM tokens
+# or sent upstream as an oversized URL.
+MAX_QUERY_LENGTH = 2000
+MAX_FILTER_TEXT_LENGTH = 200
+
+
+def deduplicated[T](values: list[T]) -> list[T]:
+    """The values in first-seen order without repeats; an OR list means the same."""
+    return list(dict.fromkeys(values))
+
+
+def check_text_length(value: str | None, limit: int = MAX_FILTER_TEXT_LENGTH) -> str | None:
+    """Raise ValueError for a value longer than `limit` characters."""
+    if value is not None and len(value) > limit:
+        raise ValueError(f"must be at most {limit} characters, got {len(value)}")
+    return value
+
+
+def check_unique_enum_list[E: StrEnum](values: list[E], enum_type: type[E]) -> list[E]:
+    """Deduplicate an enum list; raise ValueError when it is longer than the enum."""
+    if len(values) > len(enum_type):
+        raise ValueError(
+            f"must list at most {len(enum_type)} values (one per {enum_type.__name__}), "
+            f"got {len(values)}"
+        )
+    return deduplicated(values)
 
 
 class Filters(BaseModel):
-    """Retrieval filters for one cohort. All are optional and combined with AND."""
+    """Retrieval filters for one cohort. All are optional and combined with AND.
+
+    Free-text values are at most MAX_FILTER_TEXT_LENGTH characters, and the phase and
+    status lists are deduplicated and at most one entry per enum value. The bounds are
+    checked in validators, not as JSON-schema keywords, because this model is part of the
+    LLM's strict output schema, where such keywords are not reliably supported; an LLM
+    draft over a bound is rejected and redrafted like any invalid draft.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -80,6 +114,24 @@ class Filters(BaseModel):
     statuses: list[OverallStatus] = Field(default_factory=list)
     start_year_from: int | None = None
     start_year_to: int | None = None
+
+    @field_validator("drug", "condition", "sponsor", "country")
+    @classmethod
+    def text_within_limit(cls, value: str | None) -> str | None:
+        """Bound free-text filters (MAX_FILTER_TEXT_LENGTH)."""
+        return check_text_length(value)
+
+    @field_validator("phases")
+    @classmethod
+    def unique_phases(cls, phases: list[Phase]) -> list[Phase]:
+        """Deduplicate phases; more entries than phases exist is an error."""
+        return check_unique_enum_list(phases, Phase)
+
+    @field_validator("statuses")
+    @classmethod
+    def unique_statuses(cls, statuses: list[OverallStatus]) -> list[OverallStatus]:
+        """Deduplicate statuses; more entries than statuses exist is an error."""
+        return check_unique_enum_list(statuses, OverallStatus)
 
 
 class Cohort(BaseModel):

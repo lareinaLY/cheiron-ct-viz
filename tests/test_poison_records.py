@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from ctviz.api.app import create_app
 from ctviz.config import Settings
 from ctviz.schemas.response import Datum, VisualizationResponse
-from tests.factories import SOURCE_PATHS, fixture_study, load_fixture_studies, set_path
+from tests.factories import SOURCE_PATHS, fixture_study, load_fixture_studies, messages, set_path
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -170,11 +170,13 @@ def test_free_text_date_is_unknown_on_time_but_counted_elsewhere(api: TestClient
 def test_new_section_is_ignored(api: TestClient) -> None:
     body = ask(api, "phase")
     assert NEW_SECTION_ID in cited(datum(body, "Phase 1"))
-    assert not any("futureSection" in w or NEW_SECTION_ID in w for w in body.meta.warnings)
+    assert not any(
+        "futureSection" in w or NEW_SECTION_ID in w for w in messages(body.meta.warnings)
+    )
 
 
 def test_warnings_list_each_case(api: TestClient) -> None:
-    warnings = ask(api, "phase").meta.warnings
+    warnings = messages(ask(api, "phase").meta.warnings)
     skipped = [w for w in warnings if w.startswith("Skipped unknown:")]
     assert len(skipped) == 1
     assert "NCT ID" in skipped[0]

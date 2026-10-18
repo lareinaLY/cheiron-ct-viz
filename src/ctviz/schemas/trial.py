@@ -118,8 +118,9 @@ class UnrecognizedValue(BaseModel):
 class UnrecognizedField(BaseModel):
     """Where a record holds an unrecognized value, for meta warnings and drift counts.
 
-    `record_field` is a key of `TrialRecord.source_paths` (e.g. "phases");
-    `field_path` is the exact JSON path, with list indices (e.g. "...phases[1]").
+    `record_field` is a key of `TrialRecord.source_paths` (e.g. "phases"), or
+    "intervention_name" for a missing intervention name; `field_path` is the exact JSON
+    path, with list indices (e.g. "...phases[1]"). `value_raw` is "" for a missing value.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -137,8 +138,16 @@ class Intervention(BaseModel):
     (see docs/decisions.md).
     """
 
-    name_raw: str
+    name_raw: str | None = Field(
+        default=None,
+        description="The name exactly as listed; None (or empty) when the source has none.",
+    )
     type_raw: str | None = None
+
+    @property
+    def name(self) -> str:
+        """The name for display; a missing name is shown as the Unrecognized marker."""
+        return self.name_raw or UNRECOGNIZED_BUCKET_KEY
 
     @property
     def intervention_type(self) -> InterventionType | UnrecognizedValue | None:

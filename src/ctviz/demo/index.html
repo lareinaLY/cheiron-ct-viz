@@ -3,204 +3,207 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ctviz demo</title>
+<title>Clinical trial questions</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <style>
-  /* A schema-conformance demo: it renders VisualizationResponse exactly as README §3
-     describes and never computes, renames or hides a value. */
+  /* Renders VisualizationResponse as README §3 describes. It never computes a count:
+     every number shown is a field of the response. Banners come from notice severity,
+     greys and tones from datum flags, and zero periods from encoding.x.sort. */
   :root {
     --paper: #FAFAF8;
     --ink: #1A1A18;
     --ink-muted: #5E5E59;
     --rule: #E2E2DE;
-    --accent: #2F5D8A;
-    --unknown: #A8A8A3;
+    --accent: #2F64A0;
+    --grey: #A8A8A3;
     --red: #9B2C2C;
-    --amber: #9A6700;
+    --red-bg: #FBEFEF;
+    --amber: #8A5A00;
+    --amber-bg: #FBF4E6;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     background: var(--paper);
     color: var(--ink);
-    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-variant-numeric: tabular-nums;
   }
-  .layout { display: flex; min-height: 100vh; }
-  .inputs {
-    flex: 0 0 auto;
-    width: 100%;
-    max-width: 360px;
-    padding: 24px 20px;
-    border-right: 1px solid var(--rule);
+  .page { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; }
+  @media (max-width: 640px) { .page { padding: 20px 16px 48px; } }
+  header h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  header p { margin: 0 0 20px; color: var(--ink-muted); font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip {
+    font: inherit; font-size: 13px; color: var(--ink); background: #FFFFFF;
+    border: 1px solid var(--rule); border-radius: 14px; padding: 4px 12px; cursor: pointer;
   }
-  .output { flex: 1 1 auto; min-width: 0; padding: 24px 32px 48px; }
-  @media (max-width: 800px) {
-    .layout { display: block; }
-    .inputs { max-width: none; border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px; }
-    .output { padding: 16px; }
-  }
+  .chip:hover, .chip:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
   label { display: block; font-size: 13px; color: var(--ink-muted); margin: 12px 0 4px; }
   textarea, input, select {
-    width: 100%;
-    font: inherit;
-    color: var(--ink);
-    background: #FFFFFF;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    padding: 6px 8px;
+    width: 100%; font: inherit; color: var(--ink); background: #FFFFFF;
+    border: 1px solid var(--rule); border-radius: 2px; padding: 7px 9px;
   }
-  textarea { min-height: 88px; resize: vertical; }
+  textarea { min-height: 64px; resize: vertical; }
   textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  button {
-    margin-top: 16px;
-    font: inherit;
-    font-weight: 600;
-    color: #FFFFFF;
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    padding: 6px 16px;
-    cursor: pointer;
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 16px; }
+  .actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+  button.primary {
+    font: inherit; font-weight: 600; color: #FFFFFF; background: var(--accent);
+    border: 1px solid var(--accent); border-radius: 2px; padding: 7px 20px; cursor: pointer;
   }
-  button.secondary { color: var(--accent); background: transparent; font-weight: 400; }
-  button:disabled { opacity: 0.6; cursor: default; }
-  .section-label { font-size: 13px; color: var(--ink-muted); margin: 0 0 4px; }
-  details > summary { cursor: pointer; font-size: 13px; color: var(--accent); }
-  .dev { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .status { font-size: 13px; color: var(--ink-muted); margin-top: 8px; min-height: 20px; }
+  button.primary:disabled { opacity: 0.6; cursor: default; }
+  button.link { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+  .status { font-size: 13px; color: var(--ink-muted); }
+  details > summary { cursor: pointer; font-size: 14px; color: var(--accent); }
+  .options { margin-top: 12px; }
+  .hint { font-size: 12px; color: var(--ink-muted); margin: 4px 0 0; }
 
-  h1 { font-size: 19px; font-weight: 600; line-height: 1.35; margin: 0 0 16px; }
-  .empty { color: var(--ink-muted); }
+  .result { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+  .result h2.title { font-size: 19px; font-weight: 600; line-height: 1.35; margin: 0 0 16px; }
+  .banner { padding: 10px 14px; margin-bottom: 8px; border-left: 3px solid; font-size: 14px; }
+  .banner.error { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+  .banner.warning { border-color: var(--amber); background: var(--amber-bg); color: #4D3A10; }
+  .banner .kind { font-weight: 600; margin-right: 6px; }
   .facts {
-    display: flex; flex-wrap: wrap; gap: 4px 24px;
-    font-size: 13px; padding: 8px 0; margin-bottom: 24px;
-    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    display: flex; flex-wrap: wrap; gap: 6px 28px; font-size: 14px;
+    padding: 10px 0; margin: 16px 0 20px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
   }
-  .fact .k { color: var(--ink-muted); margin-right: 4px; }
-  .warnings { margin-bottom: 24px; }
-  .warning { padding: 6px 0 6px 12px; border-left: 2px solid var(--rule); margin-bottom: 4px; }
-  .warning.red { border-left-color: var(--red); color: var(--red); font-weight: 600; }
-  .warning.amber { border-left-color: var(--amber); color: var(--amber); }
+  .facts span { white-space: nowrap; }
   #chart { width: 100%; height: 420px; }
-  .flag-key { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; }
-  .flag-key span { margin-right: 16px; }
-  .citations { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .citations h2, .assumptions h2, .notes h2, .error h2 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
-  .citations ol { margin: 0; padding-left: 24px; }
-  .citations li { margin-bottom: 2px; }
+  .key { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+  .key i { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; }
+  .aside-note { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; }
+  .panel { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--rule); }
+  .panel h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+  .panel ol, .panel ul { margin: 0; padding-left: 22px; }
+  .panel li { margin-bottom: 4px; }
+  .muted { color: var(--ink-muted); }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
   a { color: var(--accent); }
-  .path { color: var(--ink-muted); font-size: 13px; margin: 0 8px; }
-  .assumptions { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .assumptions ul, .notes ul, .error ul { margin: 0; padding-left: 20px; }
-  .assumptions li { margin-bottom: 4px; }
-  .notes { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--rule); font-size: 13px; }
-  .notes h2 { font-size: 13px; }
-  .error { padding: 12px 0 12px 12px; border-left: 2px solid var(--red); margin-bottom: 24px; }
-  .error .code { color: var(--red); font-weight: 600; }
-  .raw { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .raw pre { font-size: 12px; overflow: auto; max-height: 480px; background: #FFFFFF; border: 1px solid var(--rule); padding: 8px; }
+  .error-box { padding: 12px 16px; border-left: 3px solid var(--red); background: var(--red-bg); }
+  .error-box p { margin: 0 0 8px; }
+  .dev { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--rule); }
+  .dev table { border-collapse: collapse; font-size: 13px; margin: 8px 0 16px; }
+  .dev td, .dev th { text-align: left; padding: 3px 16px 3px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .dev pre { font-size: 12px; overflow: auto; max-height: 480px; background: #FFFFFF; border: 1px solid var(--rule); padding: 8px; }
+  .dev h4 { font-size: 13px; margin: 16px 0 4px; }
   [hidden] { display: none !important; }
-  @media print {
-    .inputs, .raw, button { display: none !important; }
-    .output { padding: 0; }
-  }
+  @media print { .ask, .dev, .actions { display: none !important; } }
 </style>
 </head>
 <body>
-<div class="layout">
-  <aside class="inputs">
+<div class="page">
+  <header>
+    <h1>Clinical trial questions</h1>
+    <p>Ask about trials registered on ClinicalTrials.gov. Every bar links to the registry records it counts.</p>
+  </header>
+
+  <section class="ask">
+    <div class="chips" id="examples" aria-label="Example questions"></div>
     <form id="query-form">
-      <label for="query">Question</label>
-      <textarea id="query" placeholder="Compare phases for trials involving pembrolizumab vs nivolumab"></textarea>
+      <label for="query">Your question</label>
+      <textarea id="query" maxlength="2000" placeholder="Compare phases for trials involving pembrolizumab vs nivolumab"></textarea>
 
-      <p class="section-label" style="margin-top:16px">Optional structured fields (override the question)</p>
-      <label for="drug">drug</label><input id="drug">
-      <label for="condition">condition</label><input id="condition">
-      <div class="row2">
-        <div><label for="sponsor">sponsor</label><input id="sponsor"></div>
-        <div><label for="country">country</label><input id="country"></div>
-      </div>
-      <div class="row2">
-        <div>
-          <label for="dimension">dimension</label>
-          <select id="dimension">
-            <option value=""></option>
-            <option>phase</option><option>start_year</option><option>start_month</option>
-            <option>country</option><option>sponsor_class</option><option>lead_sponsor</option>
-            <option>intervention_type</option><option>overall_status</option><option>condition</option>
-            <option>intervention_mesh</option><option>enrollment_bucket</option>
-          </select>
+      <details class="options" id="options">
+        <summary>More options</summary>
+        <p class="hint">Anything set here replaces what was read from the question.</p>
+        <div class="grid">
+          <div><label for="drug">Drug</label><input id="drug" maxlength="200"></div>
+          <div><label for="condition">Condition</label><input id="condition" maxlength="200"></div>
+          <div><label for="sponsor">Sponsor or collaborator</label><input id="sponsor" maxlength="200"></div>
+          <div><label for="country">Location</label><input id="country" maxlength="200"></div>
+          <div><label for="dimension">Group studies by</label><select id="dimension"></select></div>
+          <div><label for="relation">Or draw a network of</label><select id="relation"></select></div>
+          <div><label for="top_n">Show top N</label><input id="top_n" inputmode="numeric"></div>
+          <div><label for="bottom_n">Show bottom N</label><input id="bottom_n" inputmode="numeric"></div>
+          <div><label for="token">Access token (if this server needs one)</label><input id="token" type="password" autocomplete="off"></div>
         </div>
-        <div>
-          <label for="relation">relation</label>
-          <select id="relation">
-            <option value=""></option>
-            <option>sponsor_drug</option><option>drug_drug_cooccurrence</option><option>condition_drug</option>
-          </select>
-        </div>
+      </details>
+
+      <div class="actions">
+        <button type="submit" class="primary" id="send">Ask</button>
+        <span class="status" id="status"></span>
       </div>
-      <label for="top_n">top_n</label><input id="top_n" inputmode="numeric">
-      <button type="submit" id="send">Send</button>
-      <div class="status" id="status"></div>
     </form>
+  </section>
 
-    <details class="dev">
-      <summary>Developer: render a pasted response</summary>
-      <label for="paste">VisualizationResponse or ErrorResponse JSON</label>
-      <textarea id="paste" class="mono" style="min-height:140px"></textarea>
-      <button type="button" class="secondary" id="render-paste">Render JSON</button>
-    </details>
-  </aside>
-
-  <main class="output">
-    <h1 id="title"><span class="empty">Ask a question to see a chart.</span></h1>
-    <div id="error" class="error" hidden></div>
-    <div id="warnings" class="warnings" hidden></div>
-    <div id="facts" class="facts" hidden></div>
+  <section class="result" id="result" hidden>
+    <h2 class="title" id="title"></h2>
+    <div id="banners"></div>
+    <div id="error" hidden></div>
+    <div class="facts" id="facts" hidden></div>
     <div id="chart" hidden></div>
-    <div id="flag-key" class="flag-key" hidden></div>
-    <section id="citations" class="citations" hidden></section>
-    <section id="assumptions" class="assumptions" hidden></section>
-    <section id="notes" class="notes" hidden></section>
-    <details id="raw" class="raw" hidden>
-      <summary>Raw JSON</summary>
-      <pre id="raw-pre" class="mono"></pre>
-    </details>
-  </main>
+    <div class="key" id="key" hidden></div>
+    <p class="aside-note" id="aside" hidden></p>
+    <section class="panel" id="citations" hidden></section>
+    <section class="panel" id="notes" hidden></section>
+    <details class="panel" id="method" hidden></details>
+  </section>
+
+  <details class="dev" id="dev">
+    <summary>Details for developers</summary>
+    <div id="dev-body"><p class="muted">Send a question to see the raw response.</p></div>
+    <h4>Render a saved response</h4>
+    <label for="paste">VisualizationResponse or ErrorResponse JSON (e.g. from examples/)</label>
+    <textarea id="paste" class="mono" style="min-height:120px"></textarea>
+    <div class="actions"><button type="button" class="primary" id="render-paste">Render</button></div>
+  </details>
 </div>
 
 <script>
 "use strict";
 
-// Fixed visual conventions (visual direction); no data-derived values.
-const SINGLE_SERIES_COLOR = "#2F5D8A";
-const COHORT_PALETTE = ["#2F5D8A", "#9C5A3C", "#3D7A74", "#A88432", "#6E4C7E", "#5B6770"];
-const UNKNOWN_COLOR = "#A8A8A3";
+// Visual conventions only; no data-derived values. The cohort palette passes the dataviz
+// validator (lightness, chroma, CVD and normal-vision separation, contrast) on this paper.
+const ACCENT = "#2F64A0";
+const COHORT_PALETTE = ["#2F64A0", "#C0603A", "#16907E", "#B08419", "#8A4FA8"];
+const GREY = "#A8A8A3";
 const EDGE_COLOR = "#B9B9B4";
 const HATCH = {
   symbol: "rect", symbolSize: 1, dashArrayX: [1, 0], dashArrayY: [2, 3],
   rotation: -Math.PI / 4, color: "rgba(255,255,255,0.75)",
 };
 const NODE_STYLES = {
-  drug: { icon: "circle", symbol: "circle", itemStyle: { color: "#2F5D8A", borderColor: "#2F5D8A" } },
-  drug_class: { icon: "emptyCircle", symbol: "circle", itemStyle: { color: "#FAFAF8", borderColor: "#2F5D8A", borderWidth: 1.5 } },
-  sponsor: { icon: "rect", symbol: "rect", itemStyle: { color: "#9C5A3C", borderColor: "#9C5A3C" } },
-  condition: { icon: "diamond", symbol: "diamond", itemStyle: { color: "#3D7A74", borderColor: "#3D7A74" } },
+  drug: { label: "Drug", icon: "circle", symbol: "circle", itemStyle: { color: "#2F64A0", borderColor: "#2F64A0" } },
+  drug_class: { label: "Drug class", icon: "emptyCircle", symbol: "circle", itemStyle: { color: "#FAFAF8", borderColor: "#2F64A0", borderWidth: 1.5 } },
+  sponsor: { label: "Lead sponsor", icon: "rect", symbol: "rect", itemStyle: { color: "#C0603A", borderColor: "#C0603A" } },
+  condition: { label: "Condition", icon: "diamond", symbol: "diamond", itemStyle: { color: "#16907E", borderColor: "#16907E" } },
 };
 const NODE_TYPES = Object.keys(NODE_STYLES);
 const LABELLED_NODES = 15;
 const TEXT_STYLE = { fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", color: "#1A1A18" };
+const TOKEN_KEY = "ctviz-demo-token";
+
+// Display names for the request enums (README §3); the values sent are the enum codes.
+const DIMENSIONS = [
+  ["", "From the question"], ["phase", "Phase"], ["start_year", "Start year"], ["start_month", "Start month"],
+  ["country", "Location country"], ["sponsor_class", "Lead sponsor class"], ["lead_sponsor", "Lead sponsor"],
+  ["intervention_type", "Intervention type"], ["overall_status", "Recruitment status"], ["condition", "Condition"],
+  ["intervention_mesh", "Intervention (MeSH term)"], ["enrollment_bucket", "Enrollment size"],
+];
+const RELATIONS = [
+  ["", "No network"], ["sponsor_drug", "Lead sponsors and drugs"],
+  ["drug_drug_cooccurrence", "Drugs listed together"], ["condition_drug", "Conditions and drugs"],
+];
+// One per chart type, plus a ranking, a fewest, a comparison and an unsupported question.
+const EXAMPLES = [
+  "How are pembrolizumab trials distributed across phases?",
+  "How many pembrolizumab trials started each year since 2015?",
+  "Compare phases for trials involving pembrolizumab vs nivolumab",
+  "Which countries have the most recruiting NSCLC trials?",
+  "Which countries have the fewest recruiting melanoma trials?",
+  "How large are breast cancer trials by enrollment?",
+  "Which sponsors work on which drugs in pembrolizumab trials?",
+  "What is the average survival benefit of pembrolizumab?",
+];
+const COUNT_UNIT_WORDS = {
+  "registered studies (interventional and observational, any status)":
+    "registered studies, including observational and withdrawn",
+};
 
 const $ = (id) => document.getElementById(id);
 let chart = null;
-let notes = [];
-
-function note(message) {
-  if (!notes.includes(message)) notes.push(message);
-}
 
 function el(tag, attrs, ...children) {
   const node = document.createElement(tag);
@@ -209,6 +212,7 @@ function el(tag, attrs, ...children) {
     else node.setAttribute(name, value);
   }
   for (const child of children) {
+    if (child === null || child === undefined) continue;
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
   return node;
@@ -218,19 +222,37 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function show(id, visible) { $(id).hidden = !visible; }
+const fmt = (n) => (typeof n === "number" ? n.toLocaleString("en-US") : String(n));
+const studies = (n) => `${fmt(n)} ${n === 1 ? "study" : "studies"}`;
+const show = (id, visible) => { $(id).hidden = !visible; };
 
-function clearOutput() {
-  notes = [];
-  if (chart) { chart.dispose(); chart = null; }
-  for (const id of ["error", "warnings", "facts", "chart", "flag-key", "citations", "assumptions", "notes", "raw"]) {
-    $(id).replaceChildren();
-    show(id, false);
-  }
-  $("raw").append(el("summary", {}, "Raw JSON"), el("pre", { id: "raw-pre", class: "mono" }));
+function storedToken() {
+  try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; }
+}
+function storeToken(value) {
+  try { value ? sessionStorage.setItem(TOKEN_KEY, value) : sessionStorage.removeItem(TOKEN_KEY); } catch (_) { /* private mode */ }
 }
 
-// ---------- request ----------
+// ---------- form ----------
+
+function setupForm() {
+  for (const [id, options] of [["dimension", DIMENSIONS], ["relation", RELATIONS]]) {
+    $(id).append(...options.map(([value, text]) => el("option", { value }, text)));
+  }
+  $("examples").append(...EXAMPLES.map((text) => {
+    const chip = el("button", { type: "button", class: "chip" }, text);
+    chip.addEventListener("click", () => { $("query").value = text; sendQuery(); });
+    return chip;
+  }));
+  $("token").value = storedToken();
+  $("token").addEventListener("change", () => storeToken($("token").value.trim()));
+  $("query-form").addEventListener("submit", (event) => { event.preventDefault(); sendQuery(); });
+  $("query").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) sendQuery();
+  });
+  $("render-paste").addEventListener("click", renderPasted);
+  window.addEventListener("resize", () => chart && chart.resize());
+}
 
 function buildRequest() {
   const body = { query: $("query").value };
@@ -238,190 +260,204 @@ function buildRequest() {
     const value = $(name).value.trim();
     if (value) body[name] = value;
   }
-  const topN = $("top_n").value.trim();
-  // Sent as typed when not an integer, so the server's validation error is what the user sees.
-  if (topN) body.top_n = /^-?\d+$/.test(topN) ? Number(topN) : topN;
+  for (const name of ["top_n", "bottom_n"]) {
+    const value = $(name).value.trim();
+    // Sent as typed when not an integer, so the server's validation message is shown.
+    if (value) body[name] = /^-?\d+$/.test(value) ? Number(value) : value;
+  }
   return body;
 }
 
-async function sendQuery(event) {
-  event.preventDefault();
+async function sendQuery() {
   const body = buildRequest();
+  if (!body.query.trim()) { $("query").focus(); return; }
+  const token = $("token").value.trim();
+  storeToken(token);
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
   $("send").disabled = true;
-  $("status").textContent = "Waiting for /query …";
+  $("status").textContent = "Reading the question and counting registry records…";
+  const started = performance.now();
   try {
-    const response = await fetch("/query", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const response = await fetch("/query", { method: "POST", headers, body: JSON.stringify(body) });
     const text = await response.text();
-    $("status").textContent = `HTTP ${response.status}`;
-    let parsed;
-    try { parsed = JSON.parse(text); } catch (_) { parsed = null; }
-    if (parsed === null) renderTransportError(`HTTP ${response.status}: the body is not JSON.`, text);
-    else renderAny(parsed, response.status);
+    const transport = { status: response.status, seconds: (performance.now() - started) / 1000, request: body };
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (_) { /* shown as a transport error */ }
+    if (parsed === null) renderTransportError("The server answered with something other than JSON.", transport, text);
+    else renderAny(parsed, transport);
   } catch (error) {
-    $("status").textContent = "";
-    renderTransportError(`The request failed before a response arrived: ${error.message}`, "");
+    renderTransportError(`The request did not reach the server: ${error.message}`, { status: null, request: body }, "");
   } finally {
     $("send").disabled = false;
+    $("status").textContent = "";
   }
 }
 
 function renderPasted() {
   let parsed;
-  try {
-    parsed = JSON.parse($("paste").value);
-  } catch (error) {
-    renderTransportError(`The pasted text is not valid JSON: ${error.message}`, $("paste").value);
+  try { parsed = JSON.parse($("paste").value); } catch (error) {
+    renderTransportError(`The pasted text is not valid JSON: ${error.message}`, { status: null }, $("paste").value);
     return;
   }
-  renderAny(parsed, null);
+  renderAny(parsed, { status: null, pasted: true });
 }
 
-function renderAny(body, status) {
-  clearOutput();
-  setRaw(body);
+// ---------- dispatch ----------
+
+function clearResult() {
+  if (chart) { chart.dispose(); chart = null; }
+  for (const id of ["banners", "error", "facts", "chart", "key", "aside", "citations", "notes", "method"]) {
+    $(id).replaceChildren();
+    show(id, false);
+  }
+  show("result", true);
+}
+
+function renderAny(body, transport) {
+  clearResult();
   if (body && typeof body === "object" && body.visualization && body.meta) {
     renderResponse(body);
   } else if (body && typeof body === "object" && "code" in body && "message" in body) {
-    renderError(body, status);
+    renderError(body);
   } else {
-    renderTransportError("The JSON is neither a VisualizationResponse nor an ErrorResponse.", JSON.stringify(body, null, 2));
+    renderTransportError("The response is neither a chart nor an error.", transport, JSON.stringify(body, null, 2));
+    return;
   }
-  renderNotes();
-}
-
-function setRaw(body) {
-  $("raw-pre").textContent = JSON.stringify(body, null, 2);
-  show("raw", true);
+  renderDeveloper(body, transport);
+  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // ---------- errors ----------
 
-function renderError(body, status) {
-  $("title").replaceChildren(el("span", {}, "No chart: the request was not answered"));
-  const box = $("error");
-  box.append(
-    el("h2", {}, el("span", { class: "code mono" }, body.code), status ? `  ·  HTTP ${status}` : ""),
-    el("p", { style: "margin:0 0 8px" }, body.message),
-  );
+function renderError(body) {
+  $("title").textContent = "No chart for this question";
+  const box = el("div", { class: "error-box" }, el("p", {}, body.message));
   const suggestions = Array.isArray(body.suggestions) ? body.suggestions : [];
   if (suggestions.length) {
-    box.append(el("p", { class: "section-label" }, "Suggestions"),
+    box.append(el("p", { class: "muted", style: "margin:8px 0 4px" }, "You could try:"),
       el("ul", {}, ...suggestions.map((s) => el("li", {}, s))));
   }
+  $("error").append(box);
   show("error", true);
 }
 
-function renderTransportError(message, text) {
-  clearOutput();
-  $("title").replaceChildren(el("span", {}, "No chart"));
-  $("error").append(el("h2", {}, el("span", { class: "code" }, "renderer")), el("p", { style: "margin:0" }, message));
+function renderTransportError(message, transport, text) {
+  clearResult();
+  $("title").textContent = "No chart for this question";
+  $("error").append(el("div", { class: "error-box" }, el("p", {}, message)));
   show("error", true);
-  if (text) { $("raw-pre").textContent = text; show("raw", true); }
+  renderDeveloper(text, transport);
 }
 
-// ---------- response ----------
+// ---------- chart response ----------
 
 function renderResponse(body) {
   const { visualization: vis, meta } = body;
-  $("title").replaceChildren(el("span", {}, vis.title));
-  renderWarnings(meta.warnings || []);
+  $("title").textContent = vis.title;
+  renderBanners(meta.warnings || []);
   renderFacts(meta);
   show("chart", true);
   chart = echarts.init($("chart"), null, { renderer: "canvas" });
   if (vis.type === "network_graph") renderNetwork(vis);
-  else if (["bar_chart", "grouped_bar_chart", "histogram", "time_series"].includes(vis.type)) renderData(vis);
-  else note(`visualization.type "${vis.type}" is not one this renderer knows; nothing is drawn.`);
-  renderAssumptions(meta.assumptions || []);
+  else renderData(vis);
+  renderNotes(meta);
 }
 
-function warningClass(text) {
-  // Warnings carry no kind field, so the banner level is read from the documented prefixes.
-  if (text.includes("DEGRADED DATA:")) return "warning red";
-  if (text.includes("Not applied:") || text.includes("(record cap)")) return "warning amber";
-  return "warning";
-}
-
-function renderWarnings(warnings) {
-  if (!warnings.length) return;
-  $("warnings").append(...warnings.map((w) => el("div", { class: warningClass(w) }, w)));
-  show("warnings", true);
-  note("Warnings have no machine-readable kind or severity; red/amber banners are chosen by matching the text \"DEGRADED DATA:\", \"Not applied:\" and \"(record cap)\".");
-}
-
-function fact(label, value) {
-  const shown = value === null || value === undefined ? "null" : String(value);
-  return el("span", { class: "fact" }, el("span", { class: "k" }, label), el("span", {}, shown));
+function renderBanners(warnings) {
+  // Severity decides the banner; the message is shown as written.
+  const loud = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
+  for (const w of loud) {
+    const kind = w.severity === "error" ? "Data problem:" : "Note:";
+    $("banners").append(el("div", { class: `banner ${w.severity}`, "data-code": w.code }, el("span", { class: "kind" }, kind), w.message));
+  }
 }
 
 function renderFacts(meta) {
-  const facts = [
-    fact("count_unit", meta.count_unit),
-    fact("data_quality", meta.data_quality),
-    fact("retrieval_route", meta.retrieval_route),
-  ];
+  const facts = [];
+  const unit = COUNT_UNIT_WORDS[meta.count_unit] || meta.count_unit;
+  facts.push(`Counting: ${unit}`);
   for (const cohort of meta.cohorts || []) {
-    facts.push(fact(`${cohort.label} · total_matched`, cohort.total_matched));
-    facts.push(fact(`${cohort.label} · withdrawn`, cohort.withdrawn));
+    const name = meta.cohorts.length > 1 ? `${cohort.label}: ` : "";
+    if (cohort.retrieval_route === "count_per_bucket") {
+      facts.push(`${name}${studies(cohort.total_matched)}, exact counts from the registry`);
+    } else if (cohort.truncated) {
+      facts.push(`${name}based on the first ${fmt(cohort.records_retrieved)} of ${studies(cohort.total_matched)}`);
+    } else {
+      const check = cohort.reconciled ? "reconciled with the registry total" : "not reconciled with the registry total";
+      facts.push(`${name}based on ${fmt(cohort.records_retrieved)} retrieved records (${check})`);
+    }
+    if (cohort.withdrawn) facts.push(`${name}includes ${studies(cohort.withdrawn)} withdrawn before enrolling`);
   }
-  facts.push(fact("cohorts_overlap.total_shared", meta.cohorts_overlap ? meta.cohorts_overlap.total_shared : null));
-  facts.push(fact("data_timestamp", meta.data_timestamp));
-  facts.push(fact("timing_ms.total", meta.timing_ms ? meta.timing_ms.total : null));
-  $("facts").append(...facts);
+  if (meta.cohorts_overlap && meta.cohorts_overlap.total_shared > 0) {
+    const shared = meta.cohorts_overlap.total_shared;
+    facts.push(`${studies(shared)} ${shared === 1 ? "appears" : "appear"} in more than one group`);
+  }
+  if (meta.data_timestamp) {
+    const day = new Date(`${meta.data_timestamp.slice(0, 10)}T00:00:00Z`);
+    facts.push(`Registry data as of ${day.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`);
+  }
+  $("facts").append(...facts.map((f) => el("span", {}, f)));
   show("facts", true);
 }
 
-function renderAssumptions(assumptions) {
-  if (!assumptions.length) return;
-  $("assumptions").append(el("h2", {}, "Assumptions"), el("ul", {}, ...assumptions.map((a) => el("li", {}, a))));
-  show("assumptions", true);
-}
-
-function renderNotes() {
-  if (!notes.length) return;
-  $("notes").append(el("h2", {}, "Renderer notes (schema gaps)"), el("ul", {}, ...notes.map((n) => el("li", {}, n))));
-  show("notes", true);
+function renderNotes(meta) {
+  const quiet = (meta.warnings || []).filter((w) => w.severity === "info");
+  if (quiet.length) {
+    $("notes").append(el("h3", {}, "Things to know about these counts"), el("ul", {}, ...quiet.map((w) => el("li", { "data-code": w.code }, w.message))));
+    show("notes", true);
+  }
+  const assumptions = meta.assumptions || [];
+  if (assumptions.length) {
+    $("method").append(el("summary", {}, "How these numbers were made"), el("ul", {}, ...assumptions.map((a) => el("li", { "data-code": a.code }, a.message))));
+    show("method", true);
+  }
 }
 
 // ---------- citations ----------
 
-function renderCitations(heading, citations, total) {
+function renderCitations(heading, item) {
   const box = $("citations");
+  const citations = (item && item.citations) || [];
+  const primary = citations.filter((c) => c.role !== "supporting");
+  const cited = new Set(primary.map((c) => c.nct_id)).size;
+  const total = item ? item.cited_trials_total : 0;
   box.replaceChildren(
-    el("h2", {}, heading),
-    el("p", { class: "section-label" }, `showing ${citations.length} of ${total} citations (citation_count_total)`),
+    el("h3", {}, heading),
+    el("p", { class: "muted", style: "margin:0 0 8px" }, item
+      ? `${studies(total)} in total; ${cited === total ? "all are" : `${fmt(cited)} are`} listed here with the registry value they were counted on.`
+      : "No studies: nothing in this group for this period."),
   );
-  const list = el("ol", {});
-  for (const c of citations) {
-    const link = el("a", { class: "mono", href: c.url, target: "_blank", rel: "noopener" }, c.nct_id);
-    const item = el("li", {}, link, el("span", { class: "path mono" }, c.field_path), JSON.stringify(c.value));
-    if (c.role && c.role !== "primary") item.append(el("span", { class: "path" }, `(${c.role})`));
-    list.append(item);
+  if (primary.length) {
+    const byTrial = new Map();
+    for (const c of citations) {
+      if (!byTrial.has(c.nct_id)) byTrial.set(c.nct_id, []);
+      byTrial.get(c.nct_id).push(c);
+    }
+    const list = el("ol", {});
+    for (const [nctId, items] of byTrial) {
+      const li = el("li", {}, el("a", { href: items[0].url, target: "_blank", rel: "noopener" }, nctId));
+      for (const c of items) {
+        const value = c.value === null ? "(not given)" : Array.isArray(c.value) ? c.value.join(", ") : c.value;
+        li.append(el("span", { class: c.role === "supporting" ? "muted" : "" }, ` · ${c.role === "supporting" ? "listed intervention: " : ""}${value}`));
+      }
+      list.append(li);
+    }
+    box.append(list);
   }
-  if (citations.length) box.append(list);
-  box.append(el("button", { type: "button", class: "secondary" }, "Close"));
-  box.querySelector("button").addEventListener("click", () => show("citations", false));
+  const close = el("button", { type: "button", class: "link", style: "margin-top:8px" }, "Close");
+  close.addEventListener("click", () => show("citations", false));
+  box.append(close);
   show("citations", true);
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-// ---------- data charts ----------
-
-function domainFromChannel(channel, values, what) {
-  // README: `sort` gives the display order; without it the order is alphabetical.
-  const unique = [...new Set(values)];
-  if (!channel.sort) return unique.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  const missing = unique.filter((v) => !channel.sort.includes(v));
-  if (missing.length) {
-    note(`${what} values not listed in encoding sort were appended at the end: ${missing.join(", ")}.`);
-  }
-  return [...channel.sort, ...missing];
-}
+// ---------- bar, grouped bar, histogram, time series ----------
 
 function datumStyle(datum, color) {
-  if (datum.is_unknown || datum.is_unrecognized) return { color: UNKNOWN_COLOR, decal: HATCH };
+  if (datum.is_unknown || datum.is_unrecognized) return { color: GREY, decal: HATCH };
+  if (datum.is_not_applicable) return { color: GREY };
+  if (datum.is_other) return { color, opacity: 0.4 };
   if (datum.is_future) return { color: "rgba(0,0,0,0)", borderColor: color, borderType: "dashed", borderWidth: 1.5 };
   if (datum.incomplete) return { color, opacity: 0.6 };
   return { color };
@@ -429,118 +465,109 @@ function datumStyle(datum, color) {
 
 function renderData(vis) {
   const enc = vis.encoding || {};
-  if (!enc.x || !enc.y) {
-    note("encoding.x or encoding.y is missing; the chart cannot be placed without guessing.");
-    show("chart", false);
-    return;
-  }
+  if (!enc.x || !enc.y) { show("chart", false); return; }
   const temporal = enc.x.type === "temporal";
   const horizontal = vis.type === "bar_chart" || vis.type === "grouped_bar_chart";
   const xField = enc.x.field;
-  const yField = enc.y.field;
   const colorField = enc.color ? enc.color.field : null;
 
-  const categories = domainFromChannel(enc.x, vis.data.map((d) => String(d[xField])), "x");
-  const seriesNames = colorField
-    ? domainFromChannel(enc.color, vis.data.map((d) => String(d[colorField])), "color")
-    : [enc.y.title || yField];
-  if (seriesNames.length > COHORT_PALETTE.length) {
-    note(`${seriesNames.length} series exceed the ${COHORT_PALETTE.length}-colour palette; colours repeat.`);
-  }
-  if (temporal && !enc.x.sort) {
-    note("A temporal encoding.x has no sort/domain, so periods with zero studies in every cohort cannot be shown as zero without date arithmetic; only periods present in data are drawn.");
-  }
-  if (!temporal) {
-    note("Datum has no not-applicable flag, so not-applicable buckets (e.g. phase \"Not applicable (observational / expanded access)\") are drawn as ordinary data rather than grey.");
-  }
+  // encoding.x.sort is the display order; on a time axis it lists every period, so a
+  // period missing from data is drawn as zero (README §3: an absent datum means zero).
+  const present = [...new Set(vis.data.map((d) => String(d[xField])))];
+  let categories = enc.x.sort ? [...enc.x.sort, ...present.filter((v) => !enc.x.sort.includes(v))] : present;
+  const offAxis = temporal ? vis.data.filter((d) => d.is_unknown) : [];
+  if (temporal) categories = categories.filter((c) => !offAxis.some((d) => String(d[xField]) === c));
+  const seriesNames = colorField ? (enc.color.sort || [...new Set(vis.data.map((d) => d[colorField]))]) : [enc.y.title || "Studies"];
 
-  const lookup = new Map();
-  for (const d of vis.data) {
-    const key = `${colorField ? d[colorField] : ""}\u0000${d[xField]}`;
-    if (lookup.has(key)) note(`Two data items share series and x value "${d[xField]}"; only the first is drawn.`);
-    else lookup.set(key, d);
-  }
-
+  const lookup = new Map(vis.data.map((d) => [`${colorField ? d[colorField] : ""}\u0000${d[xField]}`, d]));
   const series = seriesNames.map((name, index) => {
-    const color = colorField ? COHORT_PALETTE[index % COHORT_PALETTE.length] : SINGLE_SERIES_COLOR;
-    const data = categories.map((category) => {
-      const datum = lookup.get(`${colorField ? name : ""}\u0000${category}`);
-      // README: an absent datum means zero.
-      if (!datum) return { value: 0, datum: null, itemStyle: { color } };
-      return { value: datum[yField], datum, itemStyle: datumStyle(datum, color) };
-    });
+    const color = colorField ? COHORT_PALETTE[index % COHORT_PALETTE.length] : ACCENT;
     return {
-      name, type: "bar", data, itemStyle: { color },
-      barMaxWidth: 28,
+      name, type: "bar", itemStyle: { color }, barMaxWidth: 28,
       barCategoryGap: vis.type === "histogram" ? "8%" : "30%",
+      data: categories.map((category) => {
+        const datum = lookup.get(`${colorField ? name : ""}\u0000${category}`);
+        if (!datum) return { value: 0, datum: null, itemStyle: { color }, label: { show: false } };
+        return { value: datum.count, datum, itemStyle: datumStyle(datum, color) };
+      }),
       label: {
-        show: true, position: horizontal ? "right" : "top",
-        fontSize: 11, color: "#3A3A36", fontFamily: TEXT_STYLE.fontFamily,
+        show: !temporal || categories.length <= 24, position: horizontal ? "right" : "top",
+        fontSize: 11, color: "#3A3A36", formatter: (p) => fmt(p.value),
       },
       emphasis: { focus: "none" },
     };
   });
 
+  const longest = Math.max(0, ...categories.map((c) => c.length));
+  const rotate = !horizontal && (categories.length > 14 || longest * categories.length > 90) ? 45 : 0;
   const categoryAxis = {
     type: "category", data: categories, name: enc.x.title || "",
-    nameLocation: horizontal ? "start" : "middle", nameGap: horizontal ? 8 : 32,
+    nameLocation: horizontal ? "start" : "middle",
+    // Rotated tick labels need the axis title pushed below them.
+    nameGap: horizontal ? 8 : rotate ? Math.min(90, 24 + longest * 5.5) : 30,
+    nameTextStyle: { color: "#5E5E59", fontSize: 12 },
     axisLine: { lineStyle: { color: "#BDBDB8" } }, axisTick: { show: false },
-    axisLabel: { color: "#1A1A18", fontSize: 12, width: 220, overflow: "break", interval: 0, rotate: !horizontal && categories.length > 14 ? 45 : 0 },
+    axisLabel: { color: "#1A1A18", fontSize: 12, width: 240, overflow: "truncate", interval: 0, rotate },
     inverse: horizontal,
   };
   const valueAxis = {
-    type: "value", name: enc.y.title || "", nameLocation: "end",
-    splitLine: { lineStyle: { color: "#ECECE8" } }, axisLabel: { color: "#5E5E59", fontSize: 11 },
+    type: "value", name: enc.y.title || "", nameLocation: "end", minInterval: 1,
+    nameTextStyle: { color: "#5E5E59", fontSize: 12 },
+    splitLine: { lineStyle: { color: "#ECECE8" } }, axisLabel: { color: "#5E5E59", fontSize: 11, formatter: fmt },
   };
   const rows = horizontal ? categories.length * Math.max(1, seriesNames.length) : 0;
-  $("chart").style.height = `${horizontal ? Math.max(260, rows * 24 + 100) : 420}px`;
+  $("chart").style.height = `${horizontal ? Math.max(240, rows * 24 + 90) : 440}px`;
   chart.resize();
-
   chart.setOption({
-    textStyle: TEXT_STYLE,
-    animation: false,
-    grid: { left: 8, right: 56, top: colorField ? 40 : 24, bottom: 8, containLabel: true },
-    legend: colorField ? { top: 0, left: 0, icon: "rect", itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 12 } } : undefined,
+    textStyle: TEXT_STYLE, animation: false,
+    grid: { left: 8, right: 56, top: colorField ? 44 : 28, bottom: rotate ? 16 : 8, containLabel: true },
+    legend: colorField ? { top: 0, left: 0, icon: "rect", itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 13 } } : undefined,
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
-    tooltip: { trigger: "item", formatter: (p) => dataTooltip(p, temporal, colorField) },
+    tooltip: { trigger: "item", formatter: (p) => dataTooltip(p, colorField) },
     series,
   });
-
   chart.on("click", (params) => {
     const datum = params.data && params.data.datum;
     const where = colorField ? `${params.seriesName} · ${params.name}` : params.name;
-    if (!datum) renderCitations(`${where}: no datum (absent means zero)`, [], 0);
-    else renderCitations(where, datum.citations || [], datum.citation_count_total);
+    renderCitations(where, datum);
   });
 
-  renderFlagKey(vis.data);
+  if (offAxis.length) {
+    const parts = offAxis.map((d) => `${colorField ? `${d.cohort}: ` : ""}${studies(d.count)}`);
+    $("aside").textContent = `No start date, so not on the time axis: ${parts.join("; ")}.`;
+    show("aside", true);
+  }
+  renderKey(vis.data);
 }
 
-function dataTooltip(params, temporal, colorField) {
+function dataTooltip(params, colorField) {
   const datum = params.data.datum;
-  const head = colorField ? `${escapeHtml(params.seriesName)} · ${escapeHtml(params.name)}` : escapeHtml(params.name);
-  if (!datum) return `${head}<br>count: 0 (no datum; absent means zero)`;
-  const lines = [head, `count: ${datum.count}`, `citation_count_total: ${datum.citation_count_total}`];
-  // README: estimated_count and unknown_date_type_count are temporal-chart fields.
-  if (temporal) {
-    lines.push(`estimated_count: ${datum.estimated_count === null ? "null (not determined)" : datum.estimated_count}`);
-    lines.push(`unknown_date_type_count: ${datum.unknown_date_type_count === null ? "null (not determined)" : datum.unknown_date_type_count}`);
-  }
-  for (const flag of ["is_unknown", "is_unrecognized", "is_future", "incomplete"]) {
-    if (datum[flag]) lines.push(flag);
-  }
+  const head = escapeHtml(colorField ? `${params.seriesName} · ${params.name}` : params.name);
+  if (!datum) return `${head}<br>No studies`;
+  const lines = [head, `<b>${studies(datum.count)}</b>`];
+  if (datum.is_unknown) lines.push("Value missing in the registry record");
+  if (datum.is_unrecognized) lines.push("Value the registry has added since this tool was built");
+  if (datum.is_not_applicable) lines.push("Does not apply to these studies");
+  if (datum.is_other) lines.push("All values not shown, together");
+  if (datum.is_future) lines.push("Planned start dates: a projection, not activity");
+  if (datum.incomplete) lines.push("Period still in progress");
+  if (typeof datum.estimated_count === "number" && datum.estimated_count > 0) lines.push(`${studies(datum.estimated_count)} counted on an estimated value`);
+  lines.push('<span style="color:#5E5E59">Click for the registry records</span>');
   return lines.join("<br>");
 }
 
-function renderFlagKey(data) {
+function renderKey(data) {
   const key = [];
-  if (data.some((d) => d.is_unknown || d.is_unrecognized)) key.push("grey hatched: is_unknown / is_unrecognized");
-  if (data.some((d) => d.is_future)) key.push("dashed outline: is_future (planned start dates, a projection)");
-  if (data.some((d) => d.incomplete)) key.push("faded: incomplete (period in progress)");
+  const swatch = (style) => el("i", { style });
+  if (data.some((d) => d.is_unknown || d.is_unrecognized)) key.push([swatch(`background:repeating-linear-gradient(-45deg,${GREY},${GREY} 2px,#ddd 2px,#ddd 4px)`), "Missing or unrecognized value"]);
+  if (data.some((d) => d.is_not_applicable)) key.push([swatch(`background:${GREY}`), "Does not apply (e.g. observational studies have no phase)"]);
+  if (data.some((d) => d.is_other)) key.push([swatch(`background:${ACCENT};opacity:.4`), "Other: all values not shown"]);
+  if (data.some((d) => d.is_future)) key.push([swatch(`border:1.5px dashed ${ACCENT}`), "Planned start dates (projection)"]);
+  if (data.some((d) => d.incomplete)) key.push([swatch(`background:${ACCENT};opacity:.6`), "Period in progress"]);
   if (!key.length) return;
-  $("flag-key").append(...key.map((k) => el("span", {}, k)));
-  show("flag-key", true);
+  $("key").append(...key.map(([icon, text]) => el("span", {}, icon, text)));
+  show("key", true);
 }
 
 // ---------- network ----------
@@ -552,41 +579,32 @@ function renderNetwork(vis) {
   const maxWeight = Math.max(1, ...edges.map((e) => e.weight));
   const labelled = new Set([...nodes].sort((a, b) => b.size - a.size).slice(0, LABELLED_NODES).map((n) => n.id));
   const labels = new Map(nodes.map((n) => [n.id, n.label]));
-  for (const n of nodes) {
-    if (!NODE_STYLES[n.type]) note(`Node type "${n.type}" has no style; drawn as a drug node.`);
-  }
-
+  const present = NODE_TYPES.filter((t) => nodes.some((n) => n.type === t));
   $("chart").style.height = "640px";
   chart.resize();
   chart.setOption({
-    textStyle: TEXT_STYLE,
-    animation: false,
+    textStyle: TEXT_STYLE, animation: false,
     legend: {
-      top: 0, left: 0, itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 12 },
-      data: NODE_TYPES.map((t) => ({ name: t, icon: NODE_STYLES[t].icon, itemStyle: { color: NODE_STYLES[t].itemStyle.borderColor } })),
+      top: 0, left: 0, itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 13 },
+      data: present.map((t) => ({ name: NODE_STYLES[t].label, icon: NODE_STYLES[t].icon, itemStyle: { color: NODE_STYLES[t].itemStyle.borderColor } })),
     },
     tooltip: {
       trigger: "item",
       formatter: (p) => p.dataType === "edge"
-        ? `${escapeHtml(labels.get(p.data.edge.source))} — ${escapeHtml(labels.get(p.data.edge.target))}<br>weight: ${p.data.edge.weight}<br>citation_count_total: ${p.data.edge.citation_count_total}`
-        : `${escapeHtml(p.data.node.label)}<br>type: ${escapeHtml(p.data.node.type)}<br>size: ${p.data.node.size}<br>citation_count_total: ${p.data.node.citation_count_total}`,
+        ? `${escapeHtml(labels.get(p.data.edge.source))} — ${escapeHtml(labels.get(p.data.edge.target))}<br><b>${studies(p.data.edge.weight)}</b> list both`
+        : `${escapeHtml(p.data.node.label)}<br>${NODE_STYLES[p.data.node.type] ? NODE_STYLES[p.data.node.type].label : escapeHtml(p.data.node.type)}<br><b>${studies(p.data.node.size)}</b>`,
     },
     series: [{
-      type: "graph",
-      layout: "force",
-      top: 40,
-      // Pan only: wheel zoom would capture page scrolling over the chart.
-      roam: "move",
-      draggable: true,
+      type: "graph", layout: "force", top: 40, roam: "move", draggable: true,
       force: { repulsion: 700, edgeLength: [80, 260], gravity: 0.05, layoutAnimation: false },
-      categories: NODE_TYPES.map((t) => ({ name: t, symbol: NODE_STYLES[t].symbol, itemStyle: NODE_STYLES[t].itemStyle })),
+      categories: present.map((t) => ({ name: NODE_STYLES[t].label, symbol: NODE_STYLES[t].symbol, itemStyle: NODE_STYLES[t].itemStyle })),
       data: nodes.map((n) => {
         const style = NODE_STYLES[n.type] || NODE_STYLES.drug;
         return {
           id: n.id, name: n.id, node: n,
-          category: NODE_STYLES[n.type] ? NODE_TYPES.indexOf(n.type) : 0,
+          category: Math.max(0, present.indexOf(n.type)),
           symbol: style.symbol,
-          // Area-proportional marks: radius on a square-root scale of the trial count.
+          // Area-proportional marks: radius on a square-root scale of the study count.
           symbolSize: 6 + 40 * Math.sqrt(n.size / maxSize),
           itemStyle: style.itemStyle,
           label: { show: labelled.has(n.id), formatter: () => n.label, position: "right", fontSize: 11, color: "#1A1A18" },
@@ -600,21 +618,46 @@ function renderNetwork(vis) {
       emphasis: { focus: "adjacency", label: { show: true, formatter: (p) => (p.data.node ? p.data.node.label : "") } },
     }],
   });
-
   chart.on("click", (params) => {
     if (params.dataType === "edge") {
       const e = params.data.edge;
-      renderCitations(`${labels.get(e.source)} — ${labels.get(e.target)}`, e.citations || [], e.citation_count_total);
+      renderCitations(`${labels.get(e.source)} — ${labels.get(e.target)}`, e);
     } else if (params.dataType === "node") {
-      const n = params.data.node;
-      renderCitations(`${n.label} (${n.type})`, n.citations || [], n.citation_count_total);
+      renderCitations(params.data.node.label, params.data.node);
     }
   });
+  $("aside").textContent = "Node size is the number of studies an entity appears in; a line means both are listed in the same study record. Drag to pan.";
+  show("aside", true);
 }
 
-$("query-form").addEventListener("submit", sendQuery);
-$("render-paste").addEventListener("click", renderPasted);
-window.addEventListener("resize", () => chart && chart.resize());
+// ---------- developer details ----------
+
+function renderDeveloper(body, transport) {
+  const box = $("dev-body");
+  box.replaceChildren();
+  const rows = [];
+  if (transport && transport.pasted) rows.push(["source", "pasted JSON"]);
+  if (transport && transport.status !== undefined) rows.push(["HTTP status", transport.status === null ? "no response" : transport.status]);
+  if (transport && transport.seconds) rows.push(["round trip", `${transport.seconds.toFixed(1)} s`]);
+  if (body && typeof body === "object" && "code" in body) rows.push(["error code", body.code]);
+  const meta = body && body.meta;
+  if (meta) {
+    for (const name of ["count_unit", "retrieval_route", "data_quality", "match_mode", "buckets_overlap", "total_matched", "records_retrieved", "coverage", "estimated_count", "unknown_date_type_count", "data_timestamp"]) {
+      rows.push([`meta.${name}`, meta[name] === null ? "null" : String(meta[name])]);
+    }
+    rows.push(["meta.interpretation.planned_by", meta.interpretation ? meta.interpretation.planned_by : ""]);
+    if (meta.timing_ms) rows.push(["meta.timing_ms", Object.entries(meta.timing_ms).map(([k, v]) => `${k} ${v}`).join(", ")]);
+    const codes = [...(meta.warnings || []), ...(meta.assumptions || [])].map((n) => `${n.severity}:${n.code}`);
+    rows.push(["notice codes", codes.join(", ")]);
+  }
+  if (rows.length) {
+    box.append(el("table", {}, ...rows.map(([k, v]) => el("tr", {}, el("th", { class: "mono" }, k), el("td", { class: "mono" }, v)))));
+  }
+  if (transport && transport.request) box.append(el("h4", {}, "Request"), el("pre", { class: "mono" }, JSON.stringify(transport.request, null, 2)));
+  box.append(el("h4", {}, "Response"), el("pre", { class: "mono" }, typeof body === "string" ? body : JSON.stringify(body, null, 2)));
+}
+
+setupForm();
 </script>
 </body>
 </html>

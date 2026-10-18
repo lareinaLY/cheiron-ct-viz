@@ -15,7 +15,7 @@ from ctviz.retrieval.cache import NoCache
 from ctviz.retrieval.client import CtGovClient
 from ctviz.schemas.plan import Cohort, Dimension, Filters, QueryPlan
 from ctviz.schemas.response import DataQuality, Interpretation, VisualizationResponse
-from tests.factories import make_raw_study, set_path
+from tests.factories import make_raw_study, messages, set_path
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -79,9 +79,9 @@ async def test_truncated_result_is_partial(mock_api: respx.MockRouter) -> None:
     assert response.meta.truncated is True
     assert response.meta.data_quality == DataQuality.PARTIAL
     assert response.visualization.title == (
-        "Trials by phase for pembrolizumab (partial: first 3 of 16,913 matches)"
+        "Studies by phase for pembrolizumab (partial: first 3 of 16,913 matches)"
     )
-    [note] = [a for a in response.meta.assumptions if SAMPLE_NOTE in a]
+    [note] = [a for a in messages(response.meta.assumptions) if SAMPLE_NOTE in a]
     assert "first 3 of 16,913 matches ordered by StudyFirstPostDate desc" in note
     assert TIE_NOTE in note
     for call in mock_api["studies"].calls:
@@ -94,8 +94,8 @@ async def test_complete_result_is_not_partial(mock_api: respx.MockRouter) -> Non
     response = await run(plan("pembrolizumab"))
 
     assert response.meta.data_quality == DataQuality.NORMAL
-    assert response.visualization.title == "Trials by phase for pembrolizumab"
-    assert not any(SAMPLE_NOTE in a for a in response.meta.assumptions)
+    assert response.visualization.title == "Studies by phase for pembrolizumab"
+    assert not any(SAMPLE_NOTE in a for a in messages(response.meta.assumptions))
 
 
 async def test_truncated_and_degraded_keeps_the_degraded_warning(
@@ -107,7 +107,7 @@ async def test_truncated_and_degraded_keeps_the_degraded_warning(
     response = await run(plan("pembrolizumab"), min_skipped_for_degraded=1)
 
     assert response.meta.data_quality == DataQuality.PARTIAL
-    assert response.meta.warnings[0].startswith("DEGRADED DATA:")
+    assert messages(response.meta.warnings)[0].startswith("DEGRADED DATA:")
     assert response.visualization.title.endswith("(partial: first 3 of 500 matches)")
 
 
@@ -124,6 +124,6 @@ async def test_only_truncated_cohorts_are_named_in_the_title(mock_api: respx.Moc
     assert response.visualization.title.endswith(
         " (partial: pembrolizumab first 3 of 2,575 matches)"
     )
-    notes = [a for a in response.meta.assumptions if SAMPLE_NOTE in a]
+    notes = [a for a in messages(response.meta.assumptions) if SAMPLE_NOTE in a]
     assert len(notes) == 1
     assert notes[0].startswith("pembrolizumab: ")

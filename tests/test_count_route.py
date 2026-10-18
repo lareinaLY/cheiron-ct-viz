@@ -24,7 +24,7 @@ from ctviz.schemas.response import (
     RetrievalRoute,
     VisualizationResponse,
 )
-from tests.factories import make_raw_study
+from tests.factories import make_raw_study, messages
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -205,7 +205,7 @@ class TestCountPerBucket:
         assert meta.truncated is False
         assert meta.coverage == 1.0
         assert meta.total_matched == PHASE_TOTAL
-        assert response.visualization.title == "Trials by phase for breast cancer"
+        assert response.visualization.title == "Studies by phase for breast cancer"
         [stats] = meta.cohorts
         assert stats.retrieval_route == RetrievalRoute.COUNT_PER_BUCKET
         assert stats.reconciled is True
@@ -281,7 +281,7 @@ class TestCountPerBucket:
         assert meta.cohorts[0].withdrawn is None
         assert any(
             "drug_matched_terms and withdrawn are null" in a and "not read" in a
-            for a in meta.assumptions
+            for a in messages(meta.assumptions)
         )
 
     async def test_citations_are_a_sample_of_each_bucket(self, mock_api: respx.MockRouter) -> None:
@@ -304,13 +304,13 @@ class TestCountPerBucket:
         )
         response = await run(condition_plan())
 
-        [route_note] = [a for a in response.meta.assumptions if "count_per_bucket" in a]
+        [route_note] = [a for a in messages(response.meta.assumptions) if "count_per_bucket" in a]
         assert "16,913" in route_note
         assert "record cap (5)" in route_note
         assert "exact" in route_note
         assert f"{SAMPLE_SIZE} most recently registered trials" in route_note
         assert "citation_count_total" in route_note
-        assert not any("not a random sample" in a for a in response.meta.assumptions)
+        assert not any("not a random sample" in a for a in messages(response.meta.assumptions))
 
     async def test_small_cohort_is_fetched(self, mock_api: respx.MockRouter) -> None:
         api = install(
@@ -342,7 +342,13 @@ class TestCountPerBucket:
         response = await run(condition_plan(top_n=2))
 
         assert response.meta.top_n is not None
-        assert set(counts_by_key(response)) == {"Phase 2", "Not Applicable", UNKNOWN_BUCKET_KEY}
+        # Phase is single-valued, so the omitted buckets become one exact Other bucket.
+        assert set(counts_by_key(response)) == {
+            "Phase 2",
+            "Not Applicable",
+            "Other",
+            UNKNOWN_BUCKET_KEY,
+        }
         hidden = sum(
             count
             for key, count in PHASE_COUNTS.items()
@@ -366,7 +372,7 @@ class TestRemainder:
         [stats] = meta.cohorts
         assert stats.count_remainder == 50
         assert stats.count_requests == 1 + len(PHASE_COUNTS)
-        [warning] = [w for w in meta.warnings if "count_per_bucket" in w]
+        [warning] = [w for w in messages(meta.warnings) if "count_per_bucket" in w]
         assert "16,913 of 16,963" in warning
         assert "50" in warning
         # The first page that gave the total, then the full fetch from page 1 again.
@@ -381,7 +387,7 @@ class TestRemainder:
 
         assert response.meta.retrieval_route == RetrievalRoute.FETCH
         assert response.meta.cohorts[0].count_remainder == -13
-        assert any("count_per_bucket" in w for w in response.meta.warnings)
+        assert any("count_per_bucket" in w for w in messages(response.meta.warnings))
 
     async def test_sample_in_the_wrong_bucket_falls_back_to_fetch(
         self, mock_api: respx.MockRouter
@@ -397,7 +403,7 @@ class TestRemainder:
         response = await run(condition_plan())
 
         assert response.meta.retrieval_route == RetrievalRoute.FETCH
-        [warning] = [w for w in response.meta.warnings if "count_per_bucket" in w]
+        [warning] = [w for w in messages(response.meta.warnings) if "count_per_bucket" in w]
         assert "NCT70000000" in warning
         assert "'Phase 2'" in warning
         assert len(api.fetch_requests()) == 2
@@ -418,7 +424,8 @@ class TestNotCounted:
         # No count request either: only the paginated fetch.
         assert all(r.url.params["pageSize"] == str(MAX_RECORDS) for r in api.requests)
         assert any(
-            "location country cannot be counted per bucket" in a for a in response.meta.assumptions
+            "location country cannot be counted per bucket" in a
+            for a in messages(response.meta.assumptions)
         )
 
     async def test_too_many_bucket_requests_falls_back_to_fetch(
@@ -432,7 +439,7 @@ class TestNotCounted:
 
         assert response.meta.retrieval_route == RetrievalRoute.FETCH
         assert api.bucket_requests() == []
-        [warning] = [w for w in response.meta.warnings if "count_per_bucket" in w]
+        [warning] = [w for w in messages(response.meta.warnings) if "count_per_bucket" in w]
         # Was 9 before the phase-less observational bucket was added (10 phase buckets now).
         assert "10 requests" in warning
         assert "MAX_COUNT_REQUESTS (3)" in warning
@@ -477,4 +484,4 @@ class TestStartYear:
         assert response.meta.estimated_count is None
         assert response.meta.unknown_date_type_count is None
         assert all(d.estimated_count is None for d in response.visualization.data)
-        assert any("not determined" in a for a in response.meta.assumptions)
+        assert any("not determined" in a for a in messages(response.meta.assumptions))

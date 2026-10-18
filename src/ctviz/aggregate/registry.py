@@ -17,7 +17,7 @@ from typing import Literal
 
 from ctviz.aggregate.mesh_filter import MeshNodeFilter
 from ctviz.data import MESH_TREES_RELEASE, load_mesh_trees
-from ctviz.normalize.study import phase_bucket
+from ctviz.normalize.study import PHASE_LABELS, phase_bucket
 from ctviz.schemas.citation import Citation, CitationRole
 from ctviz.schemas.plan import Dimension, Relation
 from ctviz.schemas.response import NodeType
@@ -27,6 +27,7 @@ from ctviz.schemas.trial import (
     UNRECOGNIZED_BUCKET_KEY,
     AgencyClass,
     EnrollmentType,
+    InterventionType,
     OverallStatus,
     Phase,
     TrialRecord,
@@ -103,6 +104,24 @@ AGENCY_CLASS_LABELS: dict[AgencyClass, str] = {
     AgencyClass.UNKNOWN: "Unknown class (registry value)",
 }
 
+INTERVENTION_TYPE_LABELS: dict[InterventionType, str] = {
+    InterventionType.BEHAVIORAL: "Behavioral",
+    InterventionType.BIOLOGICAL: "Biological",
+    InterventionType.COMBINATION_PRODUCT: "Combination product",
+    InterventionType.DEVICE: "Device",
+    InterventionType.DIAGNOSTIC_TEST: "Diagnostic test",
+    InterventionType.DIETARY_SUPPLEMENT: "Dietary supplement",
+    InterventionType.DRUG: "Drug",
+    InterventionType.GENETIC: "Genetic",
+    InterventionType.PROCEDURE: "Procedure",
+    InterventionType.RADIATION: "Radiation",
+    InterventionType.OTHER: "Other (registry value)",
+}
+
+# Phase buckets where phase does not apply: the registry's NA phase, and phase-less
+# observational / expanded-access studies.
+NOT_APPLICABLE_PHASE_KEYS = frozenset({PHASE_LABELS[Phase.NA], PHASE_NOT_APPLICABLE_STUDY_TYPE_KEY})
+
 PHASE_RANK = {
     phase: rank
     for rank, phase in enumerate(
@@ -117,6 +136,18 @@ class DimensionKind(StrEnum):
     CATEGORICAL = "categorical"
     TEMPORAL = "temporal"
     BINNED = "binned"
+
+
+class EstimateKind(StrEnum):
+    """Which value of a dimension can be an estimate rather than a fact.
+
+    - date: the start date (ACTUAL / ESTIMATED / untyped legacy dates).
+    - enrollment: the enrollment count (ACTUAL / ESTIMATED).
+    A dimension without one reports estimated counts as null, not 0 (invariant 4).
+    """
+
+    DATE = "date"
+    ENROLLMENT = "enrollment"
 
 
 class BucketOrder(StrEnum):
@@ -236,6 +267,7 @@ class DimensionValue:
     unknown_date_type: bool = False
     is_unknown: bool = False
     is_unrecognized: bool = False
+    is_not_applicable: bool = False
     rank: tuple[int, ...] = ()
 
 
@@ -254,6 +286,8 @@ class DimensionSpec:
     temporal dimension's bucket keys. `api_count` is set when the API can count each
     bucket exactly (see ApiCount); such a dimension must be single-valued, so its bucket
     counts add up to the cohort total. Without it the dimension is fetch-only.
+    `estimate_kind` names the value that can be estimated (see EstimateKind); None means
+    estimated counts do not apply.
     """
 
     label: str
@@ -270,6 +304,17 @@ class DimensionSpec:
     assumptions: tuple[str, ...] = field(default_factory=tuple)
     api_count: ApiCount | None = None
     unknown_warning: str | None = None
+    estimate_kind: EstimateKind | None = None
+
+    @property
+    def other_bucket(self) -> bool:
+        """True when a top/bottom-N result can show an exact 'Other' bucket.
+
+        Only a single-valued, non-temporal dimension: each trial is in exactly one bucket,
+        so the omitted buckets' counts add up to distinct trials; on a time axis an
+        "other periods" bar would have no position.
+        """
+        return not self.can_overlap and self.kind != DimensionKind.TEMPORAL
 
 
 def field_path(base: str, leaf: str, index: int | None) -> str:
@@ -346,6 +391,7 @@ def extract_phase(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
                         raw_value(record.study_type) if record.study_type is not None else None,
                     ),
                 ),
+                is_not_applicable=True,
                 rank=(PHASE_NOT_APPLICABLE_STUDY_TYPE_RANK,),
             )
         ]
@@ -356,6 +402,7 @@ def extract_phase(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
         key=record.phase_bucket,
         label=record.phase_bucket,
         citations=(cite(record, path(None), phases_raw),),
+        is_not_applicable=record.phase_bucket in NOT_APPLICABLE_PHASE_KEYS,
         rank=tuple(
             sorted(PHASE_RANK[phase] for phase in record.phases if isinstance(phase, Phase))
         ),
@@ -458,15 +505,18 @@ def extract_lead_sponsor(record: TrialRecord, path: PathFor) -> list[DimensionVa
 
 
 def extract_intervention_type(record: TrialRecord, path: PathFor) -> list[DimensionValue]:
-    """Each intervention type as listed; types are set per trial, not per drug."""
+    """Each intervention type as listed, shown by its display label; types are set per
+    trial, not per drug."""
     values = []
     for index, intervention in enumerate(record.interventions):
-        if intervention.type_raw is None:
+        intervention_type = intervention.intervention_type
+        if intervention.type_raw is None or intervention_type is None:
             continue
-        if isinstance(intervention.intervention_type, UnrecognizedValue):
+        if isinstance(intervention_type, UnrecognizedValue):
             values.append(unrecognized(record, path(index), intervention.type_raw))
         else:
-            values.append(single(record, intervention.type_raw, path(index), intervention.type_raw))
+            label = INTERVENTION_TYPE_LABELS[intervention_type]
+            values.append(labeled(record, intervention.type_raw, label, path(index)))
     return values
 
 
@@ -586,6 +636,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         order=BucketOrder.BY_KEY,
         period_key=year_key,
         time_unit="year",
+        estimate_kind=EstimateKind.DATE,
         api_count=ApiCount(
             api_filter=start_year_api_filter,
             missing_filter="AREA[StartDate]MISSING",
@@ -606,6 +657,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         order=BucketOrder.BY_KEY,
         period_key=month_key,
         time_unit="yearmonth",
+        estimate_kind=EstimateKind.DATE,
     ),
     Dimension.COUNTRY: DimensionSpec(
         label="location country",
@@ -733,6 +785,7 @@ DIMENSIONS: dict[Dimension, DimensionSpec] = {
         extract=extract_enrollment_bucket,
         order=BucketOrder.BY_RANK,
         assumptions=("Enrollment bins: 0, 1-49, 50-99, 100-499, 500-999, 1000+.",),
+        estimate_kind=EstimateKind.ENROLLMENT,
     ),
 }
 

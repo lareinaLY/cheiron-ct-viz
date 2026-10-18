@@ -6,7 +6,7 @@ from ctviz.aggregate import build_network
 from ctviz.aggregate.registry import RELATIONS
 from ctviz.schemas.plan import Cohort, Filters, QueryPlan, Relation
 from ctviz.spec.builder import chart_title
-from tests.factories import make_record, mesh
+from tests.factories import make_record, mesh, messages
 
 PEMBROLIZUMAB = mesh("pembrolizumab", "C582435")
 CARBOPLATIN = mesh("Carboplatin", "D016190")
@@ -50,7 +50,7 @@ def test_drug_drug_network_always_warns_about_arms_and_study_types() -> None:
         [make_record("NCT1", intervention_mesh_terms=[PEMBROLIZUMAB, CARBOPLATIN])],
         Relation.DRUG_DRUG_COOCCURRENCE,
     )
-    standing = [w for w in graph.warnings if "co-administ" in w]
+    standing = [w for w in messages(graph.warnings) if "co-administ" in w]
     assert len(standing) == 1
     for phrase in ("comparator arms", "either-or", "observational"):
         assert phrase in standing[0]
@@ -61,7 +61,7 @@ def test_other_relations_have_no_co_listing_warning() -> None:
         [make_record("NCT1", intervention_mesh_terms=[PEMBROLIZUMAB, CARBOPLATIN])],
         Relation.SPONSOR_DRUG,
     )
-    assert not any("co-administ" in w for w in graph.warnings)
+    assert not any("co-administ" in w for w in messages(graph.warnings))
 
 
 def test_name_only_matches_are_stated_as_a_hub_undercount() -> None:
@@ -70,16 +70,18 @@ def test_name_only_matches_are_stated_as_a_hub_undercount() -> None:
         make_record("NCT2", intervention_mesh_terms=[CARBOPLATIN]),
     ]
     graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE, queried_drug="pembrolizumab")
-    assert HUB_NOTE in graph.assumptions
+    assert HUB_NOTE in messages(graph.assumptions)
 
 
 def test_no_hub_note_when_every_trial_has_the_term() -> None:
     records = [make_record("NCT1", intervention_mesh_terms=[PEMBROLIZUMAB, CARBOPLATIN])]
     graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE, queried_drug="Pembrolizumab")
-    assert not any("by name only" in a for a in graph.assumptions)
+    assert not any("by name only" in a for a in messages(graph.assumptions))
 
 
 def test_no_hub_in_the_cohort_is_stated_not_guessed() -> None:
     records = [make_record("NCT1", intervention_mesh_terms=[PEMBROLIZUMAB, CARBOPLATIN])]
     graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE, queried_drug="Keytruda")
-    assert any("No intervention MeSH term contains 'Keytruda'" in a for a in graph.assumptions)
+    assert any(
+        "No intervention MeSH term contains 'Keytruda'" in a for a in messages(graph.assumptions)
+    )

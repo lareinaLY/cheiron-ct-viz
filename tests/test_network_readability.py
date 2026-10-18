@@ -20,7 +20,7 @@ from ctviz.schemas.response import (
 )
 from ctviz.schemas.trial import AgencyClass, MeshTerm, Sponsor, TrialRecord
 from ctviz.spec import build_response
-from tests.factories import make_record, mesh
+from tests.factories import make_record, mesh, messages
 
 STANDARD_OF_CARE = mesh("Standard of Care", "D059039")
 TAXES = mesh("Taxes", "D013660")
@@ -85,7 +85,7 @@ class TestDrugNodeFilter:
     def test_exclusion_stated_in_assumptions(self) -> None:
         records = [drugs("NCT1", PEMBROLIZUMAB, STANDARD_OF_CARE), drugs("NCT2", TAXES)]
         graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
-        (message,) = [a for a in graph.assumptions if "not drawn as nodes" in a]
+        (message,) = [a for a in messages(graph.assumptions) if "not drawn as nodes" in a]
         assert "2 intervention MeSH terms" in message
         assert "Standard of Care (D059039, not_in_chemicals_and_drugs_branch): 1 trial" in message
         assert "2 trials affected" in message
@@ -93,7 +93,7 @@ class TestDrugNodeFilter:
 
     def test_no_exclusion_assumption_when_nothing_excluded(self) -> None:
         graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)
-        assert not any("not drawn as nodes" in a for a in graph.assumptions)
+        assert not any("not drawn as nodes" in a for a in messages(graph.assumptions))
         assert summary_of(graph).excluded_terms == []
 
     def test_unmatched_descriptors_are_kept_and_reported(self) -> None:
@@ -109,7 +109,7 @@ class TestDrugNodeFilter:
         ]
         assert summary.unmatched_terms[0].reason == "unmatched_in_tree"
         assert summary.excluded_terms == []
-        (message,) = [a for a in graph.assumptions if "unmatched_in_tree" in a]
+        (message,) = [a for a in messages(graph.assumptions) if "unmatched_in_tree" in a]
         assert "Retired Descriptor (D999999): 2 trials" in message
 
     def test_supplementary_concepts_are_never_reported(self) -> None:
@@ -189,19 +189,22 @@ class TestDrugNodeFilter:
     def test_drug_classes_stated_in_one_assumption(self) -> None:
         records = [drugs("NCT1", PEMBROLIZUMAB, CHECKPOINT_INHIBITORS, SOLUTIONS)]
         graph = build_network(records, Relation.DRUG_DRUG_COOCCURRENCE)
-        (message,) = [a for a in graph.assumptions if "drug_class" in a]
+        (message,) = [a for a in messages(graph.assumptions) if "drug_class" in a]
         assert "2 nodes" in message
         assert "D26" in message and "D27" in message
         assert "Immune Checkpoint Inhibitors" in message
 
     def test_no_drug_class_assumption_without_drug_classes(self) -> None:
         graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)
-        assert not any("drug_class" in a for a in graph.assumptions)
+        assert not any("drug_class" in a for a in messages(graph.assumptions))
         assert summary_of(graph).drug_class_nodes_total == 0
 
     def test_node_type_limitation_stated(self) -> None:
         graph = build_network([drugs("NCT1", PEMBROLIZUMAB)], Relation.DRUG_DRUG_COOCCURRENCE)
-        assert any("does not link MeSH terms to intervention types" in a for a in graph.assumptions)
+        assert any(
+            "does not link MeSH terms to intervention types" in a
+            for a in messages(graph.assumptions)
+        )
 
 
 def hub_records() -> list[TrialRecord]:
@@ -223,7 +226,7 @@ class TestReadabilityCaps:
         summary = summary_of(graph)
         assert (summary.max_nodes, summary.min_edge_weight) == (None, 1)
         assert summary.nodes_shown == summary.nodes_total == 6
-        assert not any("trimmed" in w for w in graph.warnings)
+        assert not any("trimmed" in w for w in messages(graph.warnings))
 
     def test_edges_below_min_weight_are_dropped_and_counted(self) -> None:
         records = [*hub_records(), drugs("NCT9", mesh("X", "MX"), mesh("Y", "MY"))]
@@ -290,7 +293,7 @@ class TestReadabilityCaps:
         graph = build_network(
             hub_records(), Relation.DRUG_DRUG_COOCCURRENCE, max_nodes=3, min_edge_weight=2
         )
-        (message,) = [w for w in graph.warnings if "trimmed" in w]
+        (message,) = [w for w in messages(graph.warnings) if "trimmed" in w]
         assert "3 of 4 nodes" in message
         assert "3 of 4 edges" in message
         assert "MAX_NETWORK_NODES" in message
@@ -387,7 +390,7 @@ class TestResponseSizeBudget:
         assert summary.edge_citations_reduced is True
         assert summary.edge_citation_cap == 2
         assert summary.response_bytes_before_reduction == len(full.model_dump_json().encode())
-        assert any("citations per edge" in w for w in reduced.meta.warnings)
+        assert any("citations per edge" in w for w in messages(reduced.meta.warnings))
 
     def test_no_reduction_under_budget(self) -> None:
         response = network_response(busy_graph(), max_response_bytes=10_000_000)

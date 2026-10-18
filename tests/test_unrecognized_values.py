@@ -124,7 +124,8 @@ class TestUnrecognizedBucket:
             study_with("NCT4", path, "PAUSED_FOREVER"),
         ]
         grouped = group_cohorts([("all", records)], Dimension.OVERALL_STATUS, top_n=1, as_of=AS_OF)
-        assert grouped.key_order == ["RECRUITING", UNRECOGNIZED_BUCKET_KEY]
+        # Status is single-valued: the omitted COMPLETED becomes the Other bucket.
+        assert grouped.key_order == ["RECRUITING", "Other", UNRECOGNIZED_BUCKET_KEY]
         assert grouped.top_n is not None
         assert grouped.top_n.omitted_keys == ["COMPLETED"]
 

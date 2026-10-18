@@ -249,6 +249,25 @@ class TestRankingDirection:
         assert result.plan.bottom_n is None
         assert result.ranking_top_n is None
 
+    async def test_explicit_bottom_n_wins_over_most(self) -> None:
+        request = QueryRequest(query="Which countries have the most?", bottom_n=6)
+        result = await run_plan(request, FakeLlm(self.COUNTRIES))
+        assert result.plan.bottom_n == 6
+        assert result.plan.top_n is None
+        assert result.ranking_top_n is None
+
+    async def test_explicit_bottom_n_replaces_the_drafts_top_n(self) -> None:
+        llm = FakeLlm(self.COUNTRIES.model_copy(update={"top_n": 5}))
+        request = QueryRequest(query="Top 5 countries", bottom_n=3)
+        result = await run_plan(request, llm)
+        assert (result.plan.top_n, result.plan.bottom_n) == (None, 3)
+        assert [o.path for o in result.overrides] == ["top_n", "bottom_n"]
+
+    async def test_explicit_bottom_n_without_ranking(self) -> None:
+        llm = FakeLlm(self.COUNTRIES.model_copy(update={"ranking_direction": None}))
+        result = await run_plan(QueryRequest(query="NSCLC countries", bottom_n=4), llm)
+        assert result.plan.bottom_n == 4
+
     async def test_fewest_relation_is_never_trimmed(self) -> None:
         network = draft(
             Filters(drug="cisplatin"),

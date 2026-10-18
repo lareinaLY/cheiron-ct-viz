@@ -272,17 +272,20 @@ def parse_country_locations(reader: StudyReader) -> list[CountryLocation]:
 
 
 def parse_interventions(reader: StudyReader) -> list[Intervention]:
-    """Raw interventions in source order; a missing name is an error, not a skip.
+    """Raw interventions in source order; none is skipped (that would shift indices and
+    break `interventions[j]` citations).
 
-    Skipping would shift indices and break `interventions[j]` citations. An unknown
-    type is kept verbatim and recorded as unrecognized.
+    A missing or empty name is a value-domain failure: the intervention is kept with its
+    raw (absent) name, shown as Unrecognized, and recorded, so the record still counts on
+    every dimension. An unknown type is kept verbatim and recorded as unrecognized.
     """
     base = SOURCE_PATHS["interventions"]
     interventions = []
     for index, raw in enumerate(reader.items(base, dict)):
-        name = reader.check(raw.get("name"), str, f"{base}[{index}].name")
+        name_path = f"{base}[{index}].name"
+        name = reader.check(raw.get("name"), str, name_path)
         if not name:
-            reader.fail(f"{base}[{index}].name", name, "intervention has no name")
+            reader.keep_unrecognized(name or "", name_path, "intervention_name")
         type_path = f"{base}[{index}].type"
         type_raw = reader.check(raw.get("type"), str, type_path)
         intervention = Intervention(name_raw=name, type_raw=type_raw)

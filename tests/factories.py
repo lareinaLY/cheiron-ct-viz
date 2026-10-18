@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from ctviz.schemas.plan import Cohort, Filters, QueryPlan
+from ctviz.schemas.response import Notice
 from ctviz.schemas.trial import CountryLocation, MeshTerm, TrialRecord
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -114,3 +116,8 @@ def country(name: str, *, location_index: int, value_raw: str | None = None) -> 
         value_raw=name if value_raw is None else value_raw,
         location_index=location_index,
     )
+
+
+def messages(notices: Iterable[Notice]) -> list[str]:
+    """The human-readable messages of warnings or assumptions, in order."""
+    return [notice.message for notice in notices]

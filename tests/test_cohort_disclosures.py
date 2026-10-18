@@ -16,7 +16,7 @@ from ctviz.retrieval.cache import NoCache
 from ctviz.retrieval.client import CtGovClient
 from ctviz.schemas.plan import Cohort, Dimension, Filters, QueryPlan
 from ctviz.schemas.response import Interpretation, MatchedTerm, VisualizationResponse
-from tests.factories import make_raw_study, make_record, mesh, set_path
+from tests.factories import make_raw_study, make_record, mesh, messages, set_path
 
 BASE_URL = "https://ctgov.test/api/v2"
 VERSION = {"apiVersion": "2.0.5", "dataTimestamp": "2026-10-16T09:00:05"}
@@ -101,13 +101,13 @@ class TestMatchedTerms:
             "'trastuzumab' matched 2 distinct intervention terms: Trastuzumab (2), "
             "trastuzumab deruxtecan (1) — these are different molecules (conjugates, "
             "biosimilars, tracers); narrow the name if you mean one."
-        ) in meta.warnings
+        ) in messages(meta.warnings)
 
     async def test_one_term_is_listed_without_a_warning(self, mock_api: respx.MockRouter) -> None:
         serve(mock_api, TRASTUZUMAB_STUDIES[:2])
         meta = (await run(plan(Filters(drug="trastuzumab")))).meta
         assert meta.cohorts[0].drug_matched_terms == [MatchedTerm(term="Trastuzumab", trials=2)]
-        assert not any("distinct intervention terms" in w for w in meta.warnings)
+        assert not any("distinct intervention terms" in w for w in messages(meta.warnings))
 
     async def test_no_drug_filter_means_no_list(self, mock_api: respx.MockRouter) -> None:
         serve(mock_api, TRASTUZUMAB_STUDIES)
@@ -118,7 +118,9 @@ class TestMatchedTerms:
         serve(mock_api, TRASTUZUMAB_STUDIES, [study("NCT00000009", PACLITAXEL)])
         meta = (await run(plan(Filters(drug="trastuzumab"), Filters(drug="paclitaxel")))).meta
         assert [len(c.drug_matched_terms or []) for c in meta.cohorts] == [2, 1]
-        assert any(w.startswith("trastuzumab: 'trastuzumab' matched 2") for w in meta.warnings)
+        assert any(
+            w.startswith("trastuzumab: 'trastuzumab' matched 2") for w in messages(meta.warnings)
+        )
 
 
 class TestWithdrawn:
@@ -131,10 +133,10 @@ class TestWithdrawn:
         assert (
             "1 withdrawn studies (never enrolled) are included in these counts; add a status "
             "filter to exclude them."
-        ) in meta.warnings
+        ) in messages(meta.warnings)
 
     async def test_no_withdrawn_no_warning(self, mock_api: respx.MockRouter) -> None:
         serve(mock_api, TRASTUZUMAB_STUDIES[:2])
         meta = (await run(plan(Filters(drug="trastuzumab")))).meta
         assert meta.cohorts[0].withdrawn == 0
-        assert not any("withdrawn" in w for w in meta.warnings)
+        assert not any("withdrawn" in w for w in messages(meta.warnings))

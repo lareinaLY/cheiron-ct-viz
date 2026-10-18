@@ -24,7 +24,7 @@ from ctviz.schemas.plan import ChartType, Cohort, Dimension, Filters, QueryPlan,
 from ctviz.schemas.response import CohortStats, FieldType, VisualizationResponse
 from ctviz.schemas.trial import Phase, TrialRecord
 from ctviz.spec import build_response
-from tests.factories import load_fixture_studies, make_raw_study
+from tests.factories import load_fixture_studies, make_raw_study, messages
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 AS_OF = date(2026, 10, 17)
@@ -149,11 +149,11 @@ def test_matches_golden_snapshot(name: str) -> None:
 
 class TestTitles:
     def test_dimension_title(self) -> None:
-        assert bar_phase().visualization.title == "Trials by phase for pembrolizumab"
+        assert bar_phase().visualization.title == "Studies by phase for pembrolizumab"
 
     def test_comparison_title(self) -> None:
         assert grouped_bar_two_cohorts().visualization.title == (
-            "Trials by phase: pembrolizumab vs pembrolizumab, Phase 1 or Phase 2"
+            "Studies by phase: pembrolizumab vs pembrolizumab, Phase 1 or Phase 2"
         )
 
     def test_network_title(self) -> None:
@@ -173,7 +173,7 @@ class TestTitles:
         )
         response = respond(plan, result, "q", [len(records)])
         assert response.visualization.title == (
-            "Trials by location country for pembrolizumab (top 3)"
+            "Studies by location country for pembrolizumab (top 3)"
         )
         assert response.meta.top_n == result.top_n
 
@@ -189,7 +189,7 @@ class TestTitles:
         )
         response = respond(plan, result, "q", [len(records)])
         assert response.visualization.title == (
-            "Trials by location country for pembrolizumab (bottom 15)"
+            "Studies by location country for pembrolizumab (bottom 15)"
         )
         assert response.meta.top_n == result.top_n
 
@@ -217,7 +217,7 @@ class TestStructure:
         assert data["2026"].estimated_count == 1
         assert data["2027"].estimated_count == 1
         assert data["Unknown"].is_unknown is True
-        assert any("time axis" in a for a in time_series_start_year().meta.assumptions)
+        assert any("time axis" in a for a in messages(time_series_start_year().meta.assumptions))
 
     def test_grouped_bar_colors_by_cohort(self) -> None:
         response = grouped_bar_two_cohorts()
@@ -279,7 +279,7 @@ class TestDateTypeReporting:
         meta = time_series_start_year().meta
         assert meta.estimated_count == 2
         assert meta.unknown_date_type_count == 1
-        assert any("no ACTUAL/ESTIMATED type" in w for w in meta.warnings)
+        assert any("no ACTUAL/ESTIMATED type" in w for w in messages(meta.warnings))
 
     def test_meta_totals_not_applicable_for_networks(self) -> None:
         meta = network_sponsor_drug().meta
@@ -287,8 +287,9 @@ class TestDateTypeReporting:
         assert meta.estimated_count is None
 
     def test_meta_totals_sum_cohorts(self) -> None:
+        # Phase has no estimate concept, so the sum over cohorts is null, not 0 (M9).
         meta = grouped_bar_two_cohorts().meta
-        assert meta.estimated_count == 0
+        assert meta.estimated_count is None
         assert meta.unknown_date_type_count is None
 
 
@@ -296,13 +297,13 @@ class TestTemporalTitle:
     def test_title_uses_granularity(self) -> None:
         response = time_series_start_year()
         assert response.visualization.title == (
-            "Trials by start year for pembrolizumab, started 2014 or later"
+            "Studies by start year for pembrolizumab, started 2014 or later"
         )
         assert response.visualization.encoding.x is not None
         assert response.visualization.encoding.x.title == "Start year"
 
     def test_warning_text_unchanged(self) -> None:
-        warnings = time_series_start_year().meta.warnings
+        warnings = messages(time_series_start_year().meta.warnings)
         assert "1 of 10 trials have no start date; they are counted in the 'Unknown' bucket." in (
             warnings
         )
@@ -317,7 +318,7 @@ class TestFutureBuckets:
         assert data["Unknown"].is_future is False
 
     def test_future_warning_reaches_meta(self) -> None:
-        warnings = time_series_start_year().meta.warnings
+        warnings = messages(time_series_start_year().meta.warnings)
         assert any("in the future (estimated); buckets 2027…" in w for w in warnings)
 
 
@@ -357,20 +358,21 @@ class TestCohortsOverlapMeta:
         assert meta.cohorts_overlap.pairs[0].shared_trials == 2
         assert (
             "2 trials match more than one cohort and are counted in each; cohorts are not "
-            "disjoint." in meta.assumptions
+            "disjoint." in messages(meta.assumptions)
         )
 
     def test_no_overlap_reports_zero_and_no_assumption(self) -> None:
         meta = self.two_cohort_response(fixture_records("studies_multi_country")).meta
         assert meta.cohorts_overlap is not None
         assert meta.cohorts_overlap.total_shared == 0
-        assert not any("more than one cohort" in a for a in meta.assumptions)
+        assert not any("more than one cohort" in a for a in messages(meta.assumptions))
 
     def test_truncated_fetch_says_overlap_covers_retrieved_records_only(self) -> None:
         shared = fixture_records("studies_pembrolizumab_page")[:2]
         meta = self.two_cohort_response(shared, truncated=True).meta
         assert any(
-            "more than one cohort" in a and "retrieved records" in a for a in meta.assumptions
+            "more than one cohort" in a and "retrieved records" in a
+            for a in messages(meta.assumptions)
         )
 
     def test_single_cohort_has_null_overlap(self) -> None:
@@ -393,5 +395,6 @@ class TestCohortsOverlapMeta:
         meta = respond(plan, result, "compare", [5_000, len(small)]).meta
         assert meta.cohorts_overlap is None
         assert any(
-            "cohorts_overlap is null" in a and "count_per_bucket" in a for a in meta.assumptions
+            "cohorts_overlap is null" in a and "count_per_bucket" in a
+            for a in messages(meta.assumptions)
         )

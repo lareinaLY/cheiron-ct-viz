@@ -20,7 +20,7 @@ from ctviz.aggregate import (
 from ctviz.schemas.aggregate import Bucket, CountedBucket, CountedCohort, GroupResult
 from ctviz.schemas.plan import Dimension
 from ctviz.schemas.trial import OverallStatus, Phase, TrialRecord
-from tests.factories import make_record
+from tests.factories import make_record, messages
 
 AS_OF = date(2026, 10, 17)
 
@@ -125,7 +125,7 @@ class TestGroupCounted:
         assert any(
             "300 of 5000 studies are interventional (or have no recognized study type) and "
             "list no phase" in w
-            for w in result.warnings
+            for w in messages(result.warnings)
         )
 
     def test_same_order_and_labels_as_fetch_route(self) -> None:
@@ -135,12 +135,15 @@ class TestGroupCounted:
         assert [(b.key, b.label) for b in counted.buckets] == [
             (b.key, b.label) for b in fetched.buckets
         ]
-        assert counted.assumptions[: len(fetched.assumptions)] == fetched.assumptions
+        assert messages(counted.assumptions)[: len(messages(fetched.assumptions))] == messages(
+            fetched.assumptions
+        )
 
-    def test_categorical_estimated_count_is_zero(self) -> None:
+    def test_categorical_estimated_count_is_null(self) -> None:
+        # Phase has no estimate concept: null, not 0 (M9).
         result = group_counted(phase_cohort(), Dimension.PHASE, as_of=AS_OF)
-        assert result.estimated_count == 0
-        assert all(b.estimated_count == 0 for b in result.buckets)
+        assert result.estimated_count is None
+        assert all(b.estimated_count is None for b in result.buckets)
 
     def test_bucket_without_readable_sample_is_rejected(self) -> None:
         cohort = CountedCohort(
@@ -171,15 +174,17 @@ class TestTemporal:
         assert result.unknown_date_type_count is None
         assert all(b.estimated_count is None for b in result.buckets)
         assert all(b.unknown_date_type_count is None for b in result.buckets)
-        assert any("not determined" in a for a in result.assumptions)
-        assert not any("estimated start date" in w for w in result.warnings)
+        assert any("not determined" in a for a in messages(result.assumptions))
+        assert not any("estimated start date" in w for w in messages(result.warnings))
 
     def test_incomplete_and_future_periods_are_flagged(self) -> None:
         result = group_counted(self.cohort(), Dimension.START_YEAR, as_of=AS_OF)
         assert bucket(result, "2026").incomplete is True
         assert bucket(result, "2027").is_future is True
         assert bucket(result, "2025").is_future is False
-        assert any("10 trials have start dates in the future" in w for w in result.warnings)
+        assert any(
+            "10 trials have start dates in the future" in w for w in messages(result.warnings)
+        )
 
 
 class TestSampleProblems:
@@ -257,14 +262,14 @@ class TestGroupCohortsWithCountedInput:
         assert grouped.top_n.omitted_keys == ["Phase 1", "Phase 1/Phase 2"]
         # Single-valued dimension: a trial in an omitted bucket appears nowhere else.
         assert grouped.top_n.trials_omitted == {"all": 1_500}
-        assert grouped.key_order == ["Phase 2", "Not Applicable", UNKNOWN_BUCKET_KEY]
+        assert grouped.key_order == ["Phase 2", "Not Applicable", "Other", UNKNOWN_BUCKET_KEY]
 
     def test_bottom_n_on_counted_cohort_keeps_the_smallest_counted_buckets(self) -> None:
         grouped = group_cohorts([("all", phase_cohort())], Dimension.PHASE, bottom_n=2, as_of=AS_OF)
         assert grouped.top_n is not None
         assert grouped.top_n.omitted_keys == ["Phase 2", "Not Applicable"]
         assert grouped.top_n.trials_omitted == {"all": 3_200}
-        assert grouped.key_order == ["Phase 1", "Phase 1/Phase 2", UNKNOWN_BUCKET_KEY]
+        assert grouped.key_order == ["Phase 1", "Phase 1/Phase 2", "Other", UNKNOWN_BUCKET_KEY]
 
     def test_by_count_order_uses_api_counts(self) -> None:
         def status_record(nct_id: str, status: OverallStatus) -> TrialRecord:
