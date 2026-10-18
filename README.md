@@ -22,24 +22,25 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
 {
   "visualization": {
     "type": "grouped_bar_chart",
-    "title": "Trials by phase: pembrolizumab vs nivolumab",
+    "title": "Studies by phase: pembrolizumab vs nivolumab",
     "encoding": {
       "x": {"field": "label", "type": "nominal", "title": "Phase",
             "sort": ["Early Phase 1", "Phase 1", "Phase 1/Phase 2", "Phase 2", "Phase 2/Phase 3",
                      "Phase 3", "Phase 4", "Not Applicable",
                      "Not applicable (observational / expanded access)"]},
-      "y": {"field": "count", "type": "quantitative", "title": "Trials"},
+      "y": {"field": "count", "type": "quantitative", "title": "Studies"},
       "color": {"field": "cohort", "type": "nominal", "title": "Cohort"}
     },
     "data": [
       {"key": "Phase 2", "label": "Phase 2", "cohort": "pembrolizumab", "count": 1163,
-       "citation_count_total": 1163, "is_unknown": false,
+       "cited_trials_total": 1163, "citation_count_total": 1163, "is_unknown": false,
+       "is_not_applicable": false, "is_other": false,
        "citations": [{"nct_id": "NCT…", "field_path": "protocolSection.designModule.phases",
                       "value": ["PHASE2"], "url": "https://clinicaltrials.gov/study/NCT…",
                       "role": "primary"} /* … up to 20 */]},
       {"key": "Phase 2", "label": "Phase 2", "cohort": "nivolumab", "count": 765, "…": "…"},
       {"key": "Not applicable (observational / expanded access)", "cohort": "pembrolizumab",
-       "count": 67, "is_unknown": false,
+       "count": 67, "is_not_applicable": true,
        "citations": [{"field_path": "protocolSection.designModule.studyType",
                       "value": "OBSERVATIONAL", "…": "…"}]}
       /* 18 data points: 9 phase buckets × 2 cohorts; neither cohort has an Unknown phase */
@@ -60,7 +61,8 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
                                    "shared_trials": 173}], "total_shared": 173},
     "data_quality": "normal",
     "data_timestamp": "2026-10-16T09:00:05",
-    "warnings": ["pembrolizumab: 122 withdrawn studies (never enrolled) are included …", "…"],
+    "warnings": [{"code": "withdrawn", "severity": "info", "cohort": "pembrolizumab",
+                  "message": "pembrolizumab: 122 withdrawn studies (never enrolled) are included …"}],
     "timing_ms": {"retrieve": 2004.0, "normalize": 213.7, "aggregate": 26.2, "total": 2249.8}
   }
 }
@@ -101,6 +103,9 @@ requirements.txt`, or use `uv pip install --python .venv -r requirements.txt`.
 | `REFUSE_SKIP_RATIO` | `0.5` | Share at which no chart is returned (502) |
 | `MIN_SKIPPED_FOR_DEGRADED` | `20` | Below this many skipped records the result is always `normal` |
 | `CTVIZ_ENUM_DRIFT_CHECK` | `true` | At startup, compare `/studies/enums` with the code's enums and log new values (non-blocking) |
+| `DEMO_TOKEN` | empty | When set, `/query` requires `Authorization: Bearer <token>` or `?token=<token>` (401 `unauthorized` otherwise). Empty means no check. `/`, `/health` and `/docs` stay open. The demo UI has a token field kept in `sessionStorage` |
+| `REQUEST_DEADLINE_SECONDS` | `120` | A `/query` request (planning, execution and the wait for a slot) that takes longer is answered with 504 `request_timeout` |
+| `MAX_CONCURRENT_QUERIES` | `4` | `/query` requests executed at once; the others wait for a slot (within the deadline) |
 
 Other settings use the `CTVIZ_` prefix and have defaults in `src/ctviz/config.py`:
 
@@ -135,17 +140,24 @@ curl -s -X POST http://127.0.0.1:8000/query -H 'content-type: application/json' 
 
 **Demo UI.** `open http://127.0.0.1:8000/` serves `src/ctviz/demo/index.html`: one static
 page (plain JS, ECharts 5.5.1 from a pinned CDN URL, no build step) that posts to `/query` and
-draws the response. It exists to show that the §3 schema can be rendered without guessing, so
-it follows §3 literally and computes nothing: no totals, percentages, renaming or date math.
-Warnings, assumptions and key `meta` facts are shown in full; clicking a bar, node or edge
-lists its citations. A collapsed "render a pasted response" field draws any saved response,
-e.g. those in `examples/`. Anything the page needs that the schema does not state appears
-under "Renderer notes" on the page.
+draws the response. The default view is for an analyst: eight example questions as chips
+(one per chart type, a ranking, a "fewest", a comparison and an unsupported question), the
+title, the chart, banners for notices of severity `error`/`warning`, a key-facts row in
+words ("Counting: registered studies, including observational and withdrawn", "based on
+2,642 retrieved records (reconciled with the registry total)", "Registry data as of 16 Oct
+2026", "173 studies appear in more than one group"), info notices and the assumptions
+below, and the registry records behind a bar, node or edge on click. Optional fields
+(drug, condition, grouping, top/bottom N, access token) are under "More options" with
+display names. Everything technical (HTTP status, timing, raw `meta` fields, notice codes,
+the request and response JSON, and a box to render a saved response such as those in
+`examples/`) is in the collapsed "Details for developers". The page computes no counts:
+banners come from `severity`, greys from `is_unknown`/`is_unrecognized`/`is_not_applicable`,
+the lighter Other bar from `is_other`, and zero periods from `encoding.x.sort`.
 
 **Test:**
 
 ```bash
-uv run pytest                 # 762 offline tests (default: -m 'not live'), about 5 s
+uv run pytest                 # 845 offline tests (default: -m 'not live'), about 6 s
 uv run pytest -m live         # the 7 live tests (real ClinicalTrials.gov API; prompt-injection tests also need a key)
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run python scripts/eval_planner.py --models gpt-4.1-mini          # planner eval, needs a key
@@ -164,22 +176,25 @@ The generated OpenAPI is at `/docs`, built from the same Pydantic models the pip
 ### `QueryRequest` (`schemas/request.py`, `extra="forbid"`)
 
 Every structured field is optional. A field you set overrides the LLM's reading in every
-cohort, and each override is listed in `meta.interpretation.overrides`.
+cohort, and each override is listed in `meta.interpretation.overrides`. The same length and
+list bounds apply to the filters of an LLM draft (`Filters` validators; a draft over a bound
+is rejected and redrafted).
 
 | Field | Type | Required | Validation and bounds |
 |---|---|---|---|
-| `query` | string | yes | `min_length=1`. Whitespace-only is a 422 before the LLM is called. No `max_length` (see Limitations) |
-| `drug` | string \| null | no | Sent as a quoted intervention name. Rejected if it contains `"`, a standalone uppercase `AND`/`OR`/`NOT`, a backslash or a C0 control character (`invalid_filter_value`) |
+| `query` | string | yes | 1..2000 characters. Whitespace-only or longer is a 422 (`invalid_request`) before the LLM is called |
+| `drug` | string \| null | no | At most 200 characters (as for every free-text filter). Sent as a quoted intervention name. Rejected if it contains `"`, a standalone uppercase `AND`/`OR`/`NOT`, a backslash or a C0 control character (`invalid_filter_value`) |
 | `condition` | string \| null | no | Raw `query.cond` term search. Rejected if it contains `"`, `()`, `[]`, an operator word, a backslash or a control character |
 | `sponsor` | string \| null | no | Raw `query.spons` (lead sponsor, collaborators, organization). Same checks as `condition` |
 | `country` | string \| null | no | Raw `query.locn` (country, state, city, facility). Same checks as `condition` |
-| `phases` | list of `Phase` | no | Enum: `EARLY_PHASE1`, `PHASE1` … `PHASE4`, `NA` |
-| `statuses` | list of `OverallStatus` | no | The API's 14 status values |
+| `phases` | list of `Phase` | no | Enum: `EARLY_PHASE1`, `PHASE1` … `PHASE4`, `NA`. At most 6 entries; repeats are removed |
+| `statuses` | list of `OverallStatus` | no | The API's 14 status values. At most 14 entries; repeats are removed |
 | `start_year_from`, `start_year_to` | int \| null | no | 1900..2100, inclusive. `from` must be ≤ `to` |
 | `dimension` | enum \| null | no | `phase`, `start_year`, `start_month`, `country`, `sponsor_class`, `lead_sponsor`, `intervention_type`, `overall_status`, `condition`, `intervention_mesh`, `enrollment_bucket` |
 | `relation` | enum \| null | no | `sponsor_drug`, `drug_drug_cooccurrence`, `condition_drug`. Exactly one of `dimension`/`relation` must be set; relations take one cohort |
 | `chart_hint` | enum \| null | no | `bar_chart`, `grouped_bar_chart`, `time_series`, `network_graph`, `histogram`. Must fit the dimension kind |
-| `top_n` | int \| null | no | 1..1000. Not allowed with a relation |
+| `top_n` | int \| null | no | 1..1000. Keeps the N values with the most studies. Not allowed with a relation |
+| `bottom_n` | int \| null | no | 1..1000. Keeps the N values with the fewest studies. Exclusive with `top_n` (422); wins over the question's ranking direction |
 | `match_mode` | `intervention_name` \| `broad` | no | Default `intervention_name` (name OR MeSH). `broad` = `query.intr` |
 
 ### `VisualizationResponse` (`schemas/response.py`)
@@ -190,10 +205,10 @@ cohort, and each override is listed in `meta.interpretation.overrides`.
 |---|---|
 | `type` | `bar_chart`, `grouped_bar_chart`, `time_series` or `histogram` use `data`. `network_graph` uses `nodes`/`edges` |
 | `title` | Built in code from the plan, never by the LLM. Ends with ` (partial: first N of M matches)` when the record cap cut a fetch |
-| `encoding` | Vega-Lite-style channels `x`, `y`, `color`, `size`, each `{field, type: nominal\|temporal\|quantitative, title, sort, time_unit}`. `sort` gives the display order |
-| `data[]` | `Datum`: `key` (grouping identity), `label` (display), `cohort`, `count`, `citations[]`, `citation_count_total`, `is_unknown`, `is_unrecognized`, and on temporal charts `incomplete`, `is_future`, `estimated_count`, `unknown_date_type_count` |
-| `nodes[]` | Cytoscape-style `{data: {id, label, type, size, citations, citation_count_total}}` |
-| `edges[]` | Cytoscape-style `{data: {id, source, target, weight, citations, citation_count_total}}` |
+| `encoding` | Vega-Lite-style channels `x`, `y`, `color`, `size`, each `{field, type: nominal\|temporal\|quantitative, title, sort, time_unit}`. `sort` gives the display order. On a start-year or start-month axis it lists every period from the earliest to the latest key present in any cohort, with no gaps, then `Unknown` if present (after a top/bottom-N limit: only the shown periods). The count axis title is "Studies" |
+| `data[]` | `Datum`: `key` (grouping identity), `label` (display), `cohort`, `count`, `citations[]`, `cited_trials_total`, `citation_count_total`, flags `is_unknown`, `is_unrecognized`, `is_not_applicable`, `is_other`, `incomplete`, `is_future`, and `estimated_count` (start date or enrollment; null where it does not apply), `unknown_date_type_count` (start dates only, else null) |
+| `nodes[]` | Cytoscape-style `{data: {id, label, type, size, citations, cited_trials_total, citation_count_total}}` |
+| `edges[]` | Cytoscape-style `{data: {id, source, target, weight, citations, cited_trials_total, citation_count_total}}` |
 
 **`meta`**
 
@@ -210,19 +225,19 @@ cohort, and each override is listed in `meta.interpretation.overrides`.
 | `cohorts[]` | Per cohort: <ul><li>`label`, `total_matched`, `records_retrieved`, `records_skipped`</li><li>`truncated`, `coverage`, `reconciled`, `retrieval_route`</li><li>`count_requests`, `count_remainder`</li><li>`drug_matched_terms[]`: `{term, trials}`, the intervention MeSH terms whose name contains the drug string</li><li>`withdrawn`: WITHDRAWN studies counted</li></ul>The last two are null on the count route |
 | `cohorts_overlap` | `{pairs[{cohorts, shared_trials}], total_shared}`. Null for one cohort, for networks, or when a cohort was counted per bucket |
 | `data_quality` | `normal`, `degraded` (≥ `DEGRADED_SKIP_RATIO` unreadable) or `partial` (record cap hit) |
-| `top_n` | `{top_n, direction, omitted_keys, trials_omitted{cohort: n}}`. `direction` is `most` (the plan's `top_n`) or `fewest` (the plan's `bottom_n`); `trials_omitted` counts the studies visible only in omitted buckets |
-| `network` | Networks only: <ul><li>`excluded_terms` (with reason and trials), `unmatched_terms`</li><li>`drug_class_nodes_total`/`_shown`</li><li>node and edge totals vs shown, trials without a shown edge or node</li><li>`edge_citation_cap`, `edge_citations_reduced`, `response_bytes_before_reduction`</li></ul> |
-| `estimated_count`, `unknown_date_type_count` | Totals for temporal and enrollment charts. Null when not determined |
+| `top_n` | `{top_n, direction, omitted_keys, trials_omitted{cohort: n}, cutoff_count, omitted_ties}`. `direction` is `most` (the plan's `top_n`) or `fewest` (the plan's `bottom_n`); `trials_omitted` counts the studies visible only in omitted buckets; `omitted_ties` counts omitted values with the same count as the last shown one (`cutoff_count`), also stated in a `topn_ties` warning. On single-valued dimensions (phase, status, sponsor class, lead sponsor, enrollment size) each cohort also gets an exact "Other (N values)" datum (`is_other`) |
+| `network` | Networks only: <ul><li>`excluded_terms` (with reason and trials), `unmatched_terms`</li><li>`drug_class_nodes_total`/`_shown`</li><li>node and edge totals vs shown, trials without a shown edge or node</li><li>`edge_citation_cap`, `edge_citations_reduced`, `node_supporting_citations_dropped`, `response_bytes_before_reduction`</li></ul> |
+| `estimated_count`, `unknown_date_type_count` | Datum values summed over cohorts. `estimated_count` applies to start-date and enrollment charts, `unknown_date_type_count` to start-date charts only (`DimensionSpec.estimate_kind`); null where they do not apply, for networks, and when not determined (count route) |
 | `data_timestamp` | The API's `dataTimestamp` from `/version`. Null, with a warning, if `/version` failed |
-| `assumptions[]`, `warnings[]` | Free-text sentences. Per-cohort messages are prefixed `"<label>: "` when several cohorts are compared. A `DEGRADED DATA:` warning is always first when present |
-| `timing_ms` | Wall time per stage: `validate`, `retrieve`, `retrieve_fallback`, `normalize`, `aggregate`, `spec`, `total` |
+| `assumptions[]`, `warnings[]` | `Notice` objects `{code, severity, cohort, message}`. `code` is a `NoticeCode` (one per kind of message, e.g. `degraded_data`, `record_cap`, `not_applied`, `unknown_bucket`, `topn_ties`, `cohorts_overlap`, `cohort_subset`, `did_you_mean`; full list in `schemas/response.py`). `severity` is `error` (only `degraded_data`, always first), `warning` (the chart answers a narrower question than it seems, or data is missing) or `info`. `cohort` names the cohort a notice is about; in a comparison the message also starts with `"<label>: "`. Skipped records are listed 10 at a time, then one "and N more" line |
+| `timing_ms` | Wall time per stage: `validate`, `retrieve`, `retrieve_fallback`, `normalize`, `suggest` (the did-you-mean count, when made), `aggregate`, `spec`, `total` |
 
 ### Conventions a renderer needs
 
 - **`data` vs `nodes`/`edges`:** only `network_graph` uses `nodes`/`edges`; every other type
   uses `data`. `Visualization` is one model, not a discriminated union (engineering review M8).
 - **An absent datum means zero.** Buckets with 0 studies are not emitted. A grouped bar or
-  multi-cohort time series must fill gaps from `encoding.x.sort` / the union of keys.
+  time series fills gaps from `encoding.x.sort`, which on a start-date axis lists every period.
 - **Temporal keys are strings** (`"2015"`, `"2026-09"`), and `"Unknown"` can appear in the same
   array. A Vega-Lite renderer that parses `"2015"` as UTC midnight but bins with the local-time
   `timeUnit: "year"` shows 2014 in US time zones. Use `utcyear`/`utcyearmonth`, or treat keys as
@@ -231,12 +246,19 @@ cohort, and each override is listed in `meta.interpretation.overrides`.
   first, so `source`/`target` order carries no meaning.
 - **Node `type`** is `drug`, `drug_class` (MeSH tree numbers only in D26/D27: a class or dosage
   form; its id keeps the `drug:` prefix), `sponsor` or `condition`.
-- **Citations are capped** (20 per bucket or node). On networks above 1 MB, edge citations
-  are cut to 2. `citation_count_total` always gives the uncapped number, but it counts
-  *citations*, not trials. These are equal for phase/status/year, larger for intervention
-  MeSH and drug nodes (engineering review M2).
+- **Citations are capped** at 20 *primary* citations per bucket, node or edge; each cited
+  study keeps its supporting citations (e.g. the raw intervention names next to a MeSH term).
+  `cited_trials_total` is the number of distinct studies behind the element;
+  `citation_count_total` the number of citations, which is larger when a study is cited
+  twice (supporting names, both endpoints of an edge). Above 1 MB (`NETWORK_MAX_RESPONSE_BYTES`)
+  edge citations are cut to 2, then node supporting citations are dropped; grouped charts
+  cut each bar to 2 primary citations. No element is dropped and a `citations_reduced`
+  warning gives the sizes.
 - **Flags:** `is_unknown` (value missing), `is_unrecognized` (value present but outside the known
-  API enum), `is_future` (planned start dates, a projection), `incomplete` (the current period).
+  API enum), `is_not_applicable` (phase Not Applicable, and observational / expanded-access
+  studies without a phase), `is_other` (all omitted values of a top/bottom-N chart),
+  `is_future` (planned start dates, a projection), `incomplete` (the current period).
+- **Notices:** pick banners and icons from `severity` and `code`, never from `message`.
 
 **Errors** return `ErrorResponse {code, message, suggestions[]}` and never a partial chart:
 
@@ -248,9 +270,11 @@ cohort, and each override is listed in `meta.interpretation.overrides`.
 | 422 | Planner errors: `llm_not_configured`, `unsupported_question`, `clarification_needed` (readings as suggestions), `planning_failed` |
 | 502 | `llm_unavailable`, `upstream_unavailable`, `upstream_rejected_query`, `upstream_data_format_changed` |
 | 503 | `upstream_rate_limited` |
+| 401 | `unauthorized` (only when `DEMO_TOKEN` is set) |
+| 504 | `request_timeout` (over `REQUEST_DEADLINE_SECONDS`) |
 | 500 | `internal_error` (catch-all; traceback logged, generic message) |
 
-`code` is a free string in the schema, not an enum (M8).
+`code` is a free string in the schema, not an enum (M8); notice codes in `meta` are an enum.
 
 ---
 
@@ -625,10 +649,10 @@ What was not fixed is in §8.
 tests passed at that commit), served `/health` and `/query`, and was also installed from
 `requirements.txt` into a fresh Python 3.12 venv.
 
-**Tests:** 769 total. 762 run offline in about 5 s against captured fixtures (`tests/fixtures/`),
+**Tests:** 852 total. 845 run offline in about 6 s against captured fixtures (`tests/fixtures/`),
 `respx` HTTP mocks and fake LLMs. 7 are marked `live`. Normalize, aggregate, the registries,
 chart selection and the validator were written test-first. `ruff check` and `ruff format` are
-clean. `bandit` reports only `assert` usage (B101, 6 low). `pip-audit` reports no known
+clean. `bandit` reports one `assert` (B101, low, `retrieval/client.py`). `pip-audit` reports no known
 vulnerabilities (engineering review, Tool output).
 
 ---
@@ -700,6 +724,10 @@ limitations"), verbatim:
   no bucket, so it cannot appear among the bottom N. For open dimensions (countries,
   sponsors, conditions) the full list of possible values is unknown, so "the countries with
   the fewest trials" cannot include countries with none. The warning and assumption say so.
+- **Protein and antigen descriptors can be drug nodes.** MeSH descriptors in branch D12
+  (amino acids, peptides and proteins), e.g. "CTLA-4 Antigen" mapped from anti-CTLA-4 text,
+  are kept as `drug` nodes, because monoclonal antibodies live in the same branch.
+  Separating targets from drugs needs a molecule dictionary.
 - **C ids (supplementary concepts) are not classified.** A disease or organism SCR mapped from
   an intervention would be drawn as a `drug` node. None was noticed among the top hubs, but
   the 388 C ids were not checked individually (api_findings §18).
@@ -715,32 +743,31 @@ limitations"), verbatim:
   ("PD(L)-1 inhibitor" with Pembrolizumab in otherNames) (api_findings §16, domain #11).
 
 **Product gaps**
-- No "Other" bar for top-N. The omitted share is in `meta.top_n.trials_omitted` (decision 33).
+- No "Other" bar on overlapping dimensions (countries, conditions, intervention MeSH terms,
+  intervention types): a sum of omitted values would count a study more than once. The
+  assumption says so and `meta.top_n.trials_omitted` gives the studies seen only there.
 - No percent or share view for comparisons of different-sized cohorts (user #3, #8).
-- Display labels exist for status and sponsor class only. Intervention types and the warning
-  texts still contain codes and engineering terms (`MAX_NETWORK_NODES=50`) (user #10).
-- Warnings and assumptions are free strings. A UI cannot rank them by severity (M8, user §3).
-- No "did you mean" for unmatched names: "pembro" returns an empty chart with a note (user #5).
-- `bottom_n` is not on `QueryRequest`: structured callers get a bottom-N chart only through
-  the question.
+- Warning texts still contain setting names and engineering terms (`MAX_NETWORK_NODES=50`),
+  and most say "trials" where titles say "studies" (user #10).
+- "Did you mean" only covers a tiny cohort (< 20 studies) whose records carry a MeSH term;
+  a name that matches nothing at all gets no suggestion (user #5).
 - No ranked edge table next to networks, and no CSV export (user #9 and §3).
 - Unsupported-question messages can misstate what the registry holds, and the suggestions are
   generic (user #9).
 
 **Engineering**
 - **Single worker.** The rate limiter and SQLite cache are per process. With `--workers N`,
-  pacing becomes N × 1 req / 1.2 s, which brings back the 429s. Normalizing 10,000 records
-  blocks the event loop for about 1.3 s (H4).
-- **No end-to-end deadline.** One GET can take about 6.5 min in the worst case. The shared
-  limiter queues every user behind a long count route (head-of-line blocking, M7).
-- **No `max_length`** on `query` or filter strings, and no limit or dedup on the `phases` and
-  `statuses` lists (M3).
-- **The warnings list is unbounded.** It has one line per skipped record below the refuse ratio
-  (M5).
-- **Grouped charts have no size budget** and no default top-N on open-vocabulary dimensions (M6).
-- **`citation_count_total` counts citations, not trials**, so it differs between datum and node
-  types (M2). `estimated_count` is 0 on dimensions where it does not apply (M9).
-  `meta.total_matched` is a sum over cohorts (L7).
+  pacing becomes N × 1 req / 1.2 s, which brings back the 429s (H4). Normalize and aggregate
+  now run in a thread and at most `MAX_CONCURRENT_QUERIES` requests execute at once, but the
+  spec stage and cache reads still run on the event loop.
+- **Head-of-line blocking.** `REQUEST_DEADLINE_SECONDS` (120 s) bounds every request, but the
+  shared limiter still queues every user behind a long count route, so a short question can
+  time out behind a long one (M7).
+- **Open-vocabulary dimensions have no default top-N.** A "by condition" chart can have
+  thousands of bars; the size budget keeps it under 1 MB by cutting citations, not bars (M6).
+- **The unrecognized-value warnings are not capped** (one per distinct raw value, M5).
+- **`meta.total_matched` is a sum over cohorts** (L7). `ErrorResponse.code` is a free string,
+  not an enum, and `Visualization` is not a discriminated union (M8).
 - **The API's tie order is unspecified.** At the 10,000 cap, studies sharing the cutoff
   first-post date are picked in that order. This is stated in meta.
 - **API quirks handled, but limiting** (api_findings §6, §8, §11):

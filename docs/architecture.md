@@ -216,24 +216,41 @@ checked against golden snapshots in `tests/golden/`.
   The graph's `NetworkSummary` becomes `meta.network`. When the serialized network
   response is larger than `NETWORK_MAX_RESPONSE_BYTES` (1 MB), `fit_network_budget` cuts
   each edge's citations to `NETWORK_REDUCED_EDGE_CITATION_CAP` (2: both endpoints in one
-  trial) instead of dropping edges, keeps `citation_count_total`, and states the sizes
-  before and after in a warning.
-- Titles are derived from the plan only (e.g. "Trials by phase for pembrolizumab");
+  trial) instead of dropping edges; if still over, nodes drop their supporting citations
+  (`meta.network.node_supporting_citations_dropped`). Totals are kept and the sizes
+  before and after are stated in a `citations_reduced` warning. Grouped charts use the
+  same budget (`fit_grouped_budget`): each bar keeps that many primary citations and no
+  bar is dropped.
+- Citation caps count primary citations; each cited trial keeps its supporting
+  citations. Every datum, node and edge has `cited_trials_total` (distinct NCT IDs) next
+  to `citation_count_total` (citations, which is larger when a trial is cited twice).
+- Titles are derived from the plan only (e.g. "Studies by phase for pembrolizumab", the
+  counting unit; the count axis says "Studies");
   a relation's title is its registry `title` template, so drug co-occurrence reads
   "Drugs listed in the same trial record as X (any arm; co-listing is not
   co-administration)", and that relation carries a standing warning (comparator arms,
   either-or options and observational studies are included). A sponsor filter's label
-  says "(lead sponsor or collaborator; name contains '…')". Status and sponsor-class
-  buckets keep the registry code as `key` and get a display `label`.
+  says "(lead sponsor or collaborator; name contains '…')". Status, sponsor-class and
+  intervention-type buckets keep the registry code as `key` and get a display `label`.
   Titles and axis titles use the dimension's `title_label`, which states the granularity
   of temporal dimensions ("start year"); warnings keep using `label` ("start date").
 - Every temporal datum carries `is_future` (its period starts after the as-of date, so
   it is a projection of planned starts), `estimated_count` and `unknown_date_type_count` (dates
   with no ACTUAL/ESTIMATED type), so a renderer can style recent or uncertain periods
-  differently. The totals are in `meta.estimated_count` and `meta.unknown_date_type_count`
-  (None when they do not apply).
-- Every datum carries `is_unknown` (missing) and `is_unrecognized` (a value the API sent
-  that we do not know), so a renderer can show both apart from real values.
+  differently. The totals are in `meta.estimated_count` and `meta.unknown_date_type_count`.
+  Which value can be estimated is declared per dimension (`DimensionSpec.estimate_kind`:
+  date, enrollment or none); without one both counts are null, not 0. On a start-date
+  axis `encoding.x.sort` lists every period from the first to the last present (zero
+  periods included, Unknown last), except after a top/bottom-N limit.
+- Every datum carries `is_unknown` (missing), `is_unrecognized` (a value the API sent
+  that we do not know), `is_not_applicable` (phase Not Applicable and phase-less
+  observational / expanded-access studies) and `is_other` (the exact "Other (N values)"
+  bucket that top/bottom-N adds on single-valued, non-temporal dimensions), so a
+  renderer can show them apart from real values.
+- `meta.warnings` and `meta.assumptions` are `Notice` objects `{code, severity, cohort,
+  message}`: `code` is a `NoticeCode` (one per kind of message), `severity` is error
+  (only degraded data, always first), warning or info. A renderer picks banners from
+  them, never from the text.
 - `Meta` carries `interpretation` (the question, the executed plan, `planned_by` and,
   for LLM plans, the model, draft, overrides, rejected drafts and `unhandled_terms`:
   parts of the question no filter, dimension or relation expresses, each also a
@@ -257,7 +274,8 @@ How the plan was made (who read the question and through which provider, a provi
 fallback, each explicit override, each rejected draft, a ranking default for `top_n`
 with the number of omitted buckets) is stated in `meta.assumptions`. Filters are built during validation, so bad values fail before any
 network call. A study that raises `SourceRecordError` is skipped, counted in
-`cohorts[].records_skipped` and reported by NCT ID in `meta.warnings`. Each unrecognized
+`cohorts[].records_skipped` and reported by NCT ID in `meta.warnings` (the first 10,
+then one "and N more" line; all are logged). Each unrecognized
 value gets one warning. Truncation, reconciliation failures, duplicates and cache use
 also go into meta. After normalize, each cohort's skip ratio (skipped / retrieved) is
 logged (`normalize cohort= retrieved= skipped= skip_ratio= unrecognized= band=`) and
