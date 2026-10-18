@@ -54,6 +54,25 @@ class PlannerError(Exception):
         self.suggestions = suggestions or []
 
 
+class LlmInfrastructureError(PlannerError):
+    """An LLM provider timed out, was unreachable, or answered 429/5xx after its retry.
+
+    Only this failure moves the fallback chain to the next provider: the same question
+    may well succeed elsewhere. Every other LLM failure (a rejected request, a refusal,
+    an answer that breaks the schema) is a plain PlannerError and is not retried on
+    another provider.
+    """
+
+    def __init__(self, provider: str, problem: str) -> None:
+        super().__init__(
+            PlannerErrorCode.LLM_UNAVAILABLE,
+            f"The LLM planner request to {provider} failed: {problem}",
+            ["Retry later.", "Or send structured fields (e.g. `drug` and `dimension`)."],
+        )
+        self.provider = provider
+        self.problem = problem
+
+
 class SourceRecordError(ValueError):
     """A raw study has a value the normalizer cannot interpret faithfully.
 

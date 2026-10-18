@@ -113,6 +113,7 @@ async def execute(
             warnings=[w for data in cohorts for w in retrieval_warnings(data, len(cohorts))],
             assumptions=[
                 *planning_assumptions(interpretation),
+                *ranking_assumptions(interpretation, result),
                 *(a for data in cohorts for a in retrieval_assumptions(data, len(cohorts))),
             ],
             interpretation=interpretation,
@@ -133,9 +134,15 @@ def planning_assumptions(interpretation: Interpretation) -> list[str]:
     if interpretation.planned_by == "structured_fields":
         return ["The question text was not interpreted; the plan was supplied directly."]
     messages = [
-        f"The plan was drafted from the question by the LLM ({interpretation.model}) and "
-        "validated; meta.interpretation.draft holds the draft. Counts come from the registry."
+        f"The plan was drafted from the question by the LLM ({interpretation.model_used} via "
+        f"{interpretation.provider}) and validated; meta.interpretation.draft holds the "
+        "draft. Counts come from the registry."
     ]
+    if interpretation.fallback_reason is not None:
+        messages.append(
+            f"The primary LLM provider did not answer, so a fallback provider "
+            f"({interpretation.provider}) drafted the plan: {interpretation.fallback_reason}"
+        )
     messages.extend(
         f"The explicit request field set `{override.path}` to "
         f"{json.dumps(override.explicit_value)}; the LLM had read "
@@ -147,6 +154,20 @@ def planning_assumptions(interpretation: Interpretation) -> list[str]:
         for problem in interpretation.rejected_attempts
     )
     return messages
+
+
+def ranking_assumptions(
+    interpretation: Interpretation, result: GroupedCohorts | Graph
+) -> list[str]:
+    """State that the planner chose top_n because the question asked for a ranking."""
+    top_n = interpretation.ranking_top_n
+    if top_n is None or not isinstance(result, GroupedCohorts) or result.top_n is None:
+        return []
+    omitted = len(result.top_n.omitted_keys)
+    return [
+        f"Question asked for a ranking; showing top {top_n} (configurable); "
+        f"{omitted} buckets omitted"
+    ]
 
 
 def normalize_all(

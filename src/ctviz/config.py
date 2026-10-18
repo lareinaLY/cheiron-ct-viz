@@ -7,12 +7,16 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_TOP_N_FOR_RANKING = 15
+
 
 class Settings(BaseSettings):
     """Retrieval, cache and LLM settings. Defaults follow docs/api_findings.md §6 and §11.
 
-    The LLM settings also accept the provider's conventional names (OPENAI_API_KEY,
-    OPENAI_BASE_URL, LLM_MODEL). Without an API key the planner uses structured fields only.
+    The LLM settings also accept the providers' conventional names (OPENAI_API_KEY,
+    OPENAI_BASE_URL, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, LLM_FALLBACK_CHAIN). Providers
+    in the chain without a key are skipped; without any key the planner uses structured
+    fields only.
     """
 
     model_config = SettingsConfigDict(env_prefix="CTVIZ_", env_file=".env", extra="ignore")
@@ -43,7 +47,25 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_BASE_URL", "CTVIZ_OPENAI_BASE_URL"),
         description="OpenAI-compatible endpoint; None uses the SDK default.",
     )
-    llm_model: str = Field(
-        default="gpt-4.1-mini", validation_alias=AliasChoices("LLM_MODEL", "CTVIZ_LLM_MODEL")
+    deepseek_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("DEEPSEEK_API_KEY", "CTVIZ_DEEPSEEK_API_KEY")
+    )
+    deepseek_base_url: str = Field(
+        default="https://api.deepseek.com",
+        validation_alias=AliasChoices("DEEPSEEK_BASE_URL", "CTVIZ_DEEPSEEK_BASE_URL"),
+    )
+    llm_fallback_chain: str = Field(
+        default="openai:gpt-4.1-mini",
+        validation_alias=AliasChoices("LLM_FALLBACK_CHAIN", "CTVIZ_LLM_FALLBACK_CHAIN"),
+        description="Comma-separated provider:model entries, tried in order on "
+        "infrastructure failures, e.g. 'openai:gpt-4.1-mini,deepseek:deepseek-chat'.",
     )
     llm_timeout_seconds: float = Field(default=60.0, gt=0, description="Per LLM request.")
+    default_top_n_for_ranking: int = Field(
+        default=DEFAULT_TOP_N_FOR_RANKING,
+        gt=0,
+        validation_alias=AliasChoices(
+            "DEFAULT_TOP_N_FOR_RANKING", "CTVIZ_DEFAULT_TOP_N_FOR_RANKING"
+        ),
+        description="top_n used when the question asks for a ranking without a number.",
+    )

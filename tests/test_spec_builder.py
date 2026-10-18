@@ -287,3 +287,15 @@ class TestTemporalTitle:
             warnings
         )
         assert "2 trials are counted using an estimated start date." in warnings
+
+
+class TestFutureBuckets:
+    def test_datum_carries_the_future_flag(self) -> None:
+        data = {d.key: d for d in time_series_start_year().visualization.data}
+        assert data["2027"].is_future is True
+        assert data["2026"].is_future is False
+        assert data["Unknown"].is_future is False
+
+    def test_future_warning_reaches_meta(self) -> None:
+        warnings = time_series_start_year().meta.warnings
+        assert any("in the future (estimated); buckets 2027…" in w for w in warnings)

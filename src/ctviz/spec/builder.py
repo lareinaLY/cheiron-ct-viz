@@ -144,6 +144,7 @@ def grouped_visualization(plan: QueryPlan, result: GroupedCohorts) -> Visualizat
             estimated_count=bucket.estimated_count,
             unknown_date_type_count=bucket.unknown_date_type_count,
             incomplete=bucket.incomplete,
+            is_future=bucket.is_future,
             is_unknown=bucket.is_unknown,
             citations=bucket.citations,
             citation_count_total=bucket.citation_count_total,

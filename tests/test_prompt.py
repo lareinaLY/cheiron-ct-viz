@@ -74,6 +74,20 @@ def test_prompt_states_the_faithfulness_rules(prompt: str) -> None:
     assert "never add a filter" in lowered
 
 
+def test_prompt_states_the_ranking_rule(prompt: str) -> None:
+    assert "ranking_intent" in prompt
+    for word in ("most", "top", "leading"):
+        assert word in prompt
+    # top_n keeps the largest buckets, so a "fewest" question must not be trimmed.
+    assert "fewest" not in prompt
+
+
+def test_a_few_shot_example_flags_a_ranking_without_a_number() -> None:
+    drafts = [draft for _, draft in FEW_SHOT_EXAMPLES]
+    assert any(d.ranking_intent and d.top_n is not None for d in drafts)
+    assert any(not d.ranking_intent and d.dimension is not None for d in drafts)
+
+
 def test_few_shot_examples_cover_the_query_classes() -> None:
     drafts = [draft for _, draft in FEW_SHOT_EXAMPLES]
     assert 6 <= len(drafts) <= 8

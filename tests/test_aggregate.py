@@ -707,3 +707,62 @@ def test_temporal_title_label_differs_from_warning_label() -> None:
     assert DIMENSIONS[Dimension.START_YEAR].title_label == "start year"
     assert DIMENSIONS[Dimension.START_MONTH].title_label == "start month"
     assert DIMENSIONS[Dimension.PHASE].title_label == "phase"
+
+
+class TestFutureBuckets:
+    def records(self) -> list[TrialRecord]:
+        return [
+            make_record("NCT1", start_date=date(2025, 3, 1), start_date_raw="2025-03"),
+            make_record("NCT2", start_date=date(2026, 12, 1), start_date_raw="2026-12"),
+            make_record(
+                "NCT3",
+                start_date=date(2027, 2, 1),
+                start_date_raw="2027-02",
+                start_date_type="estimated",
+            ),
+            make_record(
+                "NCT4",
+                start_date=date(2028, 6, 1),
+                start_date_raw="2028-06",
+                start_date_type="estimated",
+            ),
+            make_record("NCT5"),
+        ]
+
+    def test_years_after_as_of_are_future(self) -> None:
+        result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
+        assert bucket(result, "2027").is_future is True
+        assert bucket(result, "2028").is_future is True
+        assert bucket(result, "2025").is_future is False
+
+    def test_current_period_is_incomplete_not_future(self) -> None:
+        result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
+        current = bucket(result, "2026")
+        assert current.incomplete is True
+        assert current.is_future is False
+
+    def test_unknown_bucket_is_never_future(self) -> None:
+        result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
+        assert bucket(result, UNKNOWN_BUCKET_KEY).is_future is False
+
+    def test_months_after_as_of_are_future(self) -> None:
+        result = group_by(self.records(), Dimension.START_MONTH, as_of=AS_OF)
+        assert bucket(result, "2026-12").is_future is True
+        assert bucket(result, "2025-03").is_future is False
+
+    def test_one_warning_names_the_trials_and_the_first_future_bucket(self) -> None:
+        result = group_by(self.records(), Dimension.START_YEAR, as_of=AS_OF)
+        future = [w for w in result.warnings if "in the future" in w]
+        assert future == [
+            "2 trials have start dates in the future (estimated); buckets 2027… are "
+            "projections, not activity."
+        ]
+
+    def test_no_future_warning_without_future_buckets(self) -> None:
+        records = [make_record("NCT1", start_date=date(2025, 3, 1), start_date_raw="2025-03")]
+        result = group_by(records, Dimension.START_YEAR, as_of=AS_OF)
+        assert not any("in the future" in w for w in result.warnings)
+
+    def test_non_temporal_dimension_is_never_future(self) -> None:
+        result = group_by(phase_records(), Dimension.PHASE, as_of=AS_OF)
+        assert all(b.is_future is False for b in result.buckets)

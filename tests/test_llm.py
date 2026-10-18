@@ -9,7 +9,7 @@ import httpx2
 import pytest
 
 from ctviz.errors import PlannerError, PlannerErrorCode
-from ctviz.planner.llm import OpenAiLlm
+from ctviz.planner.llm import OpenAICompatibleProvider
 from ctviz.schemas.plan import Clarification
 
 MESSAGES = [{"role": "user", "content": "q"}]
@@ -31,9 +31,10 @@ def completion(content: str | None, refusal: str | None = None) -> dict[str, obj
     }
 
 
-def make_llm(handler: Callable[[httpx2.Request], httpx2.Response]) -> OpenAiLlm:
+def make_llm(handler: Callable[[httpx2.Request], httpx2.Response]) -> OpenAICompatibleProvider:
     client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
-    return OpenAiLlm(
+    return OpenAICompatibleProvider(
+        name="test",
         api_key="sk-test",
         model="test-model",
         base_url="https://llm.test/v1",
@@ -52,7 +53,7 @@ async def test_returns_the_parsed_schema_and_sends_a_strict_schema() -> None:
         sent.append(json.loads(request.content))
         return httpx2.Response(200, json=completion(VALID))
 
-    result = await make_llm(handler).structured_plan(MESSAGES, Clarification)
+    result = (await make_llm(handler).structured_plan(MESSAGES, Clarification)).value
     assert result == Clarification(question="Which grouping?", options=["a", "b"])
     response_format = sent[0]["response_format"]
     assert isinstance(response_format, dict)
@@ -67,7 +68,7 @@ async def test_transient_error_is_retried_once() -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         return responses.pop(0) if responses else httpx2.Response(200, json=completion(VALID))
 
-    result = await make_llm(handler).structured_plan(MESSAGES, Clarification)
+    result = (await make_llm(handler).structured_plan(MESSAGES, Clarification)).value
     assert result.options == ["a", "b"]
 
 

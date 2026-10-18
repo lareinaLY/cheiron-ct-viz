@@ -34,6 +34,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -56,6 +57,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -79,6 +81,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -110,6 +113,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -157,9 +161,14 @@
       },
       "planned_by": "structured_fields",
       "model": null,
+      "provider": null,
+      "model_used": null,
+      "response_mode": null,
+      "fallback_reason": null,
       "draft": null,
       "overrides": [],
       "rejected_attempts": [],
+      "ranking_top_n": null,
       "planning_ms": null
     },
     "count_unit": "trials",

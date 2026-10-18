@@ -29,6 +29,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 1,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -49,6 +50,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -69,6 +71,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -89,6 +92,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -109,6 +113,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -129,6 +134,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -149,6 +155,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -169,6 +176,7 @@
         "estimated_count": 1,
         "unknown_date_type_count": 0,
         "incomplete": true,
+        "is_future": false,
         "is_unknown": false,
         "citations": [
           {
@@ -189,6 +197,7 @@
         "estimated_count": 1,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": true,
         "is_unknown": false,
         "citations": [
           {
@@ -209,6 +218,7 @@
         "estimated_count": 0,
         "unknown_date_type_count": 0,
         "incomplete": false,
+        "is_future": false,
         "is_unknown": true,
         "citations": [
           {
@@ -254,9 +264,14 @@
       },
       "planned_by": "structured_fields",
       "model": null,
+      "provider": null,
+      "model_used": null,
+      "response_mode": null,
+      "fallback_reason": null,
       "draft": null,
       "overrides": [],
       "rejected_attempts": [],
+      "ranking_top_n": null,
       "planning_ms": null
     },
     "count_unit": "trials",
@@ -309,7 +324,8 @@
       "1 of 10 trials have no start date; they are counted in the 'Unknown' bucket.",
       "2 trials are counted using an estimated start date.",
       "1 trials have a start date with no ACTUAL/ESTIMATED type (legacy records); they are counted but marked neither actual nor estimated.",
-      "Bucket '2026' is still in progress as of 2026-10-17; its count may grow."
+      "Bucket '2026' is still in progress as of 2026-10-17; its count may grow.",
+      "1 trials have start dates in the future (estimated); buckets 2027… are projections, not activity."
     ],
     "timing_ms": {}
   }

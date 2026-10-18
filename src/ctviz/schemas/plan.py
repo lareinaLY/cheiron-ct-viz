@@ -123,6 +123,10 @@ class LlmPlanDraft(BaseModel):
     relation: Relation | None = Field(description="The relation to draw as a network.")
     chart_hint: ChartType | None = Field(description="Only when the user names a chart type.")
     top_n: int | None = Field(description="Only when the user asks for a number of top values.")
+    ranking_intent: bool = Field(
+        description="True only when the question asks for the most, top or leading values. "
+        "Never a number: code chooses how many values to show."
+    )
     match_mode: MatchMode = Field(
         description="intervention_name unless the user asks for any mention of the drug."
     )

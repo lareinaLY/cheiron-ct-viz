@@ -12,9 +12,10 @@ from fastapi.testclient import TestClient
 
 from ctviz.api.app import create_app
 from ctviz.config import Settings
-from ctviz.errors import PlannerError, PlannerErrorCode
+from ctviz.errors import LlmInfrastructureError, PlannerError, PlannerErrorCode
+from ctviz.planner.llm import FallbackChain, LlmAnswer
 from ctviz.schemas.plan import Dimension, Filters, LlmPlanDraft
-from ctviz.schemas.response import VisualizationResponse
+from ctviz.schemas.response import ResponseMode, VisualizationResponse
 from tests.factories import load_fixture_studies
 
 BASE_URL = "https://ctgov.test/api/v2"
@@ -28,6 +29,7 @@ def make_draft(**fields: Any) -> LlmPlanDraft:
         "relation": None,
         "chart_hint": None,
         "top_n": None,
+        "ranking_intent": False,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
@@ -45,7 +47,12 @@ class FakeLlm:
     async def structured_plan(self, messages: Sequence[Any], schema: type[Any]) -> Any:
         if isinstance(self.result, PlannerError):
             raise self.result
-        return self.result
+        return LlmAnswer(
+            value=self.result,
+            provider="fake",
+            model=self.model,
+            response_mode=ResponseMode.JSON_SCHEMA_STRICT,
+        )
 
 
 def settings() -> Settings:
@@ -130,8 +137,51 @@ def test_unsupported_question_is_a_structured_error(mock_api: respx.MockRouter) 
     assert not mock_api.routes[1].called
 
 
+def test_ranking_default_is_stated_in_meta(mock_api: respx.MockRouter) -> None:
+    draft = make_draft(dimension=Dimension.COUNTRY, ranking_intent=True)
+    response = post(FakeLlm(draft), {"query": "Which countries have the most trials?"})
+    assert response.status_code == 200, response.text
+    meta = VisualizationResponse.model_validate(response.json()).meta
+    assert meta.interpretation.ranking_top_n == 15
+    assert meta.top_n is not None
+    omitted = len(meta.top_n.omitted_keys)
+    assert omitted > 0
+    assert (
+        "Question asked for a ranking; showing top 15 (configurable); "
+        f"{omitted} buckets omitted" in meta.assumptions
+    )
+
+
+def test_ranking_default_is_configurable(mock_api: respx.MockRouter) -> None:
+    draft = make_draft(dimension=Dimension.COUNTRY, ranking_intent=True)
+    app = create_app(settings().model_copy(update={"default_top_n_for_ranking": 2}), FakeLlm(draft))
+    with TestClient(app) as client:
+        response = client.post("/query", json={"query": "Which countries have the most?"})
+    assert response.status_code == 200, response.text
+    assert response.json()["meta"]["top_n"]["top_n"] == 2
+
+
 def test_llm_failure_is_a_502(mock_api: respx.MockRouter) -> None:
     error = PlannerError(PlannerErrorCode.LLM_UNAVAILABLE, "LLM request failed: timeout")
     response = post(FakeLlm(error), {"query": "q"})
     assert response.status_code == 502
     assert response.json()["code"] == "llm_unavailable"
+
+
+def test_every_provider_failing_is_a_502(mock_api: respx.MockRouter) -> None:
+    class DownProvider:
+        response_mode = ResponseMode.JSON_SCHEMA_STRICT
+
+        def __init__(self, name: str) -> None:
+            self.name, self.model = name, f"{name}-model"
+
+        async def structured_plan(self, messages: Sequence[Any], schema: type[Any]) -> Any:
+            raise LlmInfrastructureError(self.name, "connection failed")
+
+    chain = FallbackChain([DownProvider("openai"), DownProvider("deepseek")])
+    with TestClient(create_app(settings(), llm=chain)) as client:
+        response = client.post("/query", json={"query": "q"})
+    assert response.status_code == 502
+    assert response.json()["code"] == "llm_unavailable"
+    assert "openai" in response.json()["message"] and "deepseek" in response.json()["message"]
+    assert not mock_api.routes[1].called

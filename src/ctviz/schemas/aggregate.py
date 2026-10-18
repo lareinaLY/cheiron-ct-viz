@@ -24,6 +24,7 @@ class Bucket(BaseModel):
         default=0, description="Trials here whose date has no ACTUAL/ESTIMATED type."
     )
     incomplete: bool = Field(default=False, description="Period still in progress at as_of.")
+    is_future: bool = Field(default=False, description="Period starts after as_of (projection).")
     is_unknown: bool = Field(default=False, description="Trials missing this value.")
     citations: list[Citation] = Field(default_factory=list)
     citation_count_total: int = Field(description="True number of citations before the cap.")

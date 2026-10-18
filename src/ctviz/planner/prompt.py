@@ -63,7 +63,9 @@ RULES = """\
    one cohort per group, each with the shared filters plus its own value.
 4. Choose the dimension or relation that answers the question. Leave `chart_hint` null
    unless the user names a chart type, and `top_n` null unless the user gives a number
-   ("top 10"); results are already sorted by count.
+   ("top 10"); results are already sorted by count. Never choose a number yourself.
+   Set `ranking_intent` true only when the question asks for the most, top or leading
+   values ("which countries have the most trials"), otherwise false.
 5. If the question cannot be answered by counting trials with these filters and
    groupings (for example efficacy, outcomes, survival, adverse events, costs, or
    anything about individual patients), set `unsupported_reason` to one sentence saying
@@ -133,6 +135,7 @@ def example(question: str, *cohorts: Filters, **fields: Any) -> tuple[str, LlmPl
         "relation": None,
         "chart_hint": None,
         "top_n": None,
+        "ranking_intent": False,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
@@ -173,11 +176,13 @@ FEW_SHOT_EXAMPLES: list[tuple[str, LlmPlanDraft]] = [
         Filters(condition="Alzheimer's disease", statuses=[OverallStatus.RECRUITING]),
         dimension=Dimension.COUNTRY,
         top_n=10,
+        ranking_intent=True,
     ),
     example(
         "Which drugs are most often combined with cisplatin in trials started since 2020?",
         Filters(drug="cisplatin", start_year_from=2020),
         relation=Relation.DRUG_DRUG_COOCCURRENCE,
+        ranking_intent=True,
     ),
     example(
         "What is the median overall survival in osimertinib trials?",

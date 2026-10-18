@@ -18,6 +18,18 @@ class CountUnit(StrEnum):
     TRIALS = "trials"
 
 
+class ResponseMode(StrEnum):
+    """How an LLM provider is asked for structured output.
+
+    - json_schema_strict: the provider enforces the JSON schema while decoding.
+    - json_object: the provider only guarantees valid JSON; the schema is embedded in
+      the system prompt and the answer is validated afterwards.
+    """
+
+    JSON_SCHEMA_STRICT = "json_schema_strict"
+    JSON_OBJECT = "json_object"
+
+
 class NodeType(StrEnum):
     """Kind of entity a network node represents."""
 
@@ -50,6 +62,11 @@ class Datum(BaseModel):
     )
     incomplete: bool = Field(
         default=False, description="Period still in progress (e.g. this year)."
+    )
+    is_future: bool = Field(
+        default=False,
+        description="Period starts after the as-of date, so its trials have planned "
+        "(estimated) start dates: a projection, not activity.",
     )
     is_unknown: bool = Field(default=False, description="Bucket of trials missing this value.")
     citations: list[Citation] = Field(default_factory=list)
@@ -156,16 +173,34 @@ class Interpretation(BaseModel):
     - "structured_fields": a QueryPlan was passed to the pipeline directly by code (no
       planner ran); the question text was not interpreted.
     `rejected_attempts` holds the validation error of each LLM draft that was rejected
-    and retried.
+    and retried. `model` is the primary model of the LLM fallback chain; `provider`,
+    `model_used` and `response_mode` describe the call that produced the accepted draft,
+    and `fallback_reason` says why earlier providers in the chain were passed over for
+    that call (None when the first provider answered).
     """
 
     question: str
     plan: QueryPlan
     planned_by: PlannedBy
-    model: str | None = Field(default=None, description="LLM model that drafted the plan.")
+    model: str | None = Field(default=None, description="Primary model of the LLM chain.")
+    provider: str | None = Field(default=None, description="LLM provider that drafted the plan.")
+    model_used: str | None = Field(default=None, description="LLM model that drafted the plan.")
+    response_mode: ResponseMode | None = Field(
+        default=None, description="How that provider was asked for structured output."
+    )
+    fallback_reason: str | None = Field(
+        default=None,
+        description="Why earlier providers in the chain did not answer; None when the "
+        "primary provider answered.",
+    )
     draft: LlmPlanDraft | None = Field(default=None, description="The accepted LLM draft.")
     overrides: list[FieldOverride] = Field(default_factory=list)
     rejected_attempts: list[str] = Field(default_factory=list)
+    ranking_top_n: int | None = Field(
+        default=None,
+        description="top_n chosen by code (the configured default) because the question "
+        "asked for a ranking without giving a number; None otherwise.",
+    )
     planning_ms: float | None = Field(default=None, description="Planner wall-clock time.")
 
 

@@ -28,7 +28,7 @@ import yaml
 from ctviz.aggregate.registry import DIMENSIONS, DimensionKind
 from ctviz.config import Settings
 from ctviz.errors import PlannerError, PlannerErrorCode
-from ctviz.planner.llm import OpenAiLlm, build_llm
+from ctviz.planner.llm import LlmClient, build_llm, parse_chain
 from ctviz.planner.plan import plan
 from ctviz.schemas.plan import Dimension, Filters, QueryPlan
 from ctviz.schemas.request import QueryRequest
@@ -135,14 +135,21 @@ def score(result: CaseResult, expect: dict[str, Any], query_plan: QueryPlan | No
     check("top_n", expect.get("top_n"), query_plan.top_n)
 
 
-async def run_case(llm: OpenAiLlm, case: dict[str, Any], today: date) -> CaseResult:
+async def run_case(
+    llm: LlmClient, case: dict[str, Any], today: date, default_top_n_for_ranking: int
+) -> CaseResult:
     """Plan one question and score it."""
     started = time.perf_counter()
     query_plan: QueryPlan | None = None
     retries = 0
     detail: str | None = None
     try:
-        interpretation = await plan(QueryRequest(query=case["question"]), llm, today=today)
+        interpretation = await plan(
+            QueryRequest(query=case["question"]),
+            llm,
+            today=today,
+            default_top_n_for_ranking=default_top_n_for_ranking,
+        )
         query_plan, outcome = interpretation.plan, "plan"
         retries = len(interpretation.rejected_attempts)
     except PlannerError as error:
@@ -228,9 +235,9 @@ def render_report(by_model: dict[str, list[CaseResult]], today: date) -> str:
     return "\n".join(lines)
 
 
-def llm_for(settings: Settings, model: str) -> OpenAiLlm:
-    """The configured LLM with `model` swapped in; exits if no key is configured."""
-    llm = build_llm(settings.model_copy(update={"llm_model": model}))
+def llm_for(settings: Settings, model: str) -> LlmClient:
+    """An OpenAI-only chain for `model`, so each model is scored without fallback."""
+    llm = build_llm(settings.model_copy(update={"llm_fallback_chain": f"openai:{model}"}))
     if llm is None:
         sys.exit("OPENAI_API_KEY is not set; the eval needs a real LLM.")
     return llm
@@ -239,20 +246,25 @@ def llm_for(settings: Settings, model: str) -> OpenAiLlm:
 async def main() -> None:
     """Run every case on every model and print (and optionally write) the report."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--models", nargs="+", help="Defaults to LLM_MODEL from settings.")
+    parser.add_argument(
+        "--models", nargs="+", help="OpenAI models; defaults to the first in LLM_FALLBACK_CHAIN."
+    )
+    parser.add_argument("--ids", nargs="+", help="Only run the cases with these ids.")
     parser.add_argument("--output", type=Path, help="Write the Markdown report here.")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     settings = Settings()
-    models = args.models or [settings.llm_model]
-    cases = load_cases(QUESTIONS_PATH)
+    models = args.models or [parse_chain(settings.llm_fallback_chain)[0][1]]
+    cases = [c for c in load_cases(QUESTIONS_PATH) if not args.ids or c["id"] in args.ids]
     today = date.today()
     by_model: dict[str, list[CaseResult]] = {}
     for model in models:
         llm = llm_for(settings, model)
         logger.info("Evaluating %s on %d questions", model, len(cases))
-        by_model[model] = [await run_case(llm, case, today) for case in cases]
+        by_model[model] = [
+            await run_case(llm, case, today, settings.default_top_n_for_ranking) for case in cases
+        ]
     report = render_report(by_model, today)
     sys.stdout.write(report + "\n")
     if args.output:

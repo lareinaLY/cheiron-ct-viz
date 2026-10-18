@@ -118,7 +118,12 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         `query` alone is enough when the LLM planner is configured; structured fields
         override what the LLM reads from it.
         """
-        interpretation = await plan(body, llm, today=date.today())
+        interpretation = await plan(
+            body,
+            llm,
+            today=date.today(),
+            default_top_n_for_ranking=settings.default_top_n_for_ranking,
+        )
         return await pipeline.execute(interpretation, client=client)
 
     return app

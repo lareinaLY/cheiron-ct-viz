@@ -4,7 +4,8 @@
 # - outcome: plan | unsupported | clarification
 # - cohorts: every cohort's filters, in any order. Filters not listed must be absent
 #   (an invented filter is a miss). Strings compare case-insensitively.
-# - dimension or relation; top_n (absent means null).
+# - dimension or relation; top_n (absent means null; a ranking question without a
+#   number expects the configured default, DEFAULT_TOP_N_FOR_RANKING).
 # Granularity is scored for temporal dimensions (start_year vs start_month).
 # Names and wording differ from the few-shot examples in planner/prompt.py.
 
@@ -110,6 +111,18 @@
     cohorts:
       - {sponsor: Pfizer, statuses: [RECRUITING]}
     dimension: country
+
+- id: geographic_ranking_without_number
+  class: geographic
+  question: Which countries have the most recruiting trials for non-small cell lung cancer?
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: non-small cell lung cancer, statuses: [RECRUITING]}
+    dimension: country
+    # No number in the question: the LLM flags ranking_intent and code sets the
+    # configured DEFAULT_TOP_N_FOR_RANKING (15).
+    top_n: 15
 
 - id: network_sponsor_drug
   class: network

@@ -66,7 +66,8 @@ def group_by(
       Dates with no ACTUAL/ESTIMATED type are counted too, reported per bucket and in
       total in `unknown_date_type_count`, with a warning. A trial with no date at all is
       in Unknown and is not counted there.
-      The bucket for the period containing `as_of` (default: today) is `incomplete`.
+      The bucket for the period containing `as_of` (default: today) is `incomplete`;
+      buckets for later periods are `is_future` (projections), with one warning.
     - intervention_mesh: primary citation is `...meshes[i].term`; the study's raw
       intervention names are attached as supporting citations, with no claimed link.
     """
@@ -92,7 +93,12 @@ def group_by(
 
     current_period = spec.period_key(as_of) if spec.period_key else None
     buckets = [
-        to_bucket(tally, citation_cap, incomplete=tally.key == current_period)
+        to_bucket(
+            tally,
+            citation_cap,
+            incomplete=tally.key == current_period,
+            is_future=is_future_period(tally, current_period),
+        )
         for tally in sort_tallies(list(tallies.values()), spec.order)
     ]
     temporal = spec.kind == DimensionKind.TEMPORAL
@@ -128,7 +134,17 @@ def sort_tallies(tallies: list[BucketTally], order: BucketOrder) -> list[BucketT
     return known + [t for t in tallies if t.is_unknown]
 
 
-def to_bucket(tally: BucketTally, citation_cap: int, *, incomplete: bool) -> Bucket:
+def is_future_period(tally: BucketTally, current_period: str | None) -> bool:
+    """True when the bucket's period starts after the period containing as_of.
+
+    Period keys ('2026', '2026-09') are zero-padded, so string order is time order.
+    """
+    return current_period is not None and not tally.is_unknown and tally.key > current_period
+
+
+def to_bucket(
+    tally: BucketTally, citation_cap: int, *, incomplete: bool, is_future: bool
+) -> Bucket:
     """Freeze a tally into a Bucket, capping citations but keeping the true total."""
     return Bucket(
         key=tally.key,
@@ -137,6 +153,7 @@ def to_bucket(tally: BucketTally, citation_cap: int, *, incomplete: bool) -> Buc
         estimated_count=tally.estimated_count,
         unknown_date_type_count=tally.unknown_date_type_count,
         incomplete=incomplete,
+        is_future=is_future,
         is_unknown=tally.is_unknown,
         citations=tally.citations[:citation_cap],
         citation_count_total=len(tally.citations),
@@ -156,7 +173,7 @@ def overlap_assumptions(spec: DimensionSpec, overlap: bool, total: int) -> list[
 def bucket_warnings(
     spec: DimensionSpec, buckets: list[Bucket], total: int, as_of: date
 ) -> list[str]:
-    """Report Unknown, estimated and in-progress buckets (invariant 3: nothing is silent)."""
+    """Report Unknown, estimated, in-progress and future buckets (invariant 3)."""
     warnings = []
     unknown = sum(b.count for b in buckets if b.is_unknown)
     if unknown:
@@ -178,4 +195,10 @@ def bucket_warnings(
         for b in buckets
         if b.incomplete
     )
+    future = [b for b in buckets if b.is_future]
+    if future:
+        warnings.append(
+            f"{sum(b.count for b in future)} trials have {spec.label}s in the future "
+            f"(estimated); buckets {future[0].key}… are projections, not activity."
+        )
     return warnings

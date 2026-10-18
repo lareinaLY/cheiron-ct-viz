@@ -10,7 +10,7 @@ import pytest
 
 from ctviz.config import Settings
 from ctviz.errors import PlannerError, PlannerErrorCode
-from ctviz.planner.llm import build_llm
+from ctviz.planner.llm import LlmAnswer, build_llm
 from ctviz.planner.plan import plan
 from ctviz.schemas.plan import (
     Clarification,
@@ -20,6 +20,7 @@ from ctviz.schemas.plan import (
     Relation,
 )
 from ctviz.schemas.request import QueryRequest
+from ctviz.schemas.response import ResponseMode
 from ctviz.schemas.trial import OverallStatus, Phase
 
 TODAY = date(2026, 10, 17)
@@ -37,7 +38,12 @@ class FakeLlm:
     async def structured_plan(self, messages: Sequence[Any], schema: type[Any]) -> Any:
         assert schema is LlmPlanDraft
         self.calls.append(list(messages))
-        return self.drafts.pop(0)
+        return LlmAnswer(
+            value=self.drafts.pop(0),
+            provider="fake",
+            model=self.model,
+            response_mode=ResponseMode.JSON_SCHEMA_STRICT,
+        )
 
 
 def draft(*cohorts: Filters, **fields: Any) -> LlmPlanDraft:
@@ -48,6 +54,7 @@ def draft(*cohorts: Filters, **fields: Any) -> LlmPlanDraft:
         "relation": None,
         "chart_hint": None,
         "top_n": None,
+        "ranking_intent": False,
         "match_mode": "intervention_name",
         "unsupported_reason": None,
         "clarification": None,
@@ -147,6 +154,54 @@ class TestExplicitFieldsOverride:
         result = await run_plan(QueryRequest(query="q"), llm)
         assert result.plan.match_mode == "broad"
         assert result.overrides == []
+
+
+class TestRankingIntent:
+    COUNTRIES = draft(Filters(condition="NSCLC"), dimension=Dimension.COUNTRY, ranking_intent=True)
+
+    async def test_ranking_without_a_number_gets_the_default_top_n(self) -> None:
+        result = await run_plan(
+            QueryRequest(query="Which countries have the most?"), FakeLlm(self.COUNTRIES)
+        )
+        assert result.plan.top_n == 15
+        assert result.ranking_top_n == 15
+
+    async def test_default_comes_from_configuration(self) -> None:
+        request = QueryRequest(query="Which countries have the most?")
+        result = await plan(
+            request, FakeLlm(self.COUNTRIES), today=TODAY, default_top_n_for_ranking=8
+        )
+        assert result.plan.top_n == 8
+        assert result.ranking_top_n == 8
+
+    async def test_number_in_the_question_wins(self) -> None:
+        llm = FakeLlm(self.COUNTRIES.model_copy(update={"top_n": 5}))
+        result = await run_plan(QueryRequest(query="Top 5 countries"), llm)
+        assert result.plan.top_n == 5
+        assert result.ranking_top_n is None
+
+    async def test_explicit_top_n_wins(self) -> None:
+        request = QueryRequest(query="Which countries have the most?", top_n=7)
+        result = await run_plan(request, FakeLlm(self.COUNTRIES))
+        assert result.plan.top_n == 7
+        assert result.ranking_top_n is None
+
+    async def test_no_ranking_no_top_n(self) -> None:
+        llm = FakeLlm(self.COUNTRIES.model_copy(update={"ranking_intent": False}))
+        result = await run_plan(QueryRequest(query="Where are NSCLC trials?"), llm)
+        assert result.plan.top_n is None
+        assert result.ranking_top_n is None
+
+    async def test_relation_is_never_trimmed(self) -> None:
+        network = draft(
+            Filters(drug="cisplatin"),
+            relation=Relation.DRUG_DRUG_COOCCURRENCE,
+            ranking_intent=True,
+        )
+        result = await run_plan(QueryRequest(query="most often combined with"), FakeLlm(network))
+        assert result.plan.top_n is None
+        assert result.ranking_top_n is None
+        assert result.rejected_attempts == []
 
 
 class TestRetryOnValidationFailure:
