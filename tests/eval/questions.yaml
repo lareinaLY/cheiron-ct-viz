@@ -1,0 +1,142 @@
+# Planner eval set (not run by pytest). Run: uv run python scripts/eval_planner.py
+#
+# Each case gives the question and the expected plan fields:
+# - outcome: plan | unsupported | clarification
+# - cohorts: every cohort's filters, in any order. Filters not listed must be absent
+#   (an invented filter is a miss). Strings compare case-insensitively.
+# - dimension or relation; top_n (absent means null).
+# Granularity is scored for temporal dimensions (start_year vs start_month).
+# Names and wording differ from the few-shot examples in planner/prompt.py.
+
+- id: trend_drug_year_range
+  class: trend
+  question: How many nivolumab trials started each year between 2016 and 2022?
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: nivolumab, start_year_from: 2016, start_year_to: 2022}
+    dimension: start_year
+
+- id: trend_drug_monthly
+  class: trend
+  question: Monthly number of new semaglutide trials since 2024
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: semaglutide, start_year_from: 2024}
+    dimension: start_month
+
+- id: trend_condition_over_time
+  class: trend
+  question: How has the number of Alzheimer's trials changed over time?
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: Alzheimer's}
+    dimension: start_year
+
+- id: distribution_brand_name_phase
+  class: distribution
+  question: What is the phase distribution of trials for Ozempic?
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: Ozempic}
+    dimension: phase
+
+- id: distribution_sponsor_class
+  class: distribution
+  question: Break down recruiting multiple myeloma trials by sponsor type
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: multiple myeloma, statuses: [RECRUITING]}
+    dimension: sponsor_class
+
+- id: distribution_enrollment
+  class: distribution
+  question: What are the enrollment sizes of phase 2 glioblastoma trials?
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: glioblastoma, phases: [PHASE2]}
+    dimension: enrollment_bucket
+
+- id: comparison_two_drugs_phase
+  class: comparison
+  question: Compare trial phases for adalimumab versus infliximab
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: adalimumab}
+      - {drug: infliximab}
+    dimension: phase
+
+- id: comparison_statuses_abbreviation
+  class: comparison
+  question: Recruiting vs completed NSCLC trials by phase
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: NSCLC, statuses: [RECRUITING]}
+      - {condition: NSCLC, statuses: [COMPLETED]}
+    dimension: phase
+
+- id: comparison_start_years_shared_filter
+  class: comparison
+  question: How do yearly trial starts compare for trastuzumab and pertuzumab since 2018?
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: trastuzumab, start_year_from: 2018}
+      - {drug: pertuzumab, start_year_from: 2018}
+    dimension: start_year
+
+- id: geographic_top_n_phase
+  class: geographic
+  question: Top 5 countries for phase 3 rheumatoid arthritis trials
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: rheumatoid arthritis, phases: [PHASE3]}
+    dimension: country
+    top_n: 5
+
+- id: geographic_sponsor_recruiting
+  class: geographic
+  question: Where are Pfizer's recruiting trials located?
+  expect:
+    outcome: plan
+    cohorts:
+      - {sponsor: Pfizer, statuses: [RECRUITING]}
+    dimension: country
+
+- id: network_sponsor_drug
+  class: network
+  question: Which sponsors run tirzepatide trials, and which other drugs do they test?
+  expect:
+    outcome: plan
+    cohorts:
+      - {drug: tirzepatide}
+    relation: sponsor_drug
+
+- id: network_condition_drug
+  class: network
+  question: Show the network of conditions and drugs in sickle cell disease trials
+  expect:
+    outcome: plan
+    cohorts:
+      - {condition: sickle cell disease}
+    relation: condition_drug
+
+- id: unsupported_adverse_events
+  class: unsupported
+  question: What were the most common adverse events in pembrolizumab trials?
+  expect:
+    outcome: unsupported
+
+- id: ambiguous_two_groupings
+  class: ambiguous
+  question: Break down Opdivo trials by sponsor and by year
+  expect:
+    outcome: clarification
