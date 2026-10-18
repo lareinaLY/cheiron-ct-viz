@@ -36,13 +36,13 @@
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .chip {
     font: inherit; font-size: 13px; color: var(--ink); background: #FFFFFF;
-    border: 1px solid var(--rule); border-radius: 14px; padding: 4px 12px; cursor: pointer;
+    border: 1px solid var(--rule); border-radius: 8px; padding: 4px 12px; cursor: pointer;
   }
   .chip:hover, .chip:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
   label { display: block; font-size: 13px; color: var(--ink-muted); margin: 12px 0 4px; }
   textarea, input, select {
     width: 100%; font: inherit; color: var(--ink); background: #FFFFFF;
-    border: 1px solid var(--rule); border-radius: 2px; padding: 7px 9px;
+    border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px;
   }
   textarea { min-height: 64px; resize: vertical; }
   textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
@@ -50,18 +50,23 @@
   .actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
   button.primary {
     font: inherit; font-weight: 600; color: #FFFFFF; background: var(--accent);
-    border: 1px solid var(--accent); border-radius: 2px; padding: 7px 20px; cursor: pointer;
+    border: 1px solid var(--accent); border-radius: 8px; padding: 7px 20px; cursor: pointer;
   }
   button.primary:disabled { opacity: 0.6; cursor: default; }
   button.link { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
   .status { font-size: 13px; color: var(--ink-muted); }
+  .field-message { font-size: 13px; color: var(--red); margin: 6px 0 0; }
   details > summary { cursor: pointer; font-size: 14px; color: var(--accent); }
   .options { margin-top: 12px; }
   .hint { font-size: 12px; color: var(--ink-muted); margin: 4px 0 0; }
 
   .result { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+  /* While a new answer is on its way the previous one stays readable but clearly stale. */
+  .result.stale > :not(.loading) { opacity: 0.4; }
+  .loading { font-size: 14px; color: var(--ink-muted); margin: 0 0 12px; }
   .result h2.title { font-size: 19px; font-weight: 600; line-height: 1.35; margin: 0 0 16px; }
-  .banner { padding: 10px 14px; margin-bottom: 8px; border-left: 3px solid; font-size: 14px; }
+  .notices { margin-bottom: 8px; }
+  .banner { padding: 10px 14px; margin-bottom: 8px; border: 1px solid; border-left-width: 3px; border-radius: 8px; font-size: 14px; }
   .banner.error { border-color: var(--red); background: var(--red-bg); color: var(--red); }
   .banner.warning { border-color: var(--amber); background: var(--amber-bg); color: #4D3A10; }
   .banner .kind { font-weight: 600; margin-right: 6px; }
@@ -74,19 +79,20 @@
   .key { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
   .key i { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; }
   .aside-note { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; }
-  .panel { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--rule); }
+  .panel { margin-top: 24px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 12px; background: #FFFFFF; }
   .panel h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
   .panel ol, .panel ul { margin: 0; padding-left: 22px; }
   .panel li { margin-bottom: 4px; }
   .muted { color: var(--ink-muted); }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
   a { color: var(--accent); }
-  .error-box { padding: 12px 16px; border-left: 3px solid var(--red); background: var(--red-bg); }
+  .error-box { padding: 12px 16px; border: 1px solid var(--red); border-left-width: 3px; border-radius: 8px; background: var(--red-bg); }
+  .citation-path { color: var(--ink-muted); font-size: 12px; }
   .error-box p { margin: 0 0 8px; }
-  .dev { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--rule); }
+  .dev { margin-top: 40px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 12px; }
   .dev table { border-collapse: collapse; font-size: 13px; margin: 8px 0 16px; }
   .dev td, .dev th { text-align: left; padding: 3px 16px 3px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
-  .dev pre { font-size: 12px; overflow: auto; max-height: 480px; background: #FFFFFF; border: 1px solid var(--rule); padding: 8px; }
+  .dev pre { font-size: 12px; overflow: auto; max-height: 480px; background: #FFFFFF; border: 1px solid var(--rule); border-radius: 8px; padding: 8px; }
   .dev h4 { font-size: 13px; margin: 16px 0 4px; }
   [hidden] { display: none !important; }
   @media print { .ask, .dev, .actions { display: none !important; } }
@@ -104,6 +110,7 @@
     <form id="query-form">
       <label for="query">Your question</label>
       <textarea id="query" maxlength="2000" placeholder="Compare phases for trials involving pembrolizumab vs nivolumab"></textarea>
+      <p class="field-message" id="query-message" role="alert" hidden></p>
 
       <details class="options" id="options">
         <summary>More options</summary>
@@ -123,14 +130,16 @@
 
       <div class="actions">
         <button type="submit" class="primary" id="send">Ask</button>
-        <span class="status" id="status"></span>
+        <span class="status" id="status" aria-live="polite"></span>
       </div>
     </form>
   </section>
 
   <section class="result" id="result" hidden>
+    <p class="loading" id="loading" aria-live="polite" hidden></p>
     <h2 class="title" id="title"></h2>
-    <div id="banners"></div>
+    <div class="notices" id="notices-error" role="alert" hidden></div>
+    <div class="notices" id="notices-warning" hidden></div>
     <div id="error" hidden></div>
     <div class="facts" id="facts" hidden></div>
     <div id="chart" hidden></div>
@@ -171,7 +180,15 @@ const NODE_STYLES = {
   condition: { label: "Condition", icon: "diamond", symbol: "diamond", itemStyle: { color: "#16907E", borderColor: "#16907E" } },
 };
 const NODE_TYPES = Object.keys(NODE_STYLES);
-const LABELLED_NODES = 15;
+// Labels on the largest nodes and the most connected one; the rest show on hover.
+const LABELLED_NODES = 12;
+// The server caps open-vocabulary charts (MAX_BARS); this is the client's last resort so
+// an unexpected response never becomes a blank canvas (QA report, C5).
+const MAX_DRAWN_BARS = 200;
+const MAX_CHART_HEIGHT = 4000;
+// Where each notice severity is shown: errors, then warnings, above the chart; info below.
+const NOTICE_CONTAINERS = {"error": "notices-error", "warning": "notices-warning", "info": "notes"};
+const NOTICE_KIND = { error: "Data problem:", warning: "Check:" };
 const TEXT_STYLE = { fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", color: "#1A1A18" };
 const TOKEN_KEY = "ctviz-demo-token";
 
@@ -243,6 +260,7 @@ function setupForm() {
   $("token").value = storedToken();
   $("token").addEventListener("change", () => storeToken($("token").value.trim()));
   $("query-form").addEventListener("submit", (event) => { event.preventDefault(); sendQuery(); });
+  $("query").addEventListener("input", () => show("query-message", false));
   $("query").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) sendQuery();
   });
@@ -264,15 +282,48 @@ function buildRequest() {
   return body;
 }
 
+function emptyQuestionMessage(body) {
+  if (body.query.trim()) return "";
+  const structured = Object.keys(body).some((name) => name !== "query");
+  // The server needs a question even when options are set (QueryRequest.query is required).
+  return structured
+    ? "Enter a question as well; the options above refine how it is read."
+    : "Enter a question or set a structured filter";
+}
+
+function startLoading() {
+  const started = performance.now();
+  const update = () => {
+    const seconds = Math.floor((performance.now() - started) / 1000);
+    const text = `Asking… this can take up to 20 s for large cohorts (${seconds} s)`;
+    $("status").textContent = text;
+    $("loading").textContent = text;
+  };
+  update();
+  $("send").disabled = true;
+  $("result").classList.add("stale");
+  show("loading", !$("result").hidden);
+  const timer = setInterval(update, 1000);
+  return () => {
+    clearInterval(timer);
+    $("send").disabled = false;
+    $("result").classList.remove("stale");
+    $("status").textContent = "";
+    show("loading", false);
+  };
+}
+
 async function sendQuery() {
   const body = buildRequest();
-  if (!body.query.trim()) { $("query").focus(); return; }
+  const problem = emptyQuestionMessage(body);
+  $("query-message").textContent = problem;
+  show("query-message", Boolean(problem));
+  if (problem) { $("query").focus(); return; }
   const token = $("token").value.trim();
   storeToken(token);
   const headers = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
-  $("send").disabled = true;
-  $("status").textContent = "Reading the question and counting registry records…";
+  const stopLoading = startLoading();
   const started = performance.now();
   try {
     const response = await fetch("/query", { method: "POST", headers, body: JSON.stringify(body) });
@@ -285,8 +336,7 @@ async function sendQuery() {
   } catch (error) {
     renderTransportError(`The request did not reach the server: ${error.message}`, { status: null, request: body }, "");
   } finally {
-    $("send").disabled = false;
-    $("status").textContent = "";
+    stopLoading();
   }
 }
 
@@ -303,7 +353,7 @@ function renderPasted() {
 
 function clearResult() {
   if (chart) { chart.dispose(); chart = null; }
-  for (const id of ["banners", "error", "facts", "chart", "key", "aside", "citations", "notes", "method"]) {
+  for (const id of ["notices-error", "notices-warning", "error", "facts", "chart", "key", "aside", "citations", "notes", "method"]) {
     $(id).replaceChildren();
     show(id, false);
   }
@@ -351,22 +401,47 @@ function renderTransportError(message, transport, text) {
 function renderResponse(body) {
   const { visualization: vis, meta } = body;
   $("title").textContent = vis.title;
-  renderBanners(meta.warnings || []);
+  renderNotices(meta);
   renderFacts(meta);
   show("chart", true);
   chart = echarts.init($("chart"), null, { renderer: "canvas" });
   if (vis.type === "network_graph") renderNetwork(vis);
   else renderData(vis);
-  renderNotes(meta);
+  renderMethod(meta);
 }
 
-function renderBanners(warnings) {
-  // Severity decides the banner; the message is shown as written.
-  const loud = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
-  for (const w of loud) {
-    const kind = w.severity === "error" ? "Data problem:" : "Note:";
-    $("banners").append(el("div", { class: `banner ${w.severity}`, "data-code": w.code }, el("span", { class: "kind" }, kind), w.message));
+function noticeSeverity(notice) {
+  // An unexpected severity is shown as a warning rather than dropped (nothing is silent).
+  return notice.severity in NOTICE_CONTAINERS ? notice.severity : "warning";
+}
+
+function renderNotices(meta) {
+  // Severity decides the container; messages are shown as written, in response order.
+  // Warning-level assumptions are shown too: severity, not the list, decides loudness.
+  const notices = [...(meta.warnings || []), ...(meta.assumptions || []).filter((a) => noticeSeverity(a) !== "info")];
+  for (const severity of Object.keys(NOTICE_CONTAINERS)) {
+    renderNoticeGroup(severity, notices.filter((n) => noticeSeverity(n) === severity));
   }
+}
+
+function renderNoticeGroup(severity, notices) {
+  const box = $(NOTICE_CONTAINERS[severity]);
+  if (severity === "info") {
+    if (notices.length) box.append(el("h3", {}, "Things to know about these counts"), el("ul", {}, ...notices.map(noticeItem)));
+  } else {
+    box.append(...notices.map((n) => el("div", { class: `banner ${severity}`, "data-code": n.code }, el("span", { class: "kind" }, NOTICE_KIND[severity]), n.message)));
+  }
+  show(NOTICE_CONTAINERS[severity], notices.length > 0);
+}
+
+function noticeItem(notice) {
+  return el("li", { "data-code": notice.code }, notice.message);
+}
+
+function addClientNotice(code, message) {
+  // A display limit applied by this page, stated like the server's own warnings.
+  $("notices-warning").append(el("div", { class: "banner warning", "data-code": code }, el("span", { class: "kind" }, NOTICE_KIND.warning), message));
+  show("notices-warning", true);
 }
 
 function renderFacts(meta) {
@@ -397,22 +472,23 @@ function renderFacts(meta) {
   show("facts", true);
 }
 
-function renderNotes(meta) {
-  const quiet = (meta.warnings || []).filter((w) => w.severity === "info");
-  if (quiet.length) {
-    $("notes").append(el("h3", {}, "Things to know about these counts"), el("ul", {}, ...quiet.map((w) => el("li", { "data-code": w.code }, w.message))));
-    show("notes", true);
-  }
-  const assumptions = meta.assumptions || [];
+function renderMethod(meta) {
+  const assumptions = (meta.assumptions || []).filter((a) => noticeSeverity(a) === "info");
   if (assumptions.length) {
-    $("method").append(el("summary", {}, "How these numbers were made"), el("ul", {}, ...assumptions.map((a) => el("li", { "data-code": a.code }, a.message))));
+    $("method").append(el("summary", {}, "How these numbers were made"), el("ul", {}, ...assumptions.map(noticeItem)));
     show("method", true);
   }
 }
 
 // ---------- citations ----------
 
-function renderCitations(heading, item) {
+function citationValue(c, label) {
+  const raw = c.value === null ? "(not given)" : Array.isArray(c.value) ? c.value.join(", ") : String(c.value);
+  // The chart's display label next to the raw registry value: "Phase 2 (PHASE2)".
+  return label && c.value !== null && label !== raw ? `${label} (${raw})` : raw;
+}
+
+function renderCitations(heading, item, label) {
   const box = $("citations");
   const citations = (item && item.citations) || [];
   const primary = citations.filter((c) => c.role !== "supporting");
@@ -421,7 +497,7 @@ function renderCitations(heading, item) {
   box.replaceChildren(
     el("h3", {}, heading),
     el("p", { class: "muted", style: "margin:0 0 8px" }, item
-      ? `${studies(total)} in total; ${cited === total ? "all are" : `${fmt(cited)} are`} listed here with the registry value they were counted on.`
+      ? `Showing ${fmt(cited)} of ${studies(total)}, each with the registry field and value it was counted on.`
       : "No studies: nothing in this group for this period."),
   );
   if (primary.length) {
@@ -432,10 +508,13 @@ function renderCitations(heading, item) {
     }
     const list = el("ol", {});
     for (const [nctId, items] of byTrial) {
-      const li = el("li", {}, el("a", { href: items[0].url, target: "_blank", rel: "noopener" }, nctId));
+      const li = el("li", {}, el("a", { class: "mono", href: items[0].url, target: "_blank", rel: "noopener" }, nctId));
       for (const c of items) {
-        const value = c.value === null ? "(not given)" : Array.isArray(c.value) ? c.value.join(", ") : c.value;
-        li.append(el("span", { class: c.role === "supporting" ? "muted" : "" }, ` · ${c.role === "supporting" ? "listed intervention: " : ""}${value}`));
+        const supporting = c.role === "supporting";
+        li.append(
+          el("div", { class: supporting ? "muted" : "" }, `${supporting ? "listed intervention: " : ""}${citationValue(c, supporting ? null : label)}`),
+          el("div", { class: "citation-path mono" }, c.field_path),
+        );
       }
       list.append(li);
     }
@@ -450,7 +529,11 @@ function renderCitations(heading, item) {
 
 // ---------- bar, grouped bar, histogram, time series ----------
 
-function datumStyle(datum, color) {
+function datumStyle(datum, color, radius) {
+  return { ...flagStyle(datum, color), borderRadius: radius };
+}
+
+function flagStyle(datum, color) {
   if (datum.is_unknown || datum.is_unrecognized) return { color: GREY, decal: HATCH };
   if (datum.is_not_applicable) return { color: GREY };
   if (datum.is_other) return { color, opacity: 0.4 };
@@ -474,6 +557,12 @@ function renderData(vis) {
   const offAxis = temporal ? vis.data.filter((d) => d.is_unknown) : [];
   if (temporal) categories = categories.filter((c) => !offAxis.some((d) => String(d[xField]) === c));
   const seriesNames = colorField ? (enc.color.sort || [...new Set(vis.data.map((d) => d[colorField]))]) : [enc.y.title || "Studies"];
+  if (!temporal && categories.length > MAX_DRAWN_BARS) {
+    addClientNotice("display_cap", `This chart has ${fmt(categories.length)} bars; the first ${fmt(MAX_DRAWN_BARS)} are drawn. Set "Show top N" for a readable chart; the full data is in Details for developers.`);
+    categories = categories.slice(0, MAX_DRAWN_BARS);
+  }
+  // Rounded at the data end only; the baseline end stays square.
+  const radius = horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0];
 
   const lookup = new Map(vis.data.map((d) => [`${colorField ? d[colorField] : ""}\u0000${d[xField]}`, d]));
   const series = seriesNames.map((name, index) => {
@@ -484,7 +573,7 @@ function renderData(vis) {
       data: categories.map((category) => {
         const datum = lookup.get(`${colorField ? name : ""}\u0000${category}`);
         if (!datum) return { value: 0, datum: null, itemStyle: { color }, label: { show: false } };
-        return { value: datum.count, datum, itemStyle: datumStyle(datum, color) };
+        return { value: datum.count, datum, itemStyle: datumStyle(datum, color, radius) };
       }),
       label: {
         show: !temporal || categories.length <= 24, position: horizontal ? "right" : "top",
@@ -512,11 +601,13 @@ function renderData(vis) {
     splitLine: { lineStyle: { color: "#ECECE8" } }, axisLabel: { color: "#5E5E59", fontSize: 11, formatter: fmt },
   };
   const rows = horizontal ? categories.length * Math.max(1, seriesNames.length) : 0;
-  $("chart").style.height = `${horizontal ? Math.max(240, rows * 24 + 90) : 440}px`;
+  $("chart").style.height = `${horizontal ? Math.min(MAX_CHART_HEIGHT, Math.max(240, rows * 24 + 90)) : 440}px`;
   chart.resize();
   chart.setOption({
     textStyle: TEXT_STYLE, animation: false,
-    grid: { left: 8, right: 56, top: colorField ? 44 : 28, bottom: rotate ? 16 : 8, containLabel: true },
+    // containLabel does not reserve room for the axis title, so the bottom margin does;
+    // rotated first labels also lean left of the axis.
+    grid: { left: rotate ? 24 : 8, right: 56, top: colorField ? 44 : 28, bottom: horizontal ? 8 : 28, containLabel: true },
     legend: colorField ? { top: 0, left: 0, icon: "rect", itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 13 } } : undefined,
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
@@ -526,7 +617,7 @@ function renderData(vis) {
   chart.on("click", (params) => {
     const datum = params.data && params.data.datum;
     const where = colorField ? `${params.seriesName} · ${params.name}` : params.name;
-    renderCitations(where, datum);
+    renderCitations(where, datum, datum ? datum.label : null);
   });
 
   if (offAxis.length) {
@@ -573,7 +664,11 @@ function renderNetwork(vis) {
   const edges = vis.edges.map((e) => e.data);
   const maxSize = Math.max(1, ...nodes.map((n) => n.size));
   const maxWeight = Math.max(1, ...edges.map((e) => e.weight));
+  const degree = new Map();
+  for (const e of edges) for (const id of [e.source, e.target]) degree.set(id, (degree.get(id) || 0) + 1);
+  const hub = [...nodes].sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))[0];
   const labelled = new Set([...nodes].sort((a, b) => b.size - a.size).slice(0, LABELLED_NODES).map((n) => n.id));
+  if (hub) labelled.add(hub.id);
   const labels = new Map(nodes.map((n) => [n.id, n.label]));
   const present = NODE_TYPES.filter((t) => nodes.some((n) => n.type === t));
   $("chart").style.height = "640px";
@@ -591,13 +686,16 @@ function renderNetwork(vis) {
         : `${escapeHtml(p.data.node.label)}<br>${NODE_STYLES[p.data.node.type] ? NODE_STYLES[p.data.node.type].label : escapeHtml(p.data.node.type)}<br><b>${studies(p.data.node.size)}</b>`,
     },
     series: [{
-      type: "graph", layout: "force", top: 40, roam: "move", draggable: true,
-      force: { repulsion: 700, edgeLength: [80, 260], gravity: 0.05, layoutAnimation: false },
+      // Room under the legend and a slight zoom-out keep the layout inside the box;
+      // a circular start instead of random positions makes every run look the same.
+      type: "graph", layout: "force", top: 56, bottom: 24, left: 24, right: 24, zoom: 0.7, roam: true, draggable: true,
+      force: { initLayout: "circular", repulsion: 600, edgeLength: [80, 240], gravity: 0.15, layoutAnimation: false },
+      labelLayout: { hideOverlap: true },
       categories: present.map((t) => ({ name: NODE_STYLES[t].label, symbol: NODE_STYLES[t].symbol, itemStyle: NODE_STYLES[t].itemStyle })),
       data: nodes.map((n) => {
         const style = NODE_STYLES[n.type] || NODE_STYLES.drug;
         return {
-          id: n.id, name: n.id, node: n,
+          id: n.id, name: n.id, node: n, value: n.size,
           category: Math.max(0, present.indexOf(n.type)),
           symbol: style.symbol,
           // Area-proportional marks: radius on a square-root scale of the study count.
@@ -619,10 +717,10 @@ function renderNetwork(vis) {
       const e = params.data.edge;
       renderCitations(`${labels.get(e.source)} — ${labels.get(e.target)}`, e);
     } else if (params.dataType === "node") {
-      renderCitations(params.data.node.label, params.data.node);
+      renderCitations(params.data.node.label, params.data.node, params.data.node.label);
     }
   });
-  $("aside").textContent = "Node size is the number of studies an entity appears in; a line means both are listed in the same study record. Drag to pan.";
+  $("aside").textContent = "Node size is the number of studies an entity appears in; a line means both are listed in the same study record. Drag to pan, scroll to zoom.";
   show("aside", true);
 }
 
