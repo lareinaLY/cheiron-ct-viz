@@ -245,6 +245,16 @@ function storedToken() {
 function storeToken(value) {
   try { value ? sessionStorage.setItem(TOKEN_KEY, value) : sessionStorage.removeItem(TOKEN_KEY); } catch (_) { /* private mode */ }
 }
+// The 401 message tells API callers they may pass ?token=; honour it here too, then drop it
+// from the address bar so the token is not left in history or a copied link.
+function adoptUrlToken() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("token")) return;
+  const token = url.searchParams.get("token").trim();
+  if (token) storeToken(token);
+  url.searchParams.delete("token");
+  history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+}
 
 // ---------- form ----------
 
@@ -257,6 +267,7 @@ function setupForm() {
     chip.addEventListener("click", () => { $("query").value = text; sendQuery(); });
     return chip;
   }));
+  adoptUrlToken();
   $("token").value = storedToken();
   $("token").addEventListener("change", () => storeToken($("token").value.trim()));
   $("query-form").addEventListener("submit", (event) => { event.preventDefault(); sendQuery(); });
@@ -362,6 +373,11 @@ function clearResult() {
 
 function renderAny(body, transport) {
   clearResult();
+  if (transport.status === 401) {
+    renderTokenRequired();
+    renderDeveloper(body, transport);
+    return;
+  }
   if (body && typeof body === "object" && body.visualization && body.meta) {
     renderResponse(body);
   } else if (body && typeof body === "object" && "code" in body && "message" in body) {
@@ -386,6 +402,17 @@ function renderError(body) {
   }
   $("error").append(box);
   show("error", true);
+}
+
+// A 401 is about this page's setup, not the question, so the API's suggestions don't apply.
+// No scroll to the result: focusing the token field brings the form into view instead.
+function renderTokenRequired() {
+  $("title").textContent = "No chart for this question";
+  $("error").append(el("div", { class: "error-box" },
+    el("p", {}, "This server requires an access token. Enter it under More options → Access token.")));
+  show("error", true);
+  $("options").open = true;
+  $("token").focus();
 }
 
 function renderTransportError(message, transport, text) {
