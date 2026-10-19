@@ -130,6 +130,7 @@ class NoticeCode(StrEnum):
     DID_YOU_MEAN = "did_you_mean"
     WITHDRAWN = "withdrawn"
     STATUS_TREND_BIAS = "status_trend_bias"
+    RECRUITING_IS_STUDY_LEVEL = "recruiting_is_study_level"
     COHORTS_OVERLAP = "cohorts_overlap"
     COHORTS_OVERLAP_UNKNOWN = "cohorts_overlap_unknown"
     COHORT_SUBSET = "cohort_subset"
@@ -177,6 +178,7 @@ DEFAULT_SEVERITY: dict[NoticeCode, NoticeSeverity] = {
             NoticeCode.NOT_APPLIED,
             NoticeCode.DID_YOU_MEAN,
             NoticeCode.STATUS_TREND_BIAS,
+            NoticeCode.RECRUITING_IS_STUDY_LEVEL,
             NoticeCode.COHORT_SUBSET,
             NoticeCode.TOPN_TIES,
             NoticeCode.READABILITY_CAP,

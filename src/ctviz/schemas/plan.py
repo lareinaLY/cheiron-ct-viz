@@ -65,6 +65,9 @@ MatchMode = Literal["intervention_name", "broad"]
 MAX_TOP_N = 1000
 MIN_START_YEAR = 1900
 MAX_START_YEAR = 2100
+# A comparison chart stays readable, and a request's upstream fetches stay bounded, with
+# a handful of cohorts; each cohort is a full retrieval.
+MAX_COHORTS = 6
 # Input size limits (engineering review M3): a question is a sentence or two, a filter
 # value a name; anything longer is a mistake or abuse that would be billed as LLM tokens
 # or sent upstream as an oversized URL.

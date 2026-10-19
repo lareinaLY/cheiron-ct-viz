@@ -28,6 +28,23 @@ def assert_rejected(plan: QueryPlan, reason: PlanErrorReason | None = None) -> N
     assert str(error.value)
 
 
+def cohorts(count: int) -> list[Cohort]:
+    return [Cohort(label=f"c{i}", filters=Filters(drug=f"drug{i}")) for i in range(count)]
+
+
+def test_more_than_six_cohorts_rejected() -> None:
+    plan = QueryPlan(cohorts=cohorts(7), dimension=Dimension.PHASE)
+    with pytest.raises(PlanValidationError) as error:
+        validate_plan(plan)
+    assert error.value.reason == PlanErrorReason.TOO_MANY_COHORTS
+    assert str(error.value) == "At most 6 cohorts can be compared, got 7."
+
+
+def test_six_cohorts_accepted() -> None:
+    plan = QueryPlan(cohorts=cohorts(6), dimension=Dimension.PHASE)
+    assert validate_plan(plan) is plan
+
+
 def test_neither_dimension_nor_relation_rejected() -> None:
     assert_rejected(make_plan(), PlanErrorReason.NO_DIMENSION_OR_RELATION)
 

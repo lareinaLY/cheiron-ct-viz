@@ -71,6 +71,9 @@ class TestClassifySkipRate:
     def test_ratio_above_degraded_below_min_count_is_normal(self) -> None:
         assert classify_skip_rate(200, 19, DEFAULTS) == SkipBand.NORMAL
 
+    def test_whole_small_cohort_unreadable_is_refused(self) -> None:
+        assert classify_skip_rate(10, 10, DEFAULTS) == SkipBand.REFUSE
+
     def test_nothing_retrieved_is_normal(self) -> None:
         assert classify_skip_rate(0, 0, DEFAULTS) == SkipBand.NORMAL
 
@@ -158,6 +161,8 @@ class TestBandsEndToEnd:
         assert first.startswith("DEGRADED DATA:")
         assert "20 of 400" in first
         assert "5.0%" in first
+        assert "at least 5% of records could not be read" in first
+        assert "DEGRADED_SKIP_RATIO" not in first
         assert sum(d.count for d in body.visualization.data) == 380
 
     def test_refused_with_structured_error(
@@ -173,6 +178,16 @@ class TestBandsEndToEnd:
         )
         assert "30 of 50" in error.message
         assert error.suggestions
+
+    def test_whole_small_cohort_unreadable_is_refused(
+        self, api: TestClient, mock_api: respx.MockRouter
+    ) -> None:
+        serve(mock_api, batch(good=0, skipped=10))
+        response = ask(api)
+        assert response.status_code == 502, response.text
+        error = ErrorResponse.model_validate(response.json())
+        assert error.code == "upstream_data_format_changed"
+        assert "10 of 10" in error.message
 
     async def test_any_refused_cohort_refuses_the_comparison(
         self, mock_api: respx.MockRouter

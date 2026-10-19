@@ -27,6 +27,7 @@ class PlanErrorReason(StrEnum):
     TOP_N_REQUIRES_DIMENSION = "top_n_requires_dimension"
     INVALID_YEAR_RANGE = "invalid_year_range"
     DUPLICATE_COHORT = "duplicate_cohort"
+    TOO_MANY_COHORTS = "too_many_cohorts"
     CONTRADICTORY_FILTERS = "contradictory_filters"
 
 

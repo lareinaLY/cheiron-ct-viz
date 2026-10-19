@@ -44,6 +44,7 @@ from ctviz.retrieval.client import CtGovClient, check_api_reachable
 from ctviz.retrieval.enums import check_enum_drift
 from ctviz.schemas.llm import LlmHealth
 from ctviz.schemas.plan import (
+    MAX_COHORTS,
     MAX_START_YEAR,
     MAX_TOP_N,
     MIN_START_YEAR,
@@ -102,6 +103,9 @@ PLAN_SUGGESTIONS: dict[PlanErrorReason, list[str]] = {
         "Make `start_year_from` <= `start_year_to`.",
     ],
     PlanErrorReason.DUPLICATE_COHORT: ["Give each cohort different filters."],
+    PlanErrorReason.TOO_MANY_COHORTS: [
+        f"Compare at most {MAX_COHORTS} cohorts, or split the comparison into several requests."
+    ],
     PlanErrorReason.CONTRADICTORY_FILTERS: [
         "Remove WITHDRAWN from `statuses`, or set `exclude_withdrawn` to false.",
     ],
@@ -142,7 +146,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
     GZIP_MINIMUM_BYTES are gzipped for clients that accept it.
     /query runs at most `max_concurrent_queries` at once and is abandoned after
     `request_deadline_seconds` (the wait for a slot included); with `demo_token` set it
-    needs that token.
+    and /health/llm need that token.
     """
     settings = settings or Settings()
     slots = asyncio.Semaphore(settings.max_concurrent_queries)
@@ -164,6 +168,11 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.llm = llm if llm is not None else build_llm(settings)
+        if settings.demo_token is None:
+            logger.warning(
+                "DEMO_TOKEN is not set: /health/llm is open, and every call to it makes "
+                "billed LLM probe calls"
+            )
         async with CtGovClient(settings, cache=build_cache(settings)) as client:
             app.state.client = client
             app.state.enum_drift_task = (
@@ -212,7 +221,7 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         """Liveness probe; does not call ClinicalTrials.gov."""
         return {"status": "ok"}
 
-    @app.get("/health/llm")
+    @app.get("/health/llm", dependencies=[Depends(require_token)])
     async def health_llm(
         llm: Annotated[LlmClient | None, Depends(get_llm)],
     ) -> JSONResponse:
@@ -221,7 +230,8 @@ def create_app(settings: Settings | None = None, llm: LlmClient | None = None) -
         Each probe is a real (billed, tiny) call, so this is on demand only: an external
         scheduler (cron, uptime monitor) would call it daily to notice a revoked key or a
         retired model before users do. A provider whose circuit breaker is open is
-        reported as skipped without a call.
+        reported as skipped without a call. Because the probes are billed, it needs
+        DEMO_TOKEN when that is set, like /query.
         """
         if isinstance(llm, FallbackChain):
             body = LlmHealth(configured=True, providers=await llm.health())

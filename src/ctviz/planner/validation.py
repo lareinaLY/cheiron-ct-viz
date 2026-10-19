@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from ctviz.errors import PlanErrorReason, PlanValidationError
-from ctviz.schemas.plan import MAX_START_YEAR, MAX_TOP_N, MIN_START_YEAR, QueryPlan
+from ctviz.schemas.plan import (
+    MAX_COHORTS,
+    MAX_START_YEAR,
+    MAX_TOP_N,
+    MIN_START_YEAR,
+    QueryPlan,
+)
 from ctviz.schemas.trial import OverallStatus
 from ctviz.spec.chart import check_chart_hint
 
@@ -11,16 +17,21 @@ from ctviz.spec.chart import check_chart_hint
 def validate_plan(plan: QueryPlan) -> QueryPlan:
     """Return `plan` unchanged if it can be answered, else raise PlanValidationError.
 
-    Rejects: neither dimension nor relation; both set; a relation combined with two or
-    more cohorts (comparisons need a dimension); a chart_hint incompatible with the
-    dimension or relation (e.g. bar_chart for a relation); a top_n or bottom_n outside
-    1..MAX_TOP_N, both set, or either combined with a relation (they trim buckets, and
-    networks have none); a start
-    year outside MIN_START_YEAR..MAX_START_YEAR, or a cohort whose start_year_from is
-    after its start_year_to; two cohorts with the same label or the
-    same filters (results are keyed by label, and identical cohorts compare nothing); a
-    cohort with status WITHDRAWN and exclude_withdrawn (it matches nothing).
+    Rejects: more than MAX_COHORTS cohorts; neither dimension nor relation; both set; a
+    relation combined with two or more cohorts (comparisons need a dimension); a
+    chart_hint incompatible with the dimension or relation (e.g. bar_chart for a
+    relation); a top_n or bottom_n outside 1..MAX_TOP_N, both set, or either combined
+    with a relation (they trim buckets, and networks have none); a start year outside
+    MIN_START_YEAR..MAX_START_YEAR, or a cohort whose start_year_from is after its
+    start_year_to; two cohorts with the same label or the same filters (results are
+    keyed by label, and identical cohorts compare nothing); a cohort with status
+    WITHDRAWN and exclude_withdrawn (it matches nothing).
     """
+    if len(plan.cohorts) > MAX_COHORTS:
+        raise PlanValidationError(
+            PlanErrorReason.TOO_MANY_COHORTS,
+            f"At most {MAX_COHORTS} cohorts can be compared, got {len(plan.cohorts)}.",
+        )
     if plan.dimension is None and plan.relation is None:
         raise PlanValidationError(
             PlanErrorReason.NO_DIMENSION_OR_RELATION,

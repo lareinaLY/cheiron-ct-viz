@@ -275,6 +275,7 @@ async def execute(
                     Notice.of(NoticeCode.STATUS_TREND_BIAS, text)
                     for text in status_trend_warnings(plan)
                 ),
+                *recruiting_country_warnings(plan),
                 *(
                     Notice.of(NoticeCode.DATA_TIMESTAMP_MISSING, text)
                     for text in data_timestamp_warnings(timestamp_problem)
@@ -447,6 +448,26 @@ def status_trend_warnings(plan: QueryPlan) -> list[str]:
     ]
 
 
+def recruiting_country_warnings(plan: QueryPlan) -> list[Notice]:
+    """Warn that a recruiting filter on a country axis is about studies, not sites.
+
+    overallStatus is one value per study, so a multi-country study that is recruiting
+    counts in every country it lists, including countries whose sites have not started
+    or have finished recruiting.
+    """
+    if plan.dimension != Dimension.COUNTRY:
+        return []
+    if not any(OverallStatus.RECRUITING in cohort.filters.statuses for cohort in plan.cohorts):
+        return []
+    return [
+        Notice.of(
+            NoticeCode.RECRUITING_IS_STUDY_LEVEL,
+            "Recruiting is the study's overall status; a listed country may have sites that "
+            "are not yet or no longer recruiting.",
+        )
+    ]
+
+
 def ranking_assumptions(
     interpretation: Interpretation, result: GroupedCohorts | Graph
 ) -> list[Notice]:
@@ -486,10 +507,14 @@ def normalize_all(
 def classify_skip_rate(retrieved: int, skipped: int, thresholds: DataQualityThresholds) -> SkipBand:
     """Band of one cohort's skip ratio (structurally skipped / retrieved).
 
-    Fewer than `min_skipped_for_degraded` skipped records is always normal, so a small
-    sample with a few bad records is not flagged; otherwise the ratio is compared with
-    the refuse and degraded thresholds (both inclusive).
+    A cohort where every retrieved record was skipped is always refused: there is nothing
+    left to chart, whatever its size. Otherwise fewer than `min_skipped_for_degraded`
+    skipped records is normal, so a small sample with a few bad records is not flagged;
+    above that the ratio is compared with the refuse and degraded thresholds (both
+    inclusive).
     """
+    if retrieved > 0 and skipped == retrieved:
+        return SkipBand.REFUSE
     if retrieved == 0 or skipped < thresholds.min_skipped_for_degraded:
         return SkipBand.NORMAL
     ratio = skipped / retrieved
@@ -550,7 +575,8 @@ def data_quality_warnings(
             NoticeCode.DEGRADED_DATA,
             f"DEGRADED DATA: {len(data.skipped)} of {data.retrieved} retrieved trials "
             f"({len(data.skipped) / data.retrieved:.1%}) could not be read and are not counted "
-            f"(DEGRADED_SKIP_RATIO={thresholds.degraded_skip_ratio:g}). The API's data format "
+            f"(the warning applies when at least {thresholds.degraded_skip_ratio:.0%} of records "
+            "could not be read). The API's data format "
             "may have changed; counts and rankings may be off by up to the skipped number.",
         )
         for data in degraded

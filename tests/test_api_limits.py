@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Iterator
 from typing import Any
 
@@ -104,6 +105,38 @@ class TestDemoToken:
         with self.app() as api:
             assert api.get("/health").status_code == 200
             assert api.get("/").status_code == 200
+
+    def test_llm_health_needs_the_token(self) -> None:
+        with self.app() as api:
+            assert api.get("/health/llm").status_code == 401
+            assert api.get("/health/llm", headers={"Authorization": "Bearer nope"}).status_code == (
+                401
+            )
+            assert (
+                api.get("/health/llm", headers={"Authorization": "Bearer s3cret"}).status_code
+                == 200
+            )
+            assert api.get("/health/llm?token=s3cret").status_code == 200
+
+    def test_token_set_logs_no_open_llm_health_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING), self.app():
+            pass
+        assert not any("/health/llm" in record.getMessage() for record in caplog.records)
+
+    def test_no_token_leaves_llm_health_open_with_a_startup_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING), TestClient(create_app(settings())) as api:
+            assert api.get("/health/llm").status_code == 200
+        warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno == logging.WARNING and "/health/llm" in record.getMessage()
+        ]
+        assert len(warnings) == 1
+        assert "DEMO_TOKEN" in warnings[0]
 
     def test_no_token_configured_means_no_check(self, mock_api: respx.MockRouter) -> None:
         serve(mock_api, [make_raw_study("NCT1", countries=["France"])])
