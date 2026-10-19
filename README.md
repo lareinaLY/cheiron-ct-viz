@@ -74,6 +74,8 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
 
 ## 2. Quick start
 
+A demo instance runs at http://45.77.187.77:8000/ for the review period (demo UI at /, OpenAPI at /docs); the access token is in the submission note.
+
 **Prerequisites:** Python ≥ 3.12 and network access to `clinicaltrials.gov`. An OpenAI API
 key is optional (see below).
 
@@ -696,7 +698,7 @@ persona:
 | Domain | Clinical development scientist | [docs/review_domain.md](docs/review_domain.md) |
 
 All three agreed the arithmetic is right and several framings mislead. Fixed from them
-(decisions 104–114):
+(docs/decisions.md, review findings):
 - silently dropped qualifiers (`unhandled_terms`);
 - co-occurrence presented as combination;
 - observational studies in an "Unknown" phase, and the count unit;
@@ -945,8 +947,15 @@ In order:
   - the drug-match union (decision 84);
   - Unknown vs Unrecognized for unparseable dates, confirmed by the developer (decision 72).
 - Three independent review sessions (engineer, CI analyst, clinical scientist) ran in fresh
-  contexts that had not seen the code being written, and their findings drove decisions
-  104–114.
+  contexts that had not seen the code being written, and their findings drove
+  docs/decisions.md (review findings).
+- A systematic demo-UI QA pass in Chrome (29 cases, docs/ui_test_report.md) found two
+  blockers that were fixed the same day; before/after screenshots are in
+  docs/ui_screenshots/fixes/.
+- Two final rubric-style reviews in fresh sessions, acting as the hiring panel, produced the
+  last fixes: refusing fully unreadable cohorts, gating /health/llm, the
+  recruiting-is-study-level notice, the 6-cohort cap, two-study edge citations, the
+  histogram example and a README factual sweep.
 - External validation did not rely on the model's own judgement: live reconciliation against
   the registry (§6) and the planner eval on real models.
 - No commits were made by the AI; all commits and branches are the developer's.
