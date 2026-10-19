@@ -201,6 +201,8 @@ uv run python scripts/eval_planner.py --models gpt-4.1-mini gpt-5-mini --repeats
 **Deploy** (Debian 12, systemd; files in `deploy/`):
 - Once: `scp deploy/bootstrap.sh root@<ip>:` and then, on the server as root, `bash bootstrap.sh`. It installs uv, clones to `/opt/cheiron-ct-viz`, runs `uv sync --frozen --no-dev` and installs `ctviz.service` (uvicorn, one worker, port 8000).
 - Then edit `/opt/cheiron-ct-viz/.env` and run `systemctl restart ctviz`. **`DEMO_TOKEN` is required on the server**: the port is public, and without a token `/query` and the billed `/health/llm` are open.
+- Leave no empty `KEY=` lines in the server .env: systemd's EnvironmentFile passes an empty string where python-dotenv treats the key as unset (an empty OPENAI_BASE_URL made every OpenAI call fail with a connection error).
+- When `DEMO_TOKEN` is set, enter it in the demo UI's "Access token" field (it is kept in `sessionStorage` for the tab).
 - After each push, from your laptop: `./deploy/deploy.sh` (or `HOST=root@<ip> ./deploy/deploy.sh`). It hard-resets the server to `origin/main`, syncs, restarts, and checks `/health`.
 - It deploys what is pushed, not your working tree, and warns if your local HEAD differs from `origin/main`.
 

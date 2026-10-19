@@ -26,7 +26,7 @@ systemctl restart ctviz
 sleep 2
 systemctl is-active ctviz
 echo "deployed \$(git rev-parse --short HEAD)"
-curl -fsS localhost:8000/health && echo
+curl -fsS 127.0.0.1:8000/health && echo
 EOF
 
 echo "remote health:"

@@ -21,6 +21,7 @@ uv sync --frozen --no-dev
 
 if [ ! -f .env ]; then
   cp .env.example .env
+  sed -i -E '/^[A-Z_]+=$/d' .env
   echo ">>> Edit $APP_DIR/.env now (API keys, LLM_FALLBACK_CHAIN, DEMO_TOKEN), then: systemctl restart ctviz"
 fi
 
@@ -29,4 +30,4 @@ systemctl daemon-reload
 systemctl enable --now ctviz
 sleep 2
 systemctl --no-pager --lines=5 status ctviz || true
-curl -fsS localhost:8000/health && echo
+curl -fsS 127.0.0.1:8000/health && echo
