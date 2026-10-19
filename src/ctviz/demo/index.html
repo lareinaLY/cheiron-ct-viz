@@ -11,15 +11,25 @@
      greys and tones from datum flags, and zero periods from encoding.x.sort. */
   :root {
     --paper: #FAFAF8;
+    --surface: #FFFFFF;
     --ink: #1A1A18;
-    --ink-muted: #5E5E59;
-    --rule: #E2E2DE;
-    --accent: #2F64A0;
+    --ink-muted: #5B6470;
+    --rule: #D9DEE5;
+    --field: #CFD5DD;
+    --accent: #1F4E79;
+    --accent-hover: #173B5C;
+    --focus-ring: rgba(31, 78, 121, 0.25);
+    --hover-bg: #F3F5F8;
     --grey: #A8A8A3;
-    --red: #9B2C2C;
-    --red-bg: #FBEFEF;
-    --amber: #8A5A00;
-    --amber-bg: #FBF4E6;
+    --red: #8A1F1F;
+    --red-edge: #B42318;
+    --red-bg: #FBEAEA;
+    --amber: #6B4A00;
+    --amber-edge: #B26A00;
+    --amber-bg: #FFF4E0;
+    --info: #3A4350;
+    --info-bg: #F3F5F8;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
   body {
@@ -29,71 +39,98 @@
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-variant-numeric: tabular-nums;
   }
-  .page { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; }
-  @media (max-width: 640px) { .page { padding: 20px 16px 48px; } }
-  header h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
-  header p { margin: 0 0 20px; color: var(--ink-muted); font-size: 14px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  /* The chart panel may use the full 1100px; the reading column (header, form) stays 880px. */
+  .page { max-width: 1100px; margin: 0 auto; padding: 40px 24px 64px; }
+  header, .ask { max-width: 880px; margin-left: auto; margin-right: auto; }
+  @media (max-width: 640px) { .page { padding: 24px 16px 48px; } }
+  header { margin-bottom: 32px; }
+  header h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; margin: 0 0 8px; }
+  header p { margin: 0; color: var(--ink-muted); font-size: 16px; }
+  .chips-label { font-size: 13px; font-weight: 500; color: var(--ink-muted); margin: 0 0 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
   .chip {
-    font: inherit; font-size: 13px; color: var(--ink); background: #FFFFFF;
-    border: 1px solid var(--rule); border-radius: 8px; padding: 4px 12px; cursor: pointer;
+    font: inherit; font-size: 13px; line-height: 1.4; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 8px; padding: 6px 12px; cursor: pointer;
   }
-  .chip:hover, .chip:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
-  label { display: block; font-size: 13px; color: var(--ink-muted); margin: 12px 0 4px; }
+  .chip:hover { background: var(--hover-bg); }
+  .chip:focus-visible { outline: 2px solid var(--focus-ring); border-color: var(--accent); }
+  label { display: block; font-size: 13px; font-weight: 500; color: var(--ink-muted); margin: 16px 0 8px; }
+  #query-form > label:first-child { margin-top: 0; }
   textarea, input, select {
-    width: 100%; font: inherit; color: var(--ink); background: #FFFFFF;
-    border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px;
+    width: 100%; font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--field); border-radius: 8px; padding: 8px 10px;
   }
-  textarea { min-height: 64px; resize: vertical; }
-  textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  textarea { font-size: 15px; padding: 14px; min-height: 88px; resize: vertical; }
+  /* Focus ring drawn with outline so no element carries a box-shadow. */
+  textarea:focus, input:focus, select:focus { outline: 2px solid var(--focus-ring); outline-offset: 0; border-color: var(--accent); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 16px; }
-  .actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+  .actions { display: flex; align-items: center; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
   button.primary {
     font: inherit; font-weight: 600; color: #FFFFFF; background: var(--accent);
-    border: 1px solid var(--accent); border-radius: 8px; padding: 7px 20px; cursor: pointer;
+    border: 0; border-radius: 8px; padding: 10px 20px; cursor: pointer;
   }
-  button.primary:disabled { opacity: 0.6; cursor: default; }
-  button.link { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  button.primary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  button.primary:disabled { opacity: 0.5; cursor: default; }
+  button.link { font: inherit; font-size: 14px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
   .status { font-size: 13px; color: var(--ink-muted); }
-  .field-message { font-size: 13px; color: var(--red); margin: 6px 0 0; }
-  details > summary { cursor: pointer; font-size: 14px; color: var(--accent); }
-  .options { margin-top: 12px; }
-  .hint { font-size: 12px; color: var(--ink-muted); margin: 4px 0 0; }
+  .field-message { font-size: 13px; color: var(--red); margin: 8px 0 0; }
+  details > summary { cursor: pointer; font-size: 14px; color: var(--accent); list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "\25B8"; display: inline-block; width: 1em; }
+  details[open] > summary::before { transform: rotate(90deg); }
+  .options { margin-top: 16px; }
+  .hint { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; }
 
-  .result { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+  /* Flex column so the counting line sits right under the title whatever notices follow;
+     DOM order (which the tests pin) is unchanged. */
+  .result {
+    display: flex; flex-direction: column;
+    margin-top: 32px; padding: 20px; background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 12px;
+  }
+  .result > .loading { order: -3; }
+  .result > .title { order: -2; }
+  .result > .facts { order: -1; }
   /* While a new answer is on its way the previous one stays readable but clearly stale. */
   .result.stale > :not(.loading) { opacity: 0.4; }
-  .loading { font-size: 14px; color: var(--ink-muted); margin: 0 0 12px; }
-  .result h2.title { font-size: 19px; font-weight: 600; line-height: 1.35; margin: 0 0 16px; }
-  .notices { margin-bottom: 8px; }
-  .banner { padding: 10px 14px; margin-bottom: 8px; border: 1px solid; border-left-width: 3px; border-radius: 8px; font-size: 14px; }
-  .banner.error { border-color: var(--red); background: var(--red-bg); color: var(--red); }
-  .banner.warning { border-color: var(--amber); background: var(--amber-bg); color: #4D3A10; }
-  .banner .kind { font-weight: 600; margin-right: 6px; }
-  .facts {
-    display: flex; flex-wrap: wrap; gap: 6px 28px; font-size: 14px;
-    padding: 10px 0; margin: 16px 0 20px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-  }
-  .facts span { white-space: nowrap; }
+  .loading { font-size: 14px; color: var(--ink-muted); margin: 0 0 16px; }
+  .result h2.title { font-size: 18px; font-weight: 600; line-height: 1.35; margin: 0 0 4px; }
+  .notices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .banner { padding: 12px 14px; border: 0; border-left: 3px solid; border-radius: 8px; font-size: 14px; }
+  .banner.error { border-left-color: var(--red-edge); background: var(--red-bg); color: var(--red); }
+  .banner.warning { border-left-color: var(--amber-edge); background: var(--amber-bg); color: var(--amber); }
+  .banner .kind { font-weight: 600; margin-right: 8px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 0 24px; font-size: 13px; color: var(--ink-muted); margin: 0 0 16px; }
   #chart { width: 100%; height: 420px; }
-  .key { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
-  .key i { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; }
+  /* ECharts gives its tooltip an inline box-shadow; hairlines only. */
+  #chart div[style*="box-shadow"] { box-shadow: none !important; }
+  .key { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 24px; }
+  .key i { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 8px; border-radius: 2px; }
+  .key .type { margin-left: 8px; }
+  .key i.dot { width: 10px; height: 10px; border-radius: 50%; vertical-align: 0; margin-right: 4px; }
   .aside-note { font-size: 13px; color: var(--ink-muted); margin: 8px 0 0; }
-  .panel { margin-top: 24px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 12px; background: #FFFFFF; }
-  .panel h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
-  .panel ol, .panel ul { margin: 0; padding-left: 22px; }
-  .panel li { margin-bottom: 4px; }
+  .panel { margin-top: 24px; padding: 20px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); }
+  .panel h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .panel ol, .panel ul { margin: 0; padding-left: 24px; }
+  .panel li { margin-bottom: 8px; }
+  details.panel[open] > summary { margin-bottom: 8px; }
+  /* Info notices: a quiet tint, no border. */
+  #notes.panel { background: var(--info-bg); color: var(--info); border: 0; border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+  #notes.panel h3 { font-size: 14px; }
   .muted { color: var(--ink-muted); }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .mono { font-family: var(--mono); font-size: 13px; }
   a { color: var(--accent); }
-  .error-box { padding: 12px 16px; border: 1px solid var(--red); border-left-width: 3px; border-radius: 8px; background: var(--red-bg); }
-  .citation-path { color: var(--ink-muted); font-size: 12px; }
+  #citations a.mono { font-size: 13px; color: var(--accent); }
+  .citation-path.mono { color: var(--ink-muted); font-size: 12px; }
+  .error-box { padding: 12px 14px; border-left: 3px solid var(--red-edge); border-radius: 8px; background: var(--red-bg); color: var(--red); font-size: 14px; }
   .error-box p { margin: 0 0 8px; }
-  .dev { margin-top: 40px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 12px; }
+  .error-box p:last-child, .error-box ul:last-child { margin-bottom: 0; }
+  .dev { margin-top: 32px; padding: 20px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); }
   .dev table { border-collapse: collapse; font-size: 13px; margin: 8px 0 16px; }
-  .dev td, .dev th { text-align: left; padding: 3px 16px 3px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
-  .dev pre { font-size: 12px; overflow: auto; max-height: 480px; background: #FFFFFF; border: 1px solid var(--rule); border-radius: 8px; padding: 8px; }
-  .dev h4 { font-size: 13px; margin: 16px 0 4px; }
+  .dev td, .dev th { text-align: left; padding: 4px 16px 4px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .dev pre { font-size: 12px; overflow: auto; max-height: 480px; background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 8px; }
+  .dev h4 { font-size: 13px; margin: 16px 0 8px; }
   [hidden] { display: none !important; }
   @media print { .ask, .dev, .actions { display: none !important; } }
 </style>
@@ -106,6 +143,7 @@
   </header>
 
   <section class="ask">
+    <p class="chips-label" aria-hidden="true">Try one</p>
     <div class="chips" id="examples" aria-label="Example questions"></div>
     <form id="query-form">
       <label for="query">Your question</label>
@@ -168,16 +206,21 @@
 const ACCENT = "#2F64A0";
 const COHORT_PALETTE = ["#2F64A0", "#C0603A", "#16907E", "#B08419", "#8A4FA8"];
 const GREY = "#A8A8A3";
-const EDGE_COLOR = "#B9B9B4";
+const EDGE_COLOR = "#9AA4B1";
+const EDGE_WIDTH = { min: 1, max: 7 };
 const HATCH = {
   symbol: "rect", symbolSize: 1, dashArrayX: [1, 0], dashArrayY: [2, 3],
   rotation: -Math.PI / 4, color: "rgba(255,255,255,0.75)",
 };
+// Colour encodes entity type only: drug-side nodes (drug, drug class) take the first colour,
+// the other end of the relation (sponsor or condition) the second. A drug class keeps its
+// hollow mark, the one border in the graph, so it stays distinct from a specific drug.
+const NETWORK_COLORS = ["#1F4E79", "#D08A2B"];
 const NODE_STYLES = {
-  drug: { label: "Drug", icon: "circle", symbol: "circle", itemStyle: { color: "#2F64A0", borderColor: "#2F64A0" } },
-  drug_class: { label: "Drug class", icon: "emptyCircle", symbol: "circle", itemStyle: { color: "#FAFAF8", borderColor: "#2F64A0", borderWidth: 1.5 } },
-  sponsor: { label: "Lead sponsor", icon: "rect", symbol: "rect", itemStyle: { color: "#C0603A", borderColor: "#C0603A" } },
-  condition: { label: "Condition", icon: "diamond", symbol: "diamond", itemStyle: { color: "#16907E", borderColor: "#16907E" } },
+  drug: { label: "Drug", symbol: "circle", itemStyle: { color: NETWORK_COLORS[0], borderWidth: 0 } },
+  drug_class: { label: "Drug class", symbol: "circle", itemStyle: { color: "#FFFFFF", borderColor: NETWORK_COLORS[0], borderWidth: 1.5 } },
+  sponsor: { label: "Lead sponsor", symbol: "circle", itemStyle: { color: NETWORK_COLORS[1], borderWidth: 0 } },
+  condition: { label: "Condition", symbol: "circle", itemStyle: { color: NETWORK_COLORS[1], borderWidth: 0 } },
 };
 const NODE_TYPES = Object.keys(NODE_STYLES);
 // Labels on the largest nodes and the most connected one; the rest show on hover.
@@ -690,7 +733,10 @@ function renderNetwork(vis) {
   const nodes = vis.nodes.map((n) => n.data);
   const edges = vis.edges.map((e) => e.data);
   const maxSize = Math.max(1, ...nodes.map((n) => n.size));
-  const maxWeight = Math.max(1, ...edges.map((e) => e.weight));
+  const minWeight = Math.min(...edges.map((e) => e.weight));
+  const weightRange = Math.max(...edges.map((e) => e.weight)) - minWeight;
+  // Linear: the lightest edge gets the minimum width, the heaviest the maximum.
+  const edgeWidth = (weight) => EDGE_WIDTH.min + (weightRange > 0 ? (EDGE_WIDTH.max - EDGE_WIDTH.min) * (weight - minWeight) / weightRange : 0);
   const degree = new Map();
   for (const e of edges) for (const id of [e.source, e.target]) degree.set(id, (degree.get(id) || 0) + 1);
   const hub = [...nodes].sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))[0];
@@ -702,10 +748,6 @@ function renderNetwork(vis) {
   chart.resize();
   chart.setOption({
     textStyle: TEXT_STYLE, animation: false,
-    legend: {
-      top: 0, left: 0, itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 13 },
-      data: present.map((t) => ({ name: NODE_STYLES[t].label, icon: NODE_STYLES[t].icon, itemStyle: { color: NODE_STYLES[t].itemStyle.borderColor } })),
-    },
     tooltip: {
       trigger: "item",
       formatter: (p) => p.dataType === "edge"
@@ -713,9 +755,9 @@ function renderNetwork(vis) {
         : `${escapeHtml(p.data.node.label)}<br>${NODE_STYLES[p.data.node.type] ? NODE_STYLES[p.data.node.type].label : escapeHtml(p.data.node.type)}<br><b>${studies(p.data.node.size)}</b>`,
     },
     series: [{
-      // Room under the legend and a slight zoom-out keep the layout inside the box;
-      // a circular start instead of random positions makes every run look the same.
-      type: "graph", layout: "force", top: 56, bottom: 24, left: 24, right: 24, zoom: 0.7, roam: true, draggable: true,
+      // A slight zoom-out keeps the layout inside the box; a circular start instead of
+      // random positions makes every run look the same.
+      type: "graph", layout: "force", top: 24, bottom: 24, left: 24, right: 24, zoom: 0.7, roam: true, draggable: true,
       force: { initLayout: "circular", repulsion: 600, edgeLength: [80, 240], gravity: 0.15, layoutAnimation: false },
       labelLayout: { hideOverlap: true },
       categories: present.map((t) => ({ name: NODE_STYLES[t].label, symbol: NODE_STYLES[t].symbol, itemStyle: NODE_STYLES[t].itemStyle })),
@@ -733,9 +775,10 @@ function renderNetwork(vis) {
       }),
       links: edges.map((e) => ({
         source: e.source, target: e.target, edge: e,
-        lineStyle: { width: 0.5 + 5.5 * (e.weight / maxWeight), color: EDGE_COLOR, opacity: 0.7, curveness: 0 },
+        lineStyle: { width: edgeWidth(e.weight), color: EDGE_COLOR, opacity: 0.55, curveness: 0 },
       })),
       edgeSymbol: ["none", "none"],
+      edgeLabel: { show: false },
       emphasis: { focus: "adjacency", label: { show: true, formatter: (p) => (p.data.node ? p.data.node.label : "") } },
     }],
   });
@@ -747,8 +790,24 @@ function renderNetwork(vis) {
       renderCitations(params.data.node.label, params.data.node, params.data.node.label);
     }
   });
-  $("aside").textContent = "Node size is the number of studies an entity appears in; a line means both are listed in the same study record. Drag to pan, scroll to zoom.";
+  renderNetworkKey(present);
+  $("aside").textContent = "A line means both are listed in the same study record. Drag to pan, scroll to zoom.";
   show("aside", true);
+}
+
+function renderNetworkKey(present) {
+  const types = present.map((t) => {
+    const style = NODE_STYLES[t].itemStyle;
+    const dot = style.borderWidth ? `border:1.5px solid ${style.borderColor};background:${style.color}` : `background:${style.color}`;
+    return el("span", { class: "type" }, el("i", { class: "dot", style: dot }), NODE_STYLES[t].label);
+  });
+  $("key").append(
+    el("span", {}, "Colour = entity type: ", ...types),
+    el("span", {}, "Size = studies the node appears in"),
+    el("span", {}, "Link width = studies listing both"),
+    el("span", {}, `Labels: hub + ${LABELLED_NODES} largest; hover for the rest`),
+  );
+  show("key", true);
 }
 
 // ---------- developer details ----------
