@@ -64,7 +64,8 @@ Response, abridged from `examples/e_…response.json` (dataTimestamp 2026-10-16T
     "data_timestamp": "2026-10-16T09:00:05",
     "warnings": [{"code": "withdrawn", "severity": "info", "cohort": "pembrolizumab",
                   "message": "pembrolizumab: 122 withdrawn studies (never enrolled) are included …"}],
-    "timing_ms": {"retrieve": 2004.0, "normalize": 213.7, "aggregate": 26.2, "total": 2249.8}
+    "timing_ms": {"validate": 0.0, "retrieve": 55.0, "normalize": 225.8, "aggregate": 26.9,
+                  "spec": 6.5, "total": 314.8}
   }
 }
 ```
@@ -105,7 +106,7 @@ requirements.txt`, or use `uv pip install --python .venv -r requirements.txt`.
 | `REFUSE_SKIP_RATIO` | `0.5` | Share at which no chart is returned (502) |
 | `MIN_SKIPPED_FOR_DEGRADED` | `20` | Below this many skipped records the result is always `normal` |
 | `CTVIZ_ENUM_DRIFT_CHECK` | `true` | At startup, compare `/studies/enums` with the code's enums and log new values (non-blocking) |
-| `DEMO_TOKEN` | empty | When set, `/query` requires `Authorization: Bearer <token>` or `?token=<token>` (401 `unauthorized` otherwise). Empty means no check. `/`, `/health` and `/docs` stay open. The demo UI has a token field kept in `sessionStorage` |
+| `DEMO_TOKEN` | empty | When set, `/query` requires `Authorization: Bearer <token>` or `?token=<token>` (401 `unauthorized` otherwise). Empty means no check. `/health/llm` needs the token too (its probes are billed); with no token set it is open and a startup warning says so. `/`, `/health` and `/docs` stay open. The demo UI has a token field kept in `sessionStorage` |
 | `REQUEST_DEADLINE_SECONDS` | `120` | A `/query` request (planning, execution and the wait for a slot) that takes longer is answered with 504 `request_timeout` |
 | `MAX_CONCURRENT_QUERIES` | `4` | `/query` requests executed at once; the others wait for a slot (within the deadline) |
 | `LLM_PRICES` | `{"gpt-4.1-mini": {"input_usd_per_million": 0.4, "output_usd_per_million": 1.6}}` | JSON price table for `meta.llm` cost estimates. A model not listed gets `estimated_cost_usd: null`, never a guess |
@@ -188,7 +189,7 @@ Responses of 1 KB or more are gzipped for clients that send `Accept-Encoding: gz
 **Test:**
 
 ```bash
-uv run pytest                 # 913 offline tests (default: -m 'not live'), about 6 s
+uv run pytest                 # 950 offline tests (default: -m 'not live'), about 6 s
 uv run pytest -m live         # the 7 live tests (real ClinicalTrials.gov API; prompt-injection tests also need a key)
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run python scripts/eval_planner.py --models gpt-4.1-mini          # planner eval, needs a key
@@ -272,13 +273,15 @@ is rejected and redrafted).
 ### Conventions a renderer needs
 
 - **`data` vs `nodes`/`edges`:** only `network_graph` uses `nodes`/`edges`; every other type
-  uses `data`. `Visualization` is one model, not a discriminated union (engineering review M8).
+  uses `data`. `Visualization` is one model, not a discriminated union (a schema gap the
+  [engineering review](docs/review_findings.md) noted for frontends).
 - **An absent datum means zero.** Buckets with 0 studies are not emitted. A grouped bar or
   time series fills gaps from `encoding.x.sort`, which on a start-date axis lists every period.
 - **Temporal keys are strings** (`"2015"`, `"2026-09"`), and `"Unknown"` can appear in the same
   array. A Vega-Lite renderer that parses `"2015"` as UTC midnight but bins with the local-time
   `timeUnit: "year"` shows 2014 in US time zones. Use `utcyear`/`utcyearmonth`, or treat keys as
-  ordinal strings (engineering review, Q9).
+  ordinal strings (from the [engineering review](docs/review_findings.md)'s check of whether a
+  renderer can be built from the schema alone).
 - **Edges are undirected.** The edge id is `<source>--<target>` with the lexically smaller id
   first, so `source`/`target` order carries no meaning.
 - **Node `type`** is `drug`, `drug_class` (MeSH tree numbers only in D26/D27: a class or dosage
@@ -287,10 +290,12 @@ is rejected and redrafted).
   study keeps its supporting citations (e.g. the raw intervention names next to a MeSH term).
   `cited_trials_total` is the number of distinct studies behind the element;
   `citation_count_total` the number of citations, which is larger when a study is cited
-  twice (supporting names, both endpoints of an edge). Above 1 MB (`NETWORK_MAX_RESPONSE_BYTES`)
-  edge citations are cut to 2, then node supporting citations are dropped; grouped charts
-  cut each bar to 2 primary citations. No element is dropped and a `citations_reduced`
-  warning gives the sizes.
+  twice (supporting names, both endpoints of an edge). The 1 MB budget
+  (`NETWORK_MAX_RESPONSE_BYTES`) is best-effort: above it, edge citations are cut to 4 (two studies), then
+  node supporting citations are dropped; grouped charts cut each bar to 4 primary citations.
+  No element is dropped and a `citations_reduced` warning gives the sizes. If the reduced
+  response is still over 1 MB it is returned anyway, and the warning says it is still over
+  the limit.
 - **Flags:** `is_unknown` (value missing), `is_unrecognized` (value present but outside the known
   API enum), `is_not_applicable` (phase Not Applicable, and observational / expanded-access
   studies without a phase), `is_other` (all omitted values of a top/bottom-N chart),
@@ -303,7 +308,7 @@ is rejected and redrafted).
 |---|---|
 | 422 | `invalid_request` (schema or bounds) |
 | 422 | `invalid_filter_value` |
-| 422 | Plan errors: `no_dimension_or_relation`, `both_dimension_and_relation`, `comparison_requires_dimension`, `chart_hint_incompatible`, `invalid_top_n`, `top_n_requires_dimension`, `invalid_year_range`, `duplicate_cohort`, `contradictory_filters` |
+| 422 | Plan errors: `no_dimension_or_relation`, `both_dimension_and_relation`, `comparison_requires_dimension`, `chart_hint_incompatible`, `invalid_top_n`, `top_n_requires_dimension`, `invalid_year_range`, `duplicate_cohort`, `contradictory_filters`, `too_many_cohorts` ("At most 6 cohorts can be compared, got N.") |
 | 422 | Planner errors: `llm_not_configured`, `unsupported_question`, `clarification_needed` (readings as suggestions), `planning_failed` |
 | 502 | `llm_unavailable`, `upstream_unavailable`, `upstream_rejected_query`, `upstream_data_format_changed` |
 | 503 | `upstream_rate_limited` |
@@ -311,14 +316,16 @@ is rejected and redrafted).
 | 504 | `request_timeout` (over `REQUEST_DEADLINE_SECONDS`) |
 | 500 | `internal_error` (catch-all; traceback logged, generic message) |
 
-`code` is a free string in the schema, not an enum (M8); notice codes in `meta` are an enum.
+`code` is a free string in the schema, not an enum; notice codes in `meta` are an enum.
 
 **`GET /health/llm`** probes each configured provider once with a tiny schema and is never
 cached (`Cache-Control: no-store`): `{configured, providers[{provider, model, status: ok |
 failed | skipped, latency_ms, response_mode, error, circuit: closed | open | half_open,
 consecutive_failures}]}`. A provider with an open circuit is `skipped` without a call. Each
 probe is a real, billed call, so it is meant for an external scheduler (e.g. once a day), not
-for a liveness check.
+for a liveness check. When `DEMO_TOKEN` is set it requires the token exactly as `/query` does
+(401 `unauthorized` otherwise); when it is not set the endpoint is open and the server logs a
+warning at startup.
 
 ---
 
@@ -350,6 +357,7 @@ code. A rejected draft is retried once with the validation error, then fails wit
 `planning_failed`. There is no agent loop.
 
 **validator** (`planner/validation.py`). Rejects plans that cannot be answered faithfully:
+- more than 6 cohorts (`MAX_COHORTS`, `too_many_cohorts`);
 - both or neither of dimension and relation;
 - a relation with several cohorts;
 - an incompatible chart hint;
@@ -388,7 +396,8 @@ Structural failures skip one record. Out-of-vocabulary values keep the record an
 
 **spec** (`spec/`). Selects the chart type from the dimension kind and the number of
 cohorts, emits Vega-Lite-style encoding or Cytoscape elements, and fits network responses
-into a 1 MB budget by cutting edge citations (never edges). Checked against golden snapshots.
+into a best-effort 1 MB budget by cutting edge citations (never edges), with a warning if
+the result is still over. Checked against golden snapshots.
 
 **The registry is the single extension point.** `aggregate/registry.py` declares each
 `DimensionSpec`:
@@ -402,7 +411,7 @@ standing warnings. `group_by`, `build_network`, `select_chart` and the prompt di
 it. A new query type is a registry entry plus an enum value; no code branches on question text.
 
 **Two retrieval routes**, chosen per cohort from the first page's `totalCount` at no extra
-request (decisions 85–90):
+request (the retrieval-route entries in [docs/decisions.md](docs/decisions.md)):
 
 | Route | When | How | Citations |
 |---|---|---|---|
@@ -420,7 +429,7 @@ picks the number (`top_n` or `bottom_n` 15).
 ## 5. Design decisions and tradeoffs
 
 Format: **decision** — reason — *rejected alternative*. Numbers in parentheses refer to
-lines in [docs/decisions.md](docs/decisions.md), which has 114 entries.
+lines in [docs/decisions.md](docs/decisions.md), which has 155 entries.
 
 **Platform**
 - **No agent framework; fixed plan → validate → execute (7, 47).** The LLM's only job is one
@@ -500,9 +509,9 @@ lines in [docs/decisions.md](docs/decisions.md), which has 114 entries.
   standing warning repeats it. Studies that match the drug by name only are reported as a hub
   undercount. *Arm-level co-administration now (about a day; see §9).*
 - **Readability caps with full accounting (64, 65).** At most 50 nodes, edge weight ≥ 2, and a
-  1 MB response budget enforced by cutting edge citations to 2. Example h:
+  best-effort 1 MB response budget met by cutting edge citations to 4 (two studies). Example h:
   - 50 of 595 nodes and 650 of 6,463 edges shown.
-  - 1.6 MB cut to 0.57 MB.
+  - 2,990,226 bytes before reduction, 792,974 bytes in the file.
   - Every omission counted in `meta.network`.
 
   *Dropping edges for size; reusing `top_n` for relations.*
@@ -694,11 +703,12 @@ All three agreed the arithmetic is right and several framings mislead. Fixed fro
 
 What was not fixed is in §8.
 
-**Verified cold start.** On 2026-10-18 a clean clone was installed with `uv sync` (701/701
-tests passed at that commit), served `/health` and `/query`, and was also installed from
-`requirements.txt` into a fresh Python 3.12 venv.
+**Verified cold start.** The cold start was verified at an earlier commit (2026-10-18): a clean
+clone was installed with `uv sync`, its tests passed, it served `/health` and `/query`, and it
+was also installed from `requirements.txt` into a fresh Python 3.12 venv. It was not repeated
+for the current tree, whose test count is given below.
 
-**Tests:** 920 total. 913 run offline in about 6 s against captured fixtures (`tests/fixtures/`),
+**Tests:** 957 total. 950 run offline in about 6 s against captured fixtures (`tests/fixtures/`),
 `respx` HTTP mocks and fake LLMs. 7 are marked `live`. Normalize, aggregate, the registries,
 chart selection and the validator were written test-first. `ruff check` and `ruff format` are
 clean. `bandit` reports no issues (the last `assert` became an explicit check). `pip-audit` reports no known
@@ -790,7 +800,8 @@ limitations"), verbatim:
   status filter on a time axis now warns that it is not a trend.
 - **Trials, not sites.** A one-site trial and a 300-site trial with one site in a country count
   the same. "Recruiting" is the overall status, not site status. US 515 vs 507 with a
-  recruiting US site (domain #7).
+  recruiting US site (domain #7). A country chart with a recruiting filter carries a
+  `recruiting_is_study_level` warning saying so.
 - **Phase is per trial, not per drug.** A phase 3 where the drug is the comparator counts as
   that drug's phase 3 (domain #10).
 - **The cohort can include class placeholders.** The MeSH branch of the drug match adds them
@@ -799,6 +810,11 @@ limitations"), verbatim:
 - **Primary purpose exists only for interventional studies.** Any `primary_purposes` value
   drops every observational and expanded-access study, and interventional records without
   a purpose. The search semantics say so; no Unknown-purpose option exists.
+- **Some planner rules are prompt rules, not code.** Copying drug names verbatim, setting
+  `top_n` only when the user gives a number, the "last N years" arithmetic and listing
+  `unhandled_terms` are instructions to the LLM that no code enforces. `meta.interpretation.plan`
+  and `meta.interpretation.draft` show what the LLM produced, so each of these can be audited
+  per response.
 - **Study-scope filters are applied as written.** "Trials" alone sets no study type, so
   "pembrolizumab trials" still counts observational studies. An LLM that misses explicit
   wording would leave a filter out; the planner eval covers three such phrasings only.
@@ -824,23 +840,24 @@ limitations"), verbatim:
   `code=unsupported_reason_redacted` warning is logged. A paraphrased prompt, or the
   readings in a `clarification_needed` error, is not caught.
 - **Single worker.** The rate limiter and SQLite cache are per process. With `--workers N`,
-  pacing becomes N × 1 req / 1.2 s, which brings back the 429s (H4). Normalize and aggregate
+  pacing becomes N × 1 req / 1.2 s, which brings back the 429s. Normalize and aggregate
   now run in a thread and at most `MAX_CONCURRENT_QUERIES` requests execute at once, but the
   spec stage and cache reads still run on the event loop.
 - **Head-of-line blocking.** `REQUEST_DEADLINE_SECONDS` (120 s) bounds every request, but the
   shared limiter still queues every user behind a long count route, so a short question can
-  time out behind a long one (M7).
-- **Open-vocabulary dimensions have no default top-N.** A "by condition" chart can have
-  thousands of bars; the size budget keeps it under 1 MB by cutting citations, not bars (M6).
-- **The unrecognized-value warnings are not capped** (one per distinct raw value, M5).
+  time out behind a long one.
+- **Categorical charts are capped for readability, not by a top-N default.** A chart with more
+  than `MAX_BARS` (50) values and no `top_n`/`bottom_n` shows the top 50 with a
+  `readability_cap` warning; the 1 MB size budget then cuts citations, never bars.
+- **The unrecognized-value warnings are not capped** (one per distinct raw value).
 - **LLM circuit breakers are per process.** With several instances each keeps its own state,
   so a failing provider is probed by every instance. `PrimaryPurpose` is not part of the
   startup enum drift check (its test fixes the checked enum set).
 - **LLM cost estimates are only as current as `LLM_PRICES`.** `estimated_cost_usd` uses the
   configured price table (default: gpt-4.1-mini only, as of `LLM_PRICE_TABLE_AS_OF` =
   2025-04), which may be out of date and can be overridden; other models report a null cost.
-- **`meta.total_matched` is a sum over cohorts** (L7). `ErrorResponse.code` is a free string,
-  not an enum, and `Visualization` is not a discriminated union (M8).
+- **`meta.total_matched` is a sum over cohorts.** `ErrorResponse.code` is a free string,
+  not an enum, and `Visualization` is not a discriminated union.
 - **The API's tie order is unspecified.** At the 10,000 cap, studies sharing the cutoff
   first-post date are picked in that order. This is stated in meta.
 - **API quirks handled, but limiting** (api_findings §6, §8, §11):
@@ -882,13 +899,11 @@ In order:
    and trip together.
 9. **A primary-purpose dimension** and an interventional-only default for "therapeutic
    trials" questions, now that the filters exist.
-10. **A small frontend demo** rendering the spec, which would exercise the renderer conventions
-    in §3.
-11. **A pre-ingested store (AACT/Postgres)** for large aggregates and open-vocabulary dimensions
+10. **A pre-ingested store (AACT/Postgres)** for large aggregates and open-vocabulary dimensions
     past 10,000.
-12. **Baseline-relative anomaly detection** on the per-cohort skip rate already logged, replacing
+11. **Baseline-relative anomaly detection** on the per-cohort skip rate already logged, replacing
     the fixed thresholds.
-13. **A "therapies" network relation** that admits radiotherapy (E02). For pembrolizumab,
+12. **A "therapies" network relation** that admits radiotherapy (E02). For pembrolizumab,
     radiotherapy (79 trials) and radiosurgery (42) are major partners (decision 99, domain
     review Q4).
 
@@ -946,11 +961,31 @@ src/ctviz/
   pipeline.py             stage orchestration and meta messages
   config.py               settings
   data/mesh_trees.json    NLM MeSH 2025 tree numbers (packaged)
-tests/                    47 test modules plus factories.py; fixtures/, golden/, eval/questions.yaml
+tests/                    51 test modules plus factories.py; fixtures/, golden/, eval/questions.yaml
 scripts/                  explore_api.py, capture_fixtures.py, fetch_mesh_trees.py, eval_planner.py
-examples/                 11 request/response pairs (a–k), regenerated live on 2026-10-18
+examples/                 12 request/response pairs (a–l), from the live API on 2026-10-18
 docs/                     architecture.md, decisions.md, api_findings.md, planner_eval.md, review_*.md
 ```
+
+**Examples.** `examples/` holds 12 request/response pairs, each a real response from
+the live API. Pairs b/d and c/f are deliberate parity pairs: the same question sent once with
+structured fields and once as plain text only, so the LLM-planned response can be compared
+with the structured one.
+
+| File | Question | Chart | What it demonstrates |
+|---|---|---|---|
+| `a_pembrolizumab_by_phase` | How are pembrolizumab trials distributed across phases? | `bar_chart` | Exclusive multi-phase buckets, the observational not-applicable bucket, withdrawn notice |
+| `b_pembrolizumab_start_year_since_2015` | How many pembrolizumab trials started each year since 2015? (structured) | `time_series` | Gap-free year axis, estimated, untyped, incomplete and future periods flagged |
+| `c_nsclc_recruiting_by_country` | Which countries have the most recruiting non-small cell lung cancer trials? (structured) | `bar_chart` | Overlapping country buckets, explicit `top_n` 15, `recruiting_is_study_level` warning |
+| `d_query_only_pembrolizumab_per_year` | How has the number of trials for pembrolizumab changed per year since 2015? | `time_series` | LLM plan with "since 2015" arithmetic; parity with b |
+| `e_query_only_pembrolizumab_vs_nivolumab_phases` | Compare phases for trials involving pembrolizumab vs nivolumab | `grouped_bar_chart` | Two-cohort comparison with `cohorts_overlap` (§1) |
+| `f_query_only_nsclc_recruiting_countries` | Which countries have the most recruiting trials for non-small cell lung cancer? | `bar_chart` | LLM `ranking_direction` → code-chosen top 15, `recruiting_is_study_level` warning; parity with c |
+| `g_query_only_pembrolizumab_sponsor_drug_network` | Show a network of sponsors and drugs for pembrolizumab trials | `network_graph` | Sponsor–drug relation, MeSH branch filter, trimming and citation reduction under the size budget |
+| `h_query_only_pembrolizumab_drug_cooccurrence` | Which drugs frequently co-occur with pembrolizumab in combination studies? | `network_graph` | Co-listing semantics, `not_applied` for "combination", weighted-degree ranking, size budget |
+| `i_breast_cancer_by_phase` | How are breast cancer trials distributed across phases? (structured) | `bar_chart` | `count_per_bucket` route past the 10,000 cap, exact counts with sampled citations |
+| `j_pembrolizumab_interventional_excluding_withdrawn_by_phase` | Phase breakdown of interventional pembrolizumab studies, excluding withdrawn (structured) | `bar_chart` | Study-scope filters in title and `count_scope` |
+| `k_pembrolizumab_top10_lead_sponsors` | Top 10 lead sponsors of pembrolizumab studies (structured) | `bar_chart` | Explicit `top_n` with an exact Other bar |
+| `l_pembrolizumab_enrollment_histogram` | How large are pembrolizumab trials by enrollment? (structured) | `histogram` | Binned dimension, an explicit Unknown bin, estimated enrollment counted and flagged |
 
 **Data provenance.**
 - **ClinicalTrials.gov API v2** (`https://clinicaltrials.gov/api/v2`, API version 2.0.5). Every

@@ -83,6 +83,7 @@ data values (invariant 1). `plan(request, llm, today)` (`planner/plan.py`) retur
 
 **validator** (`planner/validation.py`). `validate_plan` rejects plans that cannot be
 answered faithfully, raising `PlanValidationError` with a `PlanErrorReason`:
+- more than `MAX_COHORTS` (6) cohorts (`too_many_cohorts`);
 - neither or both of dimension/relation is set;
 - a relation is combined with several cohorts;
 - the chart hint is incompatible with the data;
@@ -226,12 +227,13 @@ checked against golden snapshots in `tests/golden/`.
 - Graphs become Cytoscape-style `nodes`/`edges` elements, with the payload under `data`.
   The graph's `NetworkSummary` becomes `meta.network`. When the serialized network
   response is larger than `NETWORK_MAX_RESPONSE_BYTES` (1 MB), `fit_network_budget` cuts
-  each edge's citations to `NETWORK_REDUCED_EDGE_CITATION_CAP` (2: both endpoints in one
-  trial) instead of dropping edges; if still over, nodes drop their supporting citations
+  each edge's citations to `NETWORK_REDUCED_EDGE_CITATION_CAP` (4: both endpoints in each of two
+  trials) instead of dropping edges; if still over, nodes drop their supporting citations
   (`meta.network.node_supporting_citations_dropped`). Totals are kept and the sizes
   before and after are stated in a `citations_reduced` warning. Grouped charts use the
   same budget (`fit_grouped_budget`): each bar keeps that many primary citations and no
-  bar is dropped.
+  bar is dropped. The budget is best-effort: a response still over it after the reduction
+  is returned, and the warning says so.
 - Citation caps count primary citations; each cited trial keeps its supporting
   citations. Every datum, node and edge has `cited_trials_total` (distinct NCT IDs) next
   to `citation_count_total` (citations, which is larger when a trial is cited twice).
