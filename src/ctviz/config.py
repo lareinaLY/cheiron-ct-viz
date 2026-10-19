@@ -17,7 +17,8 @@ DEFAULT_MAX_BARS = 50
 DEFAULT_MAX_NETWORK_NODES = 50
 DEFAULT_MIN_EDGE_WEIGHT = 2
 DEFAULT_NETWORK_MAX_RESPONSE_BYTES = 1_000_000
-DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP = 2
+# Two citations per study (one per endpoint); 4 = two studies.
+DEFAULT_NETWORK_REDUCED_EDGE_CITATION_CAP = 4
 # Judgment calls anchored on the observed baseline (0 skipped records in every live run,
 # docs/api_findings.md §15) and on how sensitive rankings are to small losses.
 DEFAULT_DEGRADED_SKIP_RATIO = 0.05
@@ -208,8 +209,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "NETWORK_REDUCED_EDGE_CITATION_CAP", "CTVIZ_NETWORK_REDUCED_EDGE_CITATION_CAP"
         ),
-        description="Citations kept per edge when over the size budget; 2 cites both "
-        "endpoints in one trial.",
+        description="Citations kept per edge when over the size budget; 4 cites both "
+        "endpoints in two trials.",
     )
 
     degraded_skip_ratio: float = Field(
