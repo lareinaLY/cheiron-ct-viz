@@ -102,7 +102,8 @@
   .banner.warning { border-left-color: var(--amber-edge); background: var(--amber-bg); color: var(--amber); }
   .banner .kind { font-weight: 600; margin-right: 8px; }
   .facts { display: flex; flex-wrap: wrap; gap: 0 24px; font-size: 13px; color: var(--ink-muted); margin: 0 0 16px; }
-  #chart { width: 100%; height: 420px; }
+  /* ECharts sizes its canvas to the content box, so the padding is an inset, not an overflow. */
+  #chart { width: 100%; height: 420px; padding: 12px; background: #FCFCFB; border: 1px solid var(--rule); border-radius: 8px; }
   /* ECharts gives its tooltip an inline box-shadow; hairlines only. */
   #chart div[style*="box-shadow"] { box-shadow: none !important; }
   .key { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 24px; }
@@ -201,10 +202,10 @@
 <script>
 "use strict";
 
-// Visual conventions only; no data-derived values. The cohort palette passes the dataviz
-// validator (lightness, chroma, CVD and normal-vision separation, contrast) on this paper.
-const ACCENT = "#2F64A0";
-const COHORT_PALETTE = ["#2F64A0", "#C0603A", "#16907E", "#B08419", "#8A4FA8"];
+// Visual conventions only; no data-derived values. The first two cohorts are navy and light
+// steel blue, as in the design mock; the rest keep three or more cohorts apart.
+const COHORT_PALETTE = ["#2C6EA6", "#9FB9D3", "#D08A2B", "#6B8E23", "#8A5A9A"];
+const ACCENT = COHORT_PALETTE[0];
 const GREY = "#A8A8A3";
 const EDGE_COLOR = "#9AA4B1";
 const EDGE_WIDTH = { min: 1, max: 7 };
