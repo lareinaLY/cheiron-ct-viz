@@ -198,6 +198,12 @@ uv run python scripts/eval_planner.py --models gpt-4.1-mini gpt-5-mini --repeats
   --concurrency 4 --output docs/planner_eval.md                       # the run in §6
 ```
 
+**Deploy** (Debian 12, systemd; files in `deploy/`):
+- Once: `scp deploy/bootstrap.sh root@<ip>:` and then, on the server as root, `bash bootstrap.sh`. It installs uv, clones to `/opt/cheiron-ct-viz`, runs `uv sync --frozen --no-dev` and installs `ctviz.service` (uvicorn, one worker, port 8000).
+- Then edit `/opt/cheiron-ct-viz/.env` and run `systemctl restart ctviz`. **`DEMO_TOKEN` is required on the server**: the port is public, and without a token `/query` and the billed `/health/llm` are open.
+- After each push, from your laptop: `./deploy/deploy.sh` (or `HOST=root@<ip> ./deploy/deploy.sh`). It hard-resets the server to `origin/main`, syncs, restarts, and checks `/health`.
+- It deploys what is pushed, not your working tree, and warns if your local HEAD differs from `origin/main`.
+
 ---
 
 ## 3. Request and response schemas

@@ -1,0 +1,20 @@
+[Unit]
+Description=ctviz - ClinicalTrials.gov query-to-visualization API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/cheiron-ct-viz
+EnvironmentFile=/opt/cheiron-ct-viz/.env
+ExecStart=/opt/cheiron-ct-viz/.venv/bin/uvicorn ctviz.api.app:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=3
+# Hardening (keeps the service to its own directory)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/cheiron-ct-viz
+
+[Install]
+WantedBy=multi-user.target
