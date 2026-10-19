@@ -236,12 +236,12 @@ class TestBuildChain:
     def test_non_ascii_secondary_key_fails_fast_without_echoing_it(self) -> None:
         bad = settings(
             openai_api_key="sk-test",
-            deepseek_api_key="你的key",
+            deepseek_api_key="sk-tëst-ñon-ascii-key",
             llm_fallback_chain="openai:gpt-4.1-mini,deepseek:deepseek-chat",
         )
         with pytest.raises(ValueError, match="DEEPSEEK_API_KEY") as error:
             build_llm(bad)
-        assert "你的key" not in str(error.value)
+        assert "sk-tëst-ñon-ascii-key" not in str(error.value)
 
 
 def completion(content: str) -> dict[str, object]:

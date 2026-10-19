@@ -372,10 +372,10 @@ class TestRulesFallback:
         assert llm.model == "gpt-4.1-mini"
 
     def test_non_ascii_api_key_fails_fast_without_echoing_it(self) -> None:
-        settings = Settings(_env_file=None, openai_api_key="你的key")  # type: ignore[call-arg]
+        settings = Settings(_env_file=None, openai_api_key="sk-tëst-ñon-ascii-key")  # type: ignore[call-arg]
         with pytest.raises(ValueError, match="OPENAI_API_KEY") as error:
             build_llm(settings)
-        assert "你的key" not in str(error.value)
+        assert "sk-tëst-ñon-ascii-key" not in str(error.value)
 
 
 class TestUnhandledTerms:
